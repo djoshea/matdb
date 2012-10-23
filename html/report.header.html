@@ -1,0 +1,90 @@
+<style>
+    .pageHeader h1 {
+        margin-bottom: 9px;
+        font-size: 61px;
+        font-weight: bold;
+        letter-spacing: -1px;
+        line-height: 1;
+    }
+    .pageHeader p {
+        margin-bottom: 18px;
+        font-size: 16px;
+        font-weight: 300;
+    }
+    .ellipsis {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 400px;
+    }
+
+    .ellipsis:hover {
+        white-space: normal;
+        overflow: visible;
+    }
+    .table tbody tr.error td {
+        background-color: #ff71f8 !important;
+    }
+
+    .table tbody tr.figureRow, .table tbody tr.outputRow {
+        height: 0px;
+        display: none;
+    }
+
+    .table-hover tbody tr:hover td {
+        background-color: #fee087 !important;
+    }
+
+    .table-hover tbody tr.figureRow:hover td, .table-hover tbody tr.outputRow:hover td {
+        background-color: transparent !important;
+    }
+
+    table tbody tr.figureRow td {
+        text-align: center;
+    }
+
+    .figureWrapper {
+        text-align: center;
+        display: inline-block;
+    }
+
+    .figureCaption {
+        text-align: left;
+        margin: 0 auto;
+    }
+
+    .figureCarouselInner {
+        text-align: center;
+    }
+
+    .figureCarousel {
+        max-width: 1000px;
+    }
+
+    .outputWrapper {
+        max-width: 900px;
+    }
+
+</style>
+<div class="navbar navbar-fixed-top">
+    <div class="navbar-inner">
+        <div class="container">
+            <a class="brand" href="#">{{ navTitle }}</a>
+            <div id="main-menu" class="nav-collapse">
+                <ul id="main-menu-left" class="nav">
+                    <li class="active"><a href="#"><span class="icon-th-list" style="padding-right: 10px;"></span>{{ navSubTitle }}</a></li>
+                </ul>
+                <ul id="main-menu-right" class="nav pull-right">
+                    <li><a href="#"><span class="icon-time" style="padding-right: 10px;"></span>{{ timestamp }}</a></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container">
+    <div class="pageHeader">
+        <h1>{{ mainHeader }}</h1>
+        <p>{{ subHeader }} Generated at {{ timestamp }}.</p>
+    </div>
+
