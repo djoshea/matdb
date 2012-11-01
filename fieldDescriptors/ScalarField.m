@@ -53,7 +53,9 @@ classdef ScalarField < DataFieldDescriptor
             % for this DataFieldDescriptor.
 
             % convert these to numeric array
-            if iscell(values)
+            if isempty(values)
+                convValues = NaN;
+            elseif iscell(values)
                 [valid convValues] = isScalarCell(values);
                 assert(valid, 'Cannot convert values into numeric array');
             elseif isnumeric(values) || islogical(values) 

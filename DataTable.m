@@ -23,6 +23,9 @@ classdef DataTable < DynamicClass & Cacheable
                        % these get applied when applyEntryMask is called
 
         keyFields = {}; % cellstr of fields which uniquely represent each entry
+
+        createdTimestamp;  
+        modifiedTimestamp;
     end
     
     properties(Transient)
@@ -59,10 +62,6 @@ classdef DataTable < DynamicClass & Cacheable
 
     % METHODS which subclasses MUST implement
     methods(Abstract,Access=protected)
-        % return a datenum style timestamp that indicates when this table's data
-        % was last altered. This is used by the caching framework and with 
-        % DatabaseAnalyses to know when to rerun analyses by invalidating the cache
-        timestamp = getLastUpdated(obj)
         
         % fields: a cell array of names of fields in the data table
         % fieldDescriptorMap : ValueMap ( fieldName -> DataFieldDescriptor )
@@ -103,10 +102,22 @@ classdef DataTable < DynamicClass & Cacheable
         % values. Values have already been converted according to the field 
         % descriptor.
         db = subclassAddEntry(db, valueMap)
+
+        % set the value of entry(idx).field = value
+        % assume that value has already been converted by the 
+        % fieldDescriptor to an appropriate value
+        db = subclassSetFieldValue(db, idx, field, value)
     end
 
     % METHODS which subclasses SHOULD override 
     methods
+        % subclasses should call this constructor
+        function dt = DataTable(varargin)
+            dt.createdTimestamp = now;
+            dt.modifiedTimestamp = now;
+        end
+
+
         % this method is used to access a particular entry or set of entrys by 
         % their index. Here, we could do this by calling getFieldToValuesMap
         % and assembling this ourselves, but often its faster to do this directly
@@ -653,6 +664,31 @@ classdef DataTable < DynamicClass & Cacheable
             % shouldn't need to convert, the subclass should take care of this
             %dfd = db.fieldDescriptorMap(field);
             %values = makecol(dfd.convertValues(valueMap(field)));
+        end
+
+        % same as getValues, except returns a single value not wrapped in 
+        % a cell array. Throws an error if there is more than 1 entry in the
+        % table selected by idx (or in total)
+        function value = getValue(db, field, idx)
+            db.checkAppliedEntryData();
+            db.assertIsField(field);
+
+            if nargin == 2
+                values = db.getValues(field);
+            else
+                values = db.getValues(field, idx);
+            end
+
+            if length(values) > 1
+                error('Cannot call getValue with more than one entry selected');
+            end
+
+            dfd = db.fieldDescriptorMap(field);
+            if ~dfd.matrix
+                value = values{1};
+            else
+                value = values(1);
+            end
         end
 
         function valueMap = getValuesMap(db, fields, varargin)
@@ -1330,6 +1366,7 @@ classdef DataTable < DynamicClass & Cacheable
             end
 
             db = db.subclassAddEntry(valueMap);
+            db = db.updateModifiedTimestamp();
             db.pendingApplyEntryMask = true;
             db.pendingApplyEntryData = true;
             db = db.doAutoApply();
@@ -1355,6 +1392,7 @@ classdef DataTable < DynamicClass & Cacheable
 
             entries = table.getFullEntriesAsStruct();        
             db = db.addEntry(entries);
+            db = db.updateModifiedTimestamp();
         end
 
         function db = mergeEntriesWith(db, other, varargin)
@@ -1366,6 +1404,9 @@ classdef DataTable < DynamicClass & Cacheable
             % table's dfd or to one of the dfds in 'fallbackFieldDescriptors', unless
             % 'convertMismatchedFields' is false, then an error will be thrown.
            
+            db.checkSupportsWrite();
+            db.warnIfNoArgOut(nargout);
+
             p = inputParser;
             p.addRequired('other', @(table) isa(table, 'DataTable'));
             p.addParamValue('convertMismatchedFields', true, @islogical); 
@@ -1439,6 +1480,25 @@ classdef DataTable < DynamicClass & Cacheable
 
             % and defer to addEntriesFrom to do the heavy lifting
             db = db.addEntriesFrom(other);
+        end
+
+        function dt = setFieldValue(dt, idx, field, value)
+            dt.warnIfNoArgOut(nargout);
+            dt.checkSupportsWrite();
+
+            assert(isscalar(idx) && isnumeric(idx) && idx > 0 && idx <= dt.nEntries, ...
+                'Index invalid or out of range [0 nEntries]');
+            dt.assertIsField(field);
+
+            dfd = dt.fieldDescriptorMap(field);
+            value = dfd.convertValues(value);
+
+            if ~dfd.matrix && ~isempty(value) && iscell(value)
+                % if it's a matrix, this should be a cell array
+                value = value{1};
+            end
+            dt = dt.subclassSetFieldValue(idx, field, value);
+            dt = dt.updateModifiedTimestamp();
         end
     end
 
@@ -1524,6 +1584,16 @@ classdef DataTable < DynamicClass & Cacheable
     end
 
     methods % Iterating, mapping
+        function resultTable = keyFieldsTable(db, varargin)
+            keyTable = db.getEntriesAsStruct(1:db.nEntries, db.keyFields);
+            % remove extra fields if still present
+            keyTable = rmfield(keyTable, setdiff(fieldnames(keyTable), db.keyFields));
+            dfdMap = db.fieldDescriptorMap.keepOnly(db.keyFields);
+            resultTable = StructTable(keyTable, 'fieldDescriptorMap', dfdMap, ...
+                'entryName', db.entryName, 'entryNamePlural', db.entryNamePlural);
+            resultTable = resultTable.setKeyFields(db.keyFields);
+        end
+
         function [resultTable status] = map(db, fn, varargin)
             % map(fn) : calls function handle fn on each entry in table and wraps 
             % a DataTable around the results with the appropriate key fields added from
@@ -1680,6 +1750,15 @@ classdef DataTable < DynamicClass & Cacheable
             db.database = database;
         end
 
+        function db = setEntryName(db, entryName, entryNamePlural)
+            % WARNING!!: setting the entryName can disrupt database relationships
+            db.warnIfNoArgOut(nargout);
+            db.entryName = entryName;
+            if nargin < 3
+                db.entryNamePlural = [entryName 's'];
+            end
+        end
+
         function db = setKeyFields(db, keyFields)
             db.warnIfNoArgOut(nargout);
             if ischar(keyFields)
@@ -1728,8 +1807,15 @@ classdef DataTable < DynamicClass & Cacheable
         end
 
         function count = getRelatedCount(db, entryName)
+            db.checkHasDatabase();
             relatedCell = db.database.matchRelated(db, entryName, 'combine', false);
             count = cellfun(@length, relatedCell);
+        end
+
+        function match = matchRelated(db, entryName, varargin)
+            % one param value useful is combine = true/false
+            db.checkHasDatabase();
+            match = db.database.matchRelated(db, entryName, varargin{:});
         end
 
         % update the table stored in the database with this version of it,
@@ -1740,7 +1826,17 @@ classdef DataTable < DynamicClass & Cacheable
         end
     end
  
+    methods(Access=protected) % Caching
+        function timestamp = getLastUpdated(obj)
+            timestamp = obj.modifiedTimestamp;
+        end
+    end
+
     methods % Caching
+        % return a datenum style timestamp that indicates when this table's data
+        % was last altered. This is used by the caching framework and with 
+        % DatabaseAnalyses to know when to rerun analyses by invalidating the cache
+        % Subclasses may wish to override this function
         function ts = get.lastUpdated(obj)
             ts = obj.getLastUpdated();
         end
@@ -1754,13 +1850,20 @@ classdef DataTable < DynamicClass & Cacheable
         function param = getCacheParam(obj) 
             param = [];
         end
+        
+        function obj = updateModifiedTimestamp(obj)
+            obj.warnIfNoArgOut(nargout);
+            obj.modifiedTimestamp = now;
+        end
     end
 
     methods % Utility methods
         function warnIfNoArgOut(db, nargOut)
             if nargOut == 0
-                warning('%s is not a handle class. If the instance handle returned by this method is not stored, this call has no effect.', ...
+                message = sprintf('WARNING: %s is not a handle class. If the instance handle returned by this method is not stored, this call has no effect.\\n', ...
                     class(db));
+                expr = sprintf('debug(''%s'')', message);
+                evalin('caller', expr); 
             end
         end
     end

@@ -130,9 +130,9 @@ classdef CacheManager < handle
             fileData = cm.getFileDataForWrite(cacheName, param);
             mkdirRecursive(fileparts(fileMeta));
 
-            debug('Saving cache meta %s\n', fileMeta);
+            %debug('Saving cache meta %s\n', fileMeta);
             save(fileMeta, 'param', 'timestamp');
-            debug('Saving cache data %s\n', fileData);
+            %debug('Saving cache data %s\n', fileData);
             save(fileData, '-v7.3', 'data', 'param', 'timestamp');
         end
     end

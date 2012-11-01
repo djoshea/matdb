@@ -48,7 +48,7 @@ classdef UnspecifiedField < DataFieldDescriptor
             % converts the set of field values in values to a format appropriate
             % for this DataFieldDescriptor.
            
-            convValues = makecol(values);
+            convValues = values;
         end
 
         % uniquifies field values

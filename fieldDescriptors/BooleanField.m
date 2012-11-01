@@ -54,7 +54,9 @@ classdef BooleanField < DataFieldDescriptor
             % for this DataFieldDescriptor.
 
             % convert these to numeric array
-            if iscell(values)
+            if isempty(values)
+                convValues = false;
+            elseif iscell(values)
                 [valid convValues] = isScalarCell(values);
                 convValues = convValues ~= 0;
                 assert(valid, 'Cannot convert values into boolean array');
