@@ -110,12 +110,19 @@ classdef DateField < DataFieldDescriptor
             if isempty(values) || iscell(values)
                 [valid convValues] = isStringCell(values, 'convertVector', true);
                 assert(valid, 'Cannot convert values into string cell array');
+
+                % furthermore, convert the date to a standard date format
+                nums = dfd.getAsDateNum(convValues);
+
+            elseif isnumeric(values)
+                nums = values;
             else
-                error('Cannot convert values into string cell array');
+                error('Cannot convert values into DateField');
             end
 
-            % furthermore, convert the date to a standard date format
-            nums = dfd.getAsDateNum(convValues);
+            % since we only care about the date component, drop the decimal
+            nums = floor(nums);
+
             convValues = arrayfun(@(num) datestr(num, ...
                 DateField.standardDateFormat), nums, ...
                 'UniformOutput', false);
@@ -148,6 +155,9 @@ classdef DateField < DataFieldDescriptor
                 refAsNum = dfd.getAsDateNum(ref);
             end
 
+            % drop the time component to only compare dates
+            refAsNum = floor(refAsNum);
+
             compareSign = sign(nums - refAsNum);
         end
 
@@ -167,23 +177,27 @@ classdef DateField < DataFieldDescriptor
                 refAsNum = dfd.getAsDateNum(ref);
             end
 
+            % drop the time component to only compare dates
+            refAsNum = floor(refAsNum);
+
             isEqual = nums == refAsNum;
         end
     end
 
     methods(Static) % Static utility methods
         function [tf dfd] = canDescribeValues(cellValues)
-            tf = isDateVecCell(cellValues, 'allowMultipleFormats', true);
+            [tf format num] = isDateStrCell(cellValues, 'allowMultipleFormats', false);
 
             if tf
-                % all values work with datevec --> date field
-                dfd = DateField();
-
-                % infer date format string if possible (and unique)
-                formatCell = cellfun(@getDateFormat, cellValues, 'UniformOutput', false);
-                formats = setdiff(unique(formatCell), {''});
-                if length(formats) == 1
-                    dfd.dateFormat = formats{1};
+                % all entries are date strings, are they even days with no time offset?
+                if all(floor(num) == num)
+                    % all values work with datevec --> date field
+                    dfd = DateField();
+                    dfd.dateFormat = format;
+                else
+                    % better suited for DateTimeField 
+                    tf = false;
+                    dfd = [];
                 end
             else
                 dfd = [];

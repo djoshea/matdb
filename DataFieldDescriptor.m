@@ -103,8 +103,8 @@ classdef DataFieldDescriptor < handle
                 cellValues = num2cell(cellValues);
             end
 
-            classesToTry = {'ScalarField', 'DateField', 'NumericVectorField', ...
-                'StringField'};
+            classesToTry = {'ScalarField', 'DateField', 'DateTimeField', ...
+                'NumericVectorField', 'StringField'};
 
             for iClass = 1:length(classesToTry)
                 className = classesToTry{iClass};

@@ -17,6 +17,8 @@ randClassNameFn = @() [char(randi(double(['A', 'Z']), 1, 3)) ' ' num2str(randi([
 randGradeOptionFn = @() subsref(randsample({'Grd', 'P/F'}, 1), substruct('{}', {1}));
 randPermitIdFn = @() [char(randi(double(['A', 'Z']), 1, 3)) num2str(randi([1000 9999]))];
 randPermitTypeFn = @() subsref(randsample({'Academic', 'Yearly', 'Monthly'}, 1), substruct('{}', {1}));
+permitIssuedLims = [datenum(datevec('1/1/2010')) datenum(now)];
+randPermitIssuedFn = @() datestr(permitIssuedLims(1) + diff(permitIssuedLims)*rand());
 expiryLims = [datenum(datevec('1/1/2012')) datenum(datevec('12/31/2016'))];
 randPermitExpiryFn = @() datestr(randi(expiryLims));
 
@@ -33,6 +35,7 @@ for i = 1:nPermits
     ptable(i).id = randPermitIdFn();
     ptable(i).type = randPermitTypeFn();
     ptable(i).expiry = randPermitExpiryFn();
+    ptable(i).issued = randPermitIssuedFn();
 end
 p = StructTable(ptable, 'entryName', 'permit');
 p = p.setKeyFields({'id'}); 

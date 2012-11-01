@@ -6,6 +6,8 @@ classdef CSVTable < StructTable
 
     methods
         function dt = CSVTable(varargin)
+            dt = dt@StructTable();
+
             p = inputParser;
             p.KeepUnmatched = true;
             p.addOptional('csvName', '', @(x) isempty(x) || ischar(x));

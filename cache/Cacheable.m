@@ -23,6 +23,8 @@ classdef (HandleCompatible) Cacheable
             obj = obj;
         end
 
+        % return the timestamp to be used when storing the cache,
+        % typically now is sufficient
         function timestamp = getCacheTimestamp(obj)
             timestamp = now;
         end
@@ -54,7 +56,7 @@ classdef (HandleCompatible) Cacheable
         end
     end
 
-    methods(Sealed)
+    methods
         function name = getFullCacheName(obj)
             name = [class(obj) '_' obj.getCacheName()];
         end

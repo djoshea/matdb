@@ -3,12 +3,12 @@ classdef StructTable < DataTable
     properties(Hidden)
         table = struct([]); % struct array with data
         localDfdMap % temporary cache to hold onto our dfd map before requested from DataTable
-
-        createdTimestamp;  
     end
 
     methods
         function db = StructTable(varargin)
+            db = db@DataTable();
+
             if ~isempty(varargin)
                 db = db.initialize(varargin{:});
             end
@@ -16,28 +16,51 @@ classdef StructTable < DataTable
 
         function db = initialize(db, varargin)
             p = inputParser;
-            p.addOptional('table', struct([]), @(t) isempty(t) || (isstruct(t) && isvector(t)));
+            p.addOptional('table', struct([]), @(t) isa(t, 'DataTable') || isempty(t) || (isstruct(t) && isvector(t)));
             p.addParamValue('entryName', '', @(t) ischar(t) && ~isempty(t));
             p.addParamValue('entryNamePlural', '', @(t) ischar(t) && ~isempty(t));
+            p.addParamValue('fieldDescriptorMap', '', @(m) isempty(m) || isa(m, 'ValueMap'));
             p.parse(varargin{:});
 
             table = p.Results.table;
             entryName = p.Results.entryName;
             entryNamePlural = p.Results.entryNamePlural;
+            dfdMap = p.Results.fieldDescriptorMap;
 
             if isempty(entryName) && isempty(db.entryName);
-                error('Please provide argument ''entryName''');
+                if isa(table, 'DataTable')
+                    entryName = table.entryName;
+                else
+                    error('Please provide argument ''entryName''');
+                end
             end
             if isempty(entryNamePlural) && isempty(db.entryNamePlural)
-                % assume simple pluralization
-                entryNamePlural = [entryName 's'];
+                if isa(table, 'DataTable')
+                    entryNamePlural = table.entryNamePlural;
+                else
+                    % assume simple pluralization
+                    entryNamePlural = [entryName 's'];
+                end
+            end
+
+            if ~isempty(dfdMap)
+                db.localDfdMap = dfdMap;
             end
 
             if isempty(db.table)
                 if isempty(table) 
                     table = struct([]);
                 end
-                db.table = makecol(structReplaceEmptyValues(table));
+
+                if isa(table, 'DataTable')
+                    % if a data table was passed in, use the values and 
+                    % field descriptors already there
+                    db.table = table.getFullEntriesAsStruct();
+                    db.keyFields = table.keyFields();
+                    db.localDfdMap = table.fieldDescriptorMap;
+                else
+                    db.table = makecol(structReplaceEmptyValues(table));
+                end
             end
 
             if isempty(db.localDfdMap)
@@ -53,15 +76,10 @@ classdef StructTable < DataTable
             end
             
             db = db.apply();
-            db.createdTimestamp = now;
         end
     end
 
     methods(Access=protected)
-        function timestamp = getLastUpdated(obj)
-            timestamp = obj.createdTimestamp;
-        end
-
         % returns a cell array of names of fields in the data table
         function [fields fieldDescriptorMap] = getFields(db)
             fields = fieldnames(db.table);
@@ -142,6 +160,10 @@ classdef StructTable < DataTable
             S = makecol(S);
             
             db.table = [db.table; S]; 
+        end
+
+        function db = subclassSetFieldValue(db, idx, field, value)
+            db.table(idx).(field) = value;
         end
     end
 

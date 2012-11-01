@@ -30,6 +30,9 @@ classdef Database < DynamicClass & handle
     methods % Tables
 
         function table = addTable(db, table, varargin)
+            if nargout == 0
+                warning('When adding tables to the database, store the table returned as it has been updated to point at the database');
+            end
             p = inputParser;
             p.addRequired('table', @(t) validateattributes(t, {'DataTable'}, {'nonempty'}));
             %p.addParamValue('entryName', '', @ischar);
