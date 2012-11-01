@@ -68,8 +68,8 @@ classdef Database < DynamicClass & handle
                 warning('Database already has table with entryName %s, overwriting', entryName);
                 % remove old keys
                 oldPlural = db.singularToPluralMap(entryName);
-                db.pluralToSingularMap.remove(oldPlural);
-                db.singularToPluralMap.remove(entryName);
+                db.pluralToSingularMap = db.pluralToSingularMap.remove(oldPlural);
+                db.singularToPluralMap = db.singularPluralMap.remove(entryName);
             end
             if db.pluralToSingularMap.isKey(entryName)
                 % another table has the same plural

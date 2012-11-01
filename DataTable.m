@@ -807,36 +807,47 @@ classdef DataTable < DynamicClass & Cacheable
             end
         end
 
-        function [gridUniqueIdx uniqueValsByField] = getGridDataAsIdxIntoUnique(db, varargin)
-            error('Not yet implemented');
+        function [uniqueTupleIdx uniqueTuples entryCount] = getUniqueTuples(db, varargin)
+            % looks for unique occurrences of a set of several field values
+            % uniqueTuples will be a struct with each field in fields (param: default .fields)
+            % uniqueTupleIdx will be a nEntries long vector of indices in uniqueTuples, inicating which 
+            %   set of field values describes that entry
+            % entryCount counts the number of entries used by uniqueTuples(i)
+            p = inputParser;
+            p.addParamValue('fields', db.fields, @iscellstr);
+            p.parse(varargin{:});
+            fields = p.Results.fields;
+
             % return the gridData but replace each field's value with the index into
             % the set of unique values returned by .getUnique(fld)
             db.checkAppliedEntryData();
-
-            fields = db.fields;
-            asMatrix = false; % return a matrix with column i as field i, instead of a struct array
-            gridData = db.gridData;
-            assignargs(varargin);
            
-            nEntries = numel(gridData);
-            nFields = numel(fields);
-            if asMatrix
-                gridUniqueIdx = zeros(nEntries, nFields);
-            else
-                gridUniqueIdx = [];
+            uniqueIdxMat = nan(db.nEntries, length(fields));
+            uniqueValsCell = cell(db.nFields, 1);
+            for iField = 1:length(fields)
+                field = fields{iField};
+                [uniqueIdxMat(:, iField) uniqueValsCell{iField}] = db.getValuesAsIdxIntoUnique(field);
             end
-            for iFld = 1:length(fields)
-                fld = fields{iFld};
-                [uniqueIdx uniqueVals] = db.getValuesAsIdxIntoUnique(fld, varargin{:});
-                
-                if asMatrix
-                    gridUniqueIdx(:, iFld) = uniqueIdx;
-                else
-                    gridUniqueIdx = makecol(assignIntoStructArray(gridUniqueIdx, fld, uniqueIdx));
+
+            [tupleLookups ia uniqueTupleIdx] = unique(uniqueIdxMat, 'rows'); 
+
+            % build a struct where uniqueTuples(i).field is the value of field in the ith unique tuple
+            nTuples = size(tupleLookups, 1);
+            for iTuple = 1:nTuples
+                for iField = 1:length(fields)
+                    field = fields{iField};
+                    valueIdx = tupleLookups(iTuple, iField);
+                    uniqueTuples(iTuple).(field) = uniqueValsCell{iField}{valueIdx};
                 end
-                uniqueValsByField{iFld} = uniqueVals;
+            end
+
+            % count the number of entries used by each tuple
+            entryCount = nan(nTuples, 1);
+            for iTuple = 1:nTuples
+                entryCount(iTuple) = nnz(uniqueTupleIdx == iTuple);
             end
         end
+
     end
 
     methods % Display / visualization
