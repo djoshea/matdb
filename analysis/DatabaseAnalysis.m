@@ -59,7 +59,7 @@ classdef DatabaseAnalysis < handle & DataSource
 
         % run this analysis on one entry, entryTable will be a DataTable instance
         % filtered down to one entry
-        resultStruct = runOnEntry(da, entryTable, fields)
+        resultStruct = runOnEntry(da, entry, fields)
 
     end
 
@@ -267,6 +267,12 @@ classdef DatabaseAnalysis < handle & DataSource
                         end
                     end
                     maskToAnalyze(iEntry) = ~allLoaded;
+
+                    % check whether this row has ever been run in the cache
+                    % which is useful when the analysis does not use fields
+                    if isempty(resultTable{iEntry}.runTimestamp)
+                        maskToAnalyze(iEntry) = true;
+                    end
                 end
                         
                 % do we re-run failed runs from last time
