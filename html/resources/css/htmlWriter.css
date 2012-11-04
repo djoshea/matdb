@@ -1,0 +1,49 @@
+    body {
+        position: relative;
+        padding-top: 80px;
+        /*  background-color: #fff;
+        background-image: url(../img/grid-18px-masked.png);*/
+        background-repeat: repeat-x;
+        background-position: 0 40px;
+    }
+
+    /* Header 
+    -------------------------------------------------- */
+        .header {
+            position: relative;
+        }
+        .header h1 {
+            margin-bottom: 9px;
+            font-size: 81px;
+            font-weight: bold;
+            letter-spacing: -1px;
+            line-height: 1;
+        }
+        .header p {
+            margin-bottom: 18px;
+            font-weight: 300;
+        }
+        .header .btn-large {
+            font-size: 20px;
+            font-weight: normal;
+            padding: 14px 24px;
+            margin-right: 10px;
+            -webkit-border-radius: 6px;
+            -moz-border-radius: 6px;
+            border-radius: 6px;
+        }
+        .header .btn-large small {
+            font-size: 14px;
+        }
+
+
+        /* Specific headers
+        ------------------------- */
+        /* supporting docs pages */
+        .subhead {
+            padding-bottom: 0;
+            margin-bottom: 9px;
+        }
+        .subhead h1 {
+            font-size: 54px;
+        }
