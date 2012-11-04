@@ -115,8 +115,16 @@ classdef DataTable < DynamicClass & Cacheable
         function dt = DataTable(varargin)
             dt.createdTimestamp = now;
             dt.modifiedTimestamp = now;
+            
+            dt = dt.doAutoApply();
         end
 
+        function db = initialize(db)
+            db.pendingApplyFields = true;
+            db.pendingApplyEntryMask = true;
+            db.pendingApplyEntryData = true;
+            db = db.doAutoApply();
+        end
 
         % this method is used to access a particular entry or set of entrys by 
         % their index. Here, we could do this by calling getFieldToValuesMap
@@ -1324,73 +1332,118 @@ classdef DataTable < DynamicClass & Cacheable
             db = db.invalidateCaches();
         end
 
-        function db = addEntry(db, entry)
-            % adds a new entry or entries to the data store.
-            % entry must be either a:
+        function db = addEntry(db, entryTable, varargin)
+            % adds a new entryTable or entries to the , varargindata store.
+            % entryTable must be either a:
             %   struct (array) with each field containing the value for that field
             %   ValueMap : field name -> field values for all added entries
-            
+
             db.warnIfNoArgOut(nargout);
             db.checkSupportsWrite();
 
-            validateEntry = @(entry) isstruct(entry) || ...
-                (isscalar(entry) && isa(entry, 'ValueMap'));
+            validateentryTable = @(entryTable) isstruct(entryTable) || ...
+                (isscalar(entryTable) && isa(entryTable, 'ValueMap'));
 
             p = inputParser;
-            p.addRequired('entry', validateEntry);
-            p.parse(entry);
+            p.addRequired('entryTable', validateentryTable);
+            
+            % if true, checks for exact keyfields matches and overwrites this entries data
+            % with the other tables
+            p.addParamValue('overwriteKeyFieldsMatch', false, @islogical);
+            % if true, keeps ONLY rows in other that keyField match with this one.
+            % automatically sets overwriteKeyFieldsMatch to true
+            p.addParamValue('keyFieldMatchesOnly', false, @islogical);
+            % run all values through field conversion in order to avoid errors. Set this to false
+            % if you know the values are already converted
+            p.addParamValue('convertValues', true, @islogical);
+            p.parse(entryTable, varargin{:});
+            overwriteKeyFieldsMatch = p.Results.overwriteKeyFieldsMatch;
+            convertValues = p.Results.convertValues;
+            keyFieldMatchesOnly = p.Results.keyFieldMatchesOnly;
 
-            valueMap = ValueMap('KeyType', 'char', 'ValueType', 'any');
-            if isstruct(entry)
-                % convert this to a ValueMap so that the subclass call need
-                % only work with this format
-                %entry = structReplaceEmptyValues(entry);
-                for iField = 1:db.nFields
-                    field = db.fields{iField};
-                    dfd = db.fieldDescriptorMap(field);
-
-                    if isfield(entry, field)
-                        values = {entry.(field)};
-                        values = dfd.convertValues(values);
-                    else
-                        % use default value for this field
-                        values = dfd.emptyValue(db.nEntries);
-                    end
-                    valueMap(field) = makecol(values);
-                end
+            if isempty(entryTable)
+                return;
+            elseif isa(entryTable, 'ValueMap') || isa(entryTable, 'containers.Map')
+                S = mapToStructArray(entryTable);
+            elseif isstruct(entryTable)
+                S = entryTable;
             else
-                % entry is a ValueMap containing the values for all entries
-                % pull out the values, check the length, and convert
-                for iField = 1:db.nFields
-                    field = db.fields{iField};
-                    dfd = db.fieldDescriptorMap(field);
+                error('Invalid entryTable in addentryTable');
+            end
 
-                    if valueMap.isKey(field)
-                        values = valueMap(field);
+            S = makecol(S);
+            nNewEntries = length(S);
+
+            % S is now a struct array with values for each field
+            % convert each value if requested
+            % add missing fields set to field appropriate empty values
+            for iField = 1:db.nFields
+                field = db.fields{iField};
+                dfd = db.fieldDescriptorMap(field);
+
+                if isfield(S, field)
+                    if convertValues
+                        values = {S.(field)};
                         values = dfd.convertValues(values);
-                    else
-                        % use default values for this field
-                        values = dfd.emptyValue(db.nEntries);
+                        S = assignIntoStructArray(S, field, values);
                     end
-                    valueMap(field) = makecol(values);
+                else
+                    % field is missing
+                    % use default empty value for this field
+                    values = dfd.emptyValue(numel(S));
+                    S = assignIntoStructArray(S, field, values);
                 end
             end
 
-            db = db.subclassAddEntry(valueMap);
+            if overwriteKeyFieldsMatch || keyFieldMatchesOnly
+                % delete any rows from this table that have key field matches in
+                % other that will be overwriting them
+                overwriteMask = false(db.nEntries, 1);
+                hasMatchMask = false(nNewEntries, 1);
+                nonKeyFields = setdiff(db.fields, db.keyFields);
+                for iEntry = 1:nNewEntries
+                    keyFieldEntry = rmfield(S(iEntry), nonKeyFields);
+                    idx = makecol(db.matchIdx(keyFieldEntry));
+                    if ~isempty(idx)
+                        hasMatchMask(iEntry) = true;
+                    end
+                    overwriteMask(idx) = true;
+
+                end
+
+                % remove the entries to be overwritten, so that we can just add 
+                % the new ones at the end
+                db = db.exclude(overwriteMask);
+            end
+
+            if keyFieldMatchesOnly
+                % keyFieldMatchesOnly means we're not adding any unmatched rows
+                % from the new table
+                S = S(hasMatchMask);
+            end
+                
+            if ~isempty(S)
+                db = db.subclassAddEntry(S);
+            end
+
             db = db.updateModifiedTimestamp();
             db.pendingApplyEntryMask = true;
             db.pendingApplyEntryData = true;
             db = db.doAutoApply();
         end
 
-        function db = addEntriesFrom(db, table)
+        function db = addEntriesFrom(db, table, varargin)
             % adds all entries from a second table to this one. This function requires
             % that the field set and fieldDescriptors match exactly. If they do
             % not match, see .mergeEntriesWith
+
+            p = inputParser;
+            p.addRequired('table', @(t) isa(t, 'DataTable'));
+            p.KeepUnmatched = true;
+            p.parse(table, varargin{:});
             db.warnIfNoArgOut(nargout);
             db.checkSupportsWrite();
 
-            assert(isa(table, 'DataTable'), 'table must be a DataTable instance');
             sameFields = isempty(setxor(db.fields, table.fields)); 
             assert(sameFields, 'Table fields must match exactly');
 
@@ -1402,7 +1455,7 @@ classdef DataTable < DynamicClass & Cacheable
             end
 
             entries = table.getFullEntriesAsStruct();        
-            db = db.addEntry(entries);
+            db = db.addEntry(entries, p.Unmatched);
             db = db.updateModifiedTimestamp();
         end
 
@@ -1423,6 +1476,9 @@ classdef DataTable < DynamicClass & Cacheable
             p.addParamValue('convertMismatchedFields', true, @islogical); 
             p.addParamValue('fallbackFieldDescriptors', {ScalarField(), NumericVectorField(), ...
                 StringField(), UnspecifiedField()}, @iscell);
+            % if true, checks for exact keyfields matches and overwrites this entries data
+            % with the other tables
+            p.KeepUnmatched = true;
             p.parse(other, varargin{:});
             convertMismatchedFields = p.Results.convertMismatchedFields;
             fallbackFieldDescriptors = p.Results.fallbackFieldDescriptors;
@@ -1490,7 +1546,7 @@ classdef DataTable < DynamicClass & Cacheable
             end
 
             % and defer to addEntriesFrom to do the heavy lifting
-            db = db.addEntriesFrom(other);
+            db = db.addEntriesFrom(other, p.Unmatched);
         end
 
         function dt = setFieldValue(dt, idx, field, value)

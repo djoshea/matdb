@@ -1,20 +1,19 @@
 classdef DatabaseAnalysis < handle & DataSource
 
-    properties
+    properties(SetAccess=protected)
         % time which the analysis started running
         timeRun
 
-        % used by callbacks to store information by entry
-        currentEntry
-        currentEntryIndex
+        % has this analysis run already?
+        hasRun
 
-        % the result table will be an instance of a loadOnDemandMapped Table
+        % the result table will be an instance of DatabaseAnalysisResultsTable 
         resultTable
 
+        % will be populated post analysis. All of this info is in .resultTable as well
         successByEntry
         exceptionByEntry
-        diaryFileByEntry = {};
-        logByEntry = {};
+        logByEntry
 
         % each element contains a struct with fields
         %   .pathNoExt
@@ -25,18 +24,27 @@ classdef DatabaseAnalysis < handle & DataSource
         %   .width
         %   .height
         figureInfoByEntry = {};
-
-        figureRootPaths  = {'~/npl/analysis/', '/net/home/djoshea/npl/analysis'};
-        figureExtensions = {'png', 'eps', 'svg'};
     end
 
-    properties(Transient)
+    properties
+        figureExtensions = {'png', 'eps', 'svg'};
+    end
+    
+    properties(Access=protected)
+        figureInfoCurrentEntry
+        currentEntry
+    end
+
+    properties(Transient, SetAccess=protected)
         % reference to the current database when running
         database 
     end
 
     properties(Dependent)
         fieldsAnalysis 
+        pathAnalysis 
+        pathFigures
+        htmlFile
     end
 
     methods(Abstract)
@@ -103,9 +111,18 @@ classdef DatabaseAnalysis < handle & DataSource
             list = {};
         end
         
-        % return a cell array of DataSource instances that must be loaded before 
-        % running this analysis
+        % return a cell array of DataSource instances that must be loaded a priori,
+        % These sources will ALWAYS be run, even when all analysis can be loaded 
+        % from cache. If a source is needed only when doing new analysis, e.g.
+        % another analysis this builds upon, include it in getRequiredSourcesForAnalysis
+        % instead.
         function sources = getRequiredSources(da)
+            sources = {};
+        end
+
+        % return a cell array of DataSource instances that must be loaded ONLY
+        % when new analysis is to actually be run (not just loading from cache)
+        function sources = getRequiredSourcesForAnalysis(da)
             sources = {};
         end
         
@@ -138,15 +155,32 @@ classdef DatabaseAnalysis < handle & DataSource
     end
 
     methods
+        function checkHasRun(da)
+            if ~da.hasRun
+                error('Analysis has not yet been run. Please call .run(database) first.');
+            end
+        end
+
         function resultTable = run(da, db, varargin)
             p = inputParser();
             p.addRequired('db', @(db) isa(db, 'Database'));
             % optionally select subset of fields for analysis
             p.addParamValue('fields', da.fieldsAnalysis, @iscellstr); 
+            % check the cache for existing analysis values
             p.addParamValue('loadCache', true, @islogical); 
+            % save computed analysis values to the cache
             p.addParamValue('saveCache', true, @islogical); 
+            % rerun any failed entries from prior runs, true value supersedes
+            % .getRerunFailed() method return value, which is the class default
             p.addParamValue('rerunFailed', false, @islogical); 
+            % don't run any new analysis, just load whatever possible from the cache
             p.addParamValue('loadCacheOnly', false, @islogical);
+            % wrap the runOnEntry method in a try/catch block so that errors
+            % on one entry don't halt the analysis
+            p.addParamValue('catchErrors', true, @islogical);
+            % generate a new report and figures folder even if no new analysis
+            % was run, useful if issues encountered with report generation
+            p.addParamValue('forceReport', false, @islogical);
             p.parse(db, varargin{:});
 
             fieldsAnalysis = p.Results.fields;
@@ -154,6 +188,8 @@ classdef DatabaseAnalysis < handle & DataSource
             saveCache = p.Results.saveCache;
             rerunFailed = p.Results.rerunFailed;
             loadCacheOnly = p.Results.loadCacheOnly;
+            catchErrors = p.Results.catchErrors;
+            forceReport = p.Results.forceReport;
 
             % get analysis name
             name = da.getName();
@@ -161,9 +197,15 @@ classdef DatabaseAnalysis < handle & DataSource
             debug('Preparing for analysis : %s\n', name);
 
             da.database = db;
-            % mark run timestamp
+
+            % mark run timestamp consistently for all entries
+            % we'll keep this timestamp unless we don't end up doing any new
+            % analysis, then we'll just pick the most recent prior timestamp
             da.timeRun = now;
             fieldsAdditional = da.getFieldsAdditional();
+
+            % keep track of whether we need to re-cache the result table 
+            resultTableChanged = false;
             
             % load all data sources
             db.loadSource(da.getRequiredSources());
@@ -174,6 +216,8 @@ classdef DatabaseAnalysis < handle & DataSource
             % get the appropriate table to map
             entryName = da.getMapsEntryName();
             table = db.getTable(entryName);
+            % enforce singular for 1:1 relationship to work
+            entryName = table.entryName;
 
             % prefilter the table further if requested (database views also do this)
             table = da.preFilterTable(table);
@@ -188,31 +232,12 @@ classdef DatabaseAnalysis < handle & DataSource
                 % load the table itself from cache and copy over additional field
                 % values from the cache hit if present
                 if resultTable.hasCache()
-                    cachedTable = resultTable.loadFromCache();
-
-                    % using temporary copy of resultTable, create a one to one
-                    % relationship to handle the correspondence easily
-                    dbTemp = Database();
-                    resultTableCopy = resultTable;
-                    resultTableCopy = resultTableCopy.setEntryName('emptyResult');
-                    cachedTable = cachedTable.setEntryName('cachedResult');
-                    cachedTable = dbTemp.addTable(cachedTable);
-                    resultTableCopy = dbTemp.addTable(resultTableCopy);
-                    dbTemp.addRelationshipOneToOne(resultTableCopy.entryName, cachedTable.entryName);
-                    
-                    % for each matching entry in cachedTable, copy over the values of
-                    % all additional fields, use the 1:1 relationship to find matches
-                    matchCell = resultTableCopy.matchRelated('cachedResult', 'combine', false);
-                    for iEntry = 1:resultTable.nEntries
-                        if matchCell{iEntry}.nEntries > 0
-                            debug('Copying match for row %d in cached table\n', iEntry);
-                            match = matchCell{iEntry};
-                            for iField = 1:length(fieldsAdditional)
-                                field = fieldsAdditional{iField};
-                                resultTable = resultTable.setFieldValue(iEntry, field, match.(field));
-                            end
-                        end
-                    end
+                    % LoadOnDemandMappedTable will automatically add all rows in
+                    % resultTable that are missing in the cached copy (i.e. rows
+                    % in the mapped table that were added after the cache was generated).
+                    % 
+                    % So we don't need to worry about adding these missing rows
+                    resultTable = resultTable.loadFromCache();
                 end
 
                 % now we search for field values in fieldsAnalysis in the cache
@@ -252,6 +277,13 @@ classdef DatabaseAnalysis < handle & DataSource
                 end
             end
 
+            resultTable = da.database.updateTable(resultTable);
+            da.database.addRelationshipOneToOne(resultTable.entryName, entryName); 
+            
+            % NOTE: At this point you cannot assume that resultsTable and table (the mapped table)
+            % are in the same order. They simply have the same number of rows mapped via
+            % key field equivalence (1:1 relationship)
+
             % analyze entries that haven't been loaded from cache?
             if ~loadCacheOnly
                 % figure out which entries have not yet been loaded
@@ -274,6 +306,9 @@ classdef DatabaseAnalysis < handle & DataSource
                         maskToAnalyze(iEntry) = true;
                     end
                 end
+
+                debug('Analysis already loaded or cached for %d of %d entries\n', ...
+                    nnz(~maskToAnalyze), resultTable.nEntries);
                         
                 % do we re-run failed runs from last time
                 if da.getRerunCachedUnsuccessful() || rerunFailed
@@ -282,65 +317,102 @@ classdef DatabaseAnalysis < handle & DataSource
                     % also reanalyze any rows which were listed as unsuccessful
                     maskToAnalyze = maskToAnalyze | maskFailed;
                 end
-                    
-                % now need to run the analysis on entries in maskToAnalyze
-                tableAnalyze = table.select(maskToAnalyze);
                 
-                if tableAnalyze.nEntries > 0
-                    % create slots for by entry information that must be captured from
-                    % within the mapped function (runOnEntryWrapper)
-                    da.figureInfoByEntry = cell(tableAnalyze.nEntries, 1);
-                    da.diaryFileByEntry = cell(tableAnalyze.nEntries, 1);
+                nAnalyze = nnz(maskToAnalyze);
+                if nAnalyze > 0
+                    idxAnalyze = find(maskToAnalyze);
 
+                    resultTableChanged = true;
+                    
                     debug('Running analysis %s on %d of %d %s entries\n', name, ...
-                        tableAnalyze.nEntries, table.nEntries, entryName);
+                        nAnalyze, table.nEntries, entryName);
                     
-                    % run the analysis
-                    entryWrapperFn = @(varargin) da.runOnEntryWrapper(varargin{:}, ...
-                        'fields', fieldsAnalysis);
-                    [newResultTable statusByEntry] = tableAnalyze.map(entryWrapperFn, ...
-                        'entryName', name, 'entryNamePlural', name, ...
-                        'addToDatabase', false);
-
-                    % read from the diary files the output for each entry
-                    logByEntry = da.loadDiaryFiles();
-                    figureInfoByEntry = da.figureInfoByEntry;
-
-                    % add meta fields to the table
-                    % 'success' : boolean indicating whether the run was successful
-                    % 'output' : contains the raw output to the command window
-                    % 'exception' : contains any exceptions thrown
-                    % 'figureInfo' : contains a struct array with info about the figures saved
-                    newResultTable = newResultTable.addField('success', [statusByEntry.success] > 0, ...
-                        'position', 1, 'fieldDescriptor', BooleanField());
-                    newResultTable = newResultTable.addField('output', logByEntry, ...
-                        'position', 2, 'fieldDescriptor', OutputField());
-                    newResultTable = newResultTable.addField('runTimestamp', da.timeRun, ...
-                        'position', 3, 'fieldDescriptor', DateTimeField());
-                    newResultTable = newResultTable.addField('exception', {statusByEntry.exception}, ...
-                        'position', 4, 'fieldDescriptor', UnspecifiedField());
-                    newResultTable = newResultTable.addField('figureInfo', figureInfoByEntry, ...
-                        'position', 5, 'fieldDescriptor', UnspecifiedField());
+                    % load sources required ONLY for new analysis
+                    da.database.loadSource(da.getRequiredSourcesForAnalysis());
                     
-                    % store every value in newResultTable into the appropriate slot
-                    % in resultTable
-                    newInOldIdx = find(maskToAnalyze);
-                    for iNew = 1:newResultTable.nEntries
-                        iOld = newInOldIdx(iNew);
-                        % first set analysis fields
-                        fieldsSet = union(fieldsAnalysis, fieldsAdditional);
-                        for iField = 1:length(fieldsSet)
-                            field = fieldsSet{iField}; 
-                            resultTable = resultTable.setFieldValue(iOld, ...
-                                field, newResultTable{iNew}.(field), ...
-                                'saveCache', saveCache);
+                    % actually run the analysis
+                    for iAnalyze = 1:nAnalyze
+                        iResult = idxAnalyze(iAnalyze);
+
+                        % find the corresponding entry in the mapped table via the database
+                        if maskToAnalyze(iResult)
+                            entry = resultTable(iResult).matchRelated(entryName);
+                            if entry.nEntries > 1
+                                debug('WARNING: Multiple matches for analysis row, check uniqueness of keyField tuples in table %s. Choosing first.\n', entryName);
+                                entry = entry.select(1);
+                            elseif entry.nEntries == 0
+                                % this likely indicates a bug in building / loading resultTable from cache
+                                error('Could not find match for resultTable row in order to do analysis');
+                            end
                         end
+
+                        % for saveFigure to look at 
+                        da.currentEntry = entry;
+
+                        % open a temporary file to use as a diary to capture all output
+                        diary off;
+                        diaryFile = tempname(); 
+                        diary(diaryFile);
+
+                        % clear the figure info for saveFigure to use
+                        da.figureInfoCurrentEntry = [];
+
+                        % try calling the runOnEntry callback
+                        if catchErrors
+                            try
+                                resultStruct = da.runOnEntry(entry, fieldsAnalysis); 
+                                exc = [];
+                                success = true;
+                            catch exc 
+                                tcprintf('red', 'EXCEPTION: %s\n', exc.getReport);
+                                success = false;
+                            end
+                        else
+                            resultStruct = da.runOnEntry(entry, fieldsAnalysis); 
+                            exc = [];
+                            success = true;
+                        end
+
+                        % warn if not all fields requested were returned
+                        % use the requested list fieldsAnalysis, a subset of dt.fieldsAnalysis
+                        if success
+                            missingFields = setdiff(fieldsAnalysis, fieldnames(resultStruct));
+                            if ~isempty(missingFields)
+                                debug('WARNING: analysis on this entry did not return fields: %s\n', ...
+                                    strjoin(missingFields, ', '));
+                            end
+                            % warn if the analysis returned extraneous fields as a reminder to add them
+                            % to .getFieldsAnalysis. Fields in dt.fieldsAnalysis but not fieldsAnalysis are okay
+                            extraFields = setdiff(fieldnames(resultStruct), da.fieldsAnalysis);
+                            if ~isempty(missingFields)
+                                debug('WARNING: analysis on this entry returned extra fields not listed in .getFieldsAnalysis(): %s\n', ...
+                                    strjoin(extraFields, ', '));
+                            end
+                        end
+
+                        % load the output from the diary file
+                        diary('off');
+                        output = fileread(diaryFile);
+
+                        if success
+                            % Copy only fieldsAnalysis that were returned.
+                            % Fields in dt.fieldsAnalysis but not fieldsAnalysis are okay
+                            fieldsCopy = intersect(da.fieldsAnalysis, fieldnames(resultStruct));
+                            for iField = 1:length(fieldsCopy)
+                                field = fieldsCopy{iField};
+                                resultTable = resultTable.setFieldValue(iResult, field, resultStruct.(field), 'saveCache', saveCache);
+                            end
+                        end
+
+                        % set all of the additional field values
+                        resultTable = resultTable.setFieldValue(iResult, 'success', success, 'saveCache', saveCache);
+                        resultTable = resultTable.setFieldValue(iResult, 'output', output, 'saveCache', saveCache);
+                        resultTable = resultTable.setFieldValue(iResult, 'runTimestamp', da.timeRun, 'saveCache', saveCache);
+                        resultTable = resultTable.setFieldValue(iResult, 'exception', exc, 'saveCache', saveCache);
+                        resultTable = resultTable.setFieldValue(iResult, 'figureInfo', da.figureInfoCurrentEntry, 'saveCache', saveCache);
                     end
                 end
             end
-
-            % add the result table to the database 
-            %resultTable = da.integrateIntoDatabase(resultTable, db);
 
             % now fill in all of the info fields of this class with the full table data
             da.successByEntry = resultTable.getValues('success') > 0;                
@@ -352,46 +424,29 @@ classdef DatabaseAnalysis < handle & DataSource
             % mark loaded in database
             da.database.markSourceLoaded(da);
 
-            if saveCache
+            if ~resultTableChanged && ~forceReport
+                % if we haven't run new analysis, no need to build a report
+                % so just use the timestamp from the most recent prior run
+                dfd = da.resultTable.fieldDescriptorMap('runTimestamp');
+                timeRunList = dfd.getAsDateNum(da.resultTable.getValues('runTimestamp'));
+                if ~isempty(timeRunList)
+                    da.timeRun = max(timeRunList);
+                end
+            else
+                % make sure analysis path exists
+                mkdirRecursive(da.pathAnalysis);
+                % sym link figures from prior runs to the current analysis folder
+                da.linkOldFigures('saveCache', saveCache);
+                % save the html report (which will copy resources folder over too)
+                da.saveAsHtml();
+            end
+
+            if saveCache && resultTableChanged
+                % values have been cached as they were generated
                 da.resultTable.cache('cacheValues', false);
             end
-        end
 
-        function resultStruct = runOnEntryWrapper(da, entry, entryIndex, varargin)
-            p = inputParser;
-            p.addParamValue('fields', da.fieldsAnalysis, @iscellstr);
-            p.parse(varargin{:});
-            fields = p.Results.fields;
-            da.currentEntryIndex = entryIndex; 
-            da.currentEntry = entry;
-            
-            % open a temporary file to use as a diary to capture all output
-            diary off;
-            diaryFile = tempname(); 
-            da.diaryFileByEntry{da.currentEntryIndex} = diaryFile; 
-            diary(diaryFile);
-
-            resultStruct = da.runOnEntry(entry, fields);
-
-            % if there's an exception, we won't get here, so load all of the 
-            % diary files later in run()
-            diary('off');
-        end
-
-        function resultTable = integrateIntoDatabase(da, resultTable, db)
-            resultTable = resultTable.setDatabase(db);
-            resultTable.updateInDatabase();
-            mapsName = da.getMapsEntryName();
-            db.addRelationshipOneToOne(mapsName, resultTable.entryName);
-        end
-
-        function logByEntry = loadDiaryFiles(da)
-            diary('off');
-            logByEntry = cell(length(da.diaryFileByEntry), 1);
-            for i = 1:length(da.diaryFileByEntry)
-                file = da.diaryFileByEntry{i};
-                logByEntry{i} = fileread(file);
-            end
+            da.hasRun = true;
         end
 
         function saveFigure(da, figh, figName, figCaption)
@@ -403,63 +458,131 @@ classdef DatabaseAnalysis < handle & DataSource
             entryTable = da.currentEntry;
 
             assert(entryTable.nEntries == 1);
-            fileNameNoExt = da.getFigureNameNoExt(entryTable, figName);
-            mkdirRecursive(fileparts(fileNameNoExt));
 
             exts = da.figureExtensions;
-            debug('Saving figure %s as %s\n', figName, strjoin(exts, ', '));
-            for i = 1:length(exts)
+            nExts = length(exts);
+            success = false(nExts, 1);
+            fileList = cell(nExts, 1);
+            %debug('Saving figure %s as %s\n', figName, strjoin(exts, ', '));
+            for i = 1:nExts
                 ext = exts{i};
-                fileName = [fileNameNoExt '.' ext];
+                fileName = da.getFigureName(entryTable, figName, ext);
+                mkdirRecursive(fileparts(fileName));
                 if strcmp(ext, 'svg')
                     try
                         plot2svg(fileName, figh);
+                        success(i) = true;
                     catch exc
-                        warning('Error saving to svg');
-                        fprintf(exc.getReport());
+                        tcprintf('light red', 'WARNING: Error saving to svg\n');
+                        tcprintf('light red', exc.getReport());
                     end
                 else
                     try
                         exportfig(figh, fileName, 'format', ext, 'resolution', 300);
+                        success(i) = true;
                     catch exc
-                        warning('Error saving to %s', ext);
-                        fprintf(exc.getReport());
+                        tcprintf('light red', 'WARNING: Error saving to %s', ext);
+                        tcprintf('light red', exc.getReport());
+                        fprintf('\n');
                     end
                 end
+                fileList{i} = GetFullPath(fileName);
             end
 
             % log figure infomration
-            figInfo.pathNoExt = GetFullPath(fileNameNoExt);
-            [~, figInfo.fileNameNoExt] = fileparts(figInfo.pathNoExt);
             figInfo.name = figName;
             figInfo.caption = figCaption;
-            figInfo.extensions = exts;
             [figInfo.width figInfo.height] = getFigSize(figh);
+            figInfo.extensions = exts;
+            figInfo.fileLinkList = fileList;
+            figInfo.fileList = fileList;
+            figInfo.saveSuccessful = success;
+            figInfo = orderfields(figInfo);
 
             % add to figure info cell
-            da.figureInfoByEntry{da.currentEntryIndex}(end+1) = orderfields(figInfo);
+            if isempty(da.figureInfoCurrentEntry)
+                da.figureInfoCurrentEntry = figInfo;
+            else
+                da.figureInfoCurrentEntry(end+1) = figInfo;
+            end
         end
 
-        function fileName = getFigureNameNoExt(da, entryTable, figName)
+        function fileName = getFigureName(da, entryTable, figName, ext)
+            % construct figure name that looks like:
+            % {{analysisRoot}}/figures/ext/figName.{{keyField descriptors}}.ext
             assert(entryTable.nEntries == 1);
-            analysisName = da.getName();
             descriptors = entryTable.getKeyFieldValueDescriptors();
-            timestamp = datestr(da.timeRun, 'yyyy-mm-dd/HH.MM.SS');
 
-            figureRootPath = getFirstExisting(da.figureRootPaths);
-            path = fullfile(figureRootPath, timestamp, analysisName);
-            
-            figNameFn = @(descriptor) fullfile(path, sprintf('%s.%s', figName, descriptor));
-            fileName = figNameFn(descriptors{1}); 
+            path = fullfile(da.pathFigures, ext);
+            fileName = fullfile(path, sprintf('%s.%s.%s', figName, descriptors{1}, ext));
+            fileName = GetFullPath(fileName);
+        end
+
+        % symlink all figures loaded from cache that are not saved in the same
+        % directory as the most recently generated figures
+        function linkOldFigures(da, varargin)
+            p = inputParser;
+            p.addParamValue('saveCache', true, @islogical);
+            p.parse(varargin{:});
+            saveCache = p.Results.saveCache;
+            da.checkHasRun();
+
+            if ~isunix || ~ismac 
+                % TODO add support for windows nt junctions 
+                return;
+            end
+
+            debug('Creating symbolic links to figures saved in earlier runs\n');
+            figurePath = da.pathFigures;
+            nEntries = da.resultTable.nEntries;
+
+            for iEntry = 1:nEntries
+                entry = da.resultTable(iEntry);
+                info = entry.getValue('figureInfo');
+                madeChanges = false;
+
+                for iFigure = 1:length(info)
+                    figInfo = info(iFigure);
+                    for iExt = 1:length(figInfo.extensions)
+                        mostRecentLink = figInfo.fileLinkList{iExt};
+                        thisRunLocation = da.getFigureName(entry, figInfo.name, figInfo.extensions{iExt}); 
+
+                        if ~strcmp(mostRecentLink, thisRunLocation)
+                            % point the symlink at the original file, not at the most recent link
+                            % to avoid cascading symlinks
+                            actualFile = figInfo.fileList{iExt};
+                            success = makeSymLink(actualFile, thisRunLocation);
+                            if success
+                                % change the figure info link location, not the actual file path
+                                info(iFigure).fileLinkList{iExt} = thisRunLocation;
+                                madeChanges = true;
+                            end
+                        end
+                    end
+                end
+
+                % update the figure info in the result table
+                if madeChanges
+                    da.resultTable = da.resultTable.setFieldValue(iEntry, 'figureInfo', ...
+                        info, 'saveCache', saveCache);
+                end
+            end
+
         end
 
         function viewAsHtml(da)
-            fileName = [tempname() '.html'];
-            html = da.saveAsHtml(fileName);
-            html.openInBrowser();
+            da.checkHasRun();
+            fileName = da.htmlFile; 
+            if ~exist(fileName, 'file')
+                html = da.saveAsHtml();
+            end
+            HTMLWriter.openInBrowser(fileName);
         end
         
-        function html = saveAsHtml(da, fileName)
+        function html = saveAsHtml(da)
+            da.checkHasRun();
+            fileName = da.htmlFile;
+            debug('Saving HTML Report to %s\n', fileName);
             html = HTMLDatabaseAnalysisWriter(fileName);
             html.generate(da);
         end
@@ -474,7 +597,6 @@ classdef DatabaseAnalysis < handle & DataSource
         function name = getCacheName(obj)
             name = obj.getName();
         end
-
 
         function timestamp = getCacheValidAfterTimestamp(obj)
             % my data is valid until the last modification timestamp of the 
@@ -495,8 +617,32 @@ classdef DatabaseAnalysis < handle & DataSource
     end
 
     methods % Dependent properties
+        function path = get.pathAnalysis(da)
+            da.checkHasRun();
+            if isempty(da.timeRun)
+                path = '';
+            else
+                root = getFirstExisting(MatdbSettingsStore.settings.pathListAnalysis);
+                name = da.getName();
+                timestr = datestr(da.timeRun, 'yyyy-mm-dd HH.MM.SS');
+                folder = sprintf('%s %s', name, timestr);
+                path = fullfile(root, name, timestr);
+            end
+        end
+
+        function path = get.pathFigures(da)
+            path = fullfile(da.pathAnalysis, 'figures');
+        end
+
         function fields = get.fieldsAnalysis(da)
             fields = da.getFieldsAnalysis();
+        end
+
+        function htmlFile = get.htmlFile(da)
+            name = da.getName();
+            path = da.pathAnalysis;
+            fname = sprintf('%s.html', name);
+            htmlFile = fullfile(path,fname); 
         end
     end
 
@@ -509,6 +655,15 @@ classdef DatabaseAnalysis < handle & DataSource
         % actually load this into the database, assume all dependencies have been loaded
         function loadInDatabase(da, database)
             da.run(database);
+        end
+
+        function deleteCache(da)
+            if isempty(da.resultTable);
+                r = DatabaseAnalysisResultsTable(da);
+            else 
+                r = da.resultTable;
+            end
+            r.deleteCache();
         end
     end
 end

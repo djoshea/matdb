@@ -69,7 +69,7 @@ classdef Database < DynamicClass & handle
                 % remove old keys
                 oldPlural = db.singularToPluralMap(entryName);
                 db.pluralToSingularMap = db.pluralToSingularMap.remove(oldPlural);
-                db.singularToPluralMap = db.singularPluralMap.remove(entryName);
+                db.singularToPluralMap = db.singularToPluralMap.remove(entryName);
             end
             if db.pluralToSingularMap.isKey(entryName)
                 % another table has the same plural
@@ -87,9 +87,9 @@ classdef Database < DynamicClass & handle
             if db.hasTable(table.entryName)
                 debug('Merging into existing table %s\n', table.entryName);
                 combined = db.getTable(table.entryName).mergeEntriesWith(table);
-                db.updateTable(combined);
+                table = db.updateTable(combined);
             else
-                db.addTable(table);
+                table = db.addTable(table);
             end
         end
 
@@ -99,7 +99,7 @@ classdef Database < DynamicClass & handle
             entryName = table.entryName;
 
             if ~db.hasTable(entryName)
-                db.addTable(table, varargin{:});
+                table = db.addTable(table, varargin{:});
             else
                 oldTable = db.tableMap(entryName);
                 assert(isempty(setxor(oldTable.keyFields, table.keyFields)), ...
@@ -239,8 +239,8 @@ classdef Database < DynamicClass & handle
             end
 
             if db.hasRelationship(rel.entryNameRight, rel.referenceRightForLeft)
-                warning('Overwriting existing relationship %s -> %s', ...
-                    rel.entryNameRight, rel.referenceRightForLeft);
+                %warning('Overwriting existing relationship %s -> %s', ...
+                %    rel.entryNameRight, rel.referenceRightForLeft);
                 db.removeRelationship(rel.entryNameRight, rel.referenceRightForLeft);
             end
 

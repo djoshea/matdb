@@ -6,7 +6,7 @@ classdef HTMLDataTableWriter < HTMLReportWriter
         fields
         table
 
-        indexColumnBackground = '#fafafa';
+        indexColumnBackground = '#f2f2f2';
         keyFieldColumnBackground = '#def1fc';
     end
 

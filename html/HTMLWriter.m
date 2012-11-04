@@ -7,9 +7,37 @@ classdef HTMLWriter < handle
         templateHeader= 'writer.header.html';
         templateFooter = 'writer.footer.html';
 
+        % actual location of resources
         resourcesPath = '';
+
+        % if in the middle of a string literal, don't insert unnecessary newlines
+        inString = false;
     end
 
+    properties(Dependent)
+        resourcesPathStore
+        resourcesRelativeUrl
+        basePath
+    end
+
+    methods(Static)
+        function openInBrowser(html)
+            if isa(html, 'HTMLWriter')
+                fileName = GetFullPath(html.fileName);
+            else
+                fileName = GetFullPath(html);
+            end
+            if ismac
+                cmd = sprintf('open "%s"', fileName);
+                system(cmd);
+            elseif isunix
+                cmd = sprintf('export LD_LIBRARY_PATH=/usr/lib/firefox && export DISPLAY=:0.0 && firefox "%s"', fileName);
+                unix(cmd);
+            else
+                winopen(fileName);
+            end
+        end
+    end
 
     methods
         function html = HTMLWriter(fileName)
@@ -18,7 +46,33 @@ classdef HTMLWriter < handle
             end
 
             % resources live in the folder where I am
-            html.resourcesPath = ['file://' GetFullPath(fileparts(mfilename('fullpath')))];
+            html.resourcesPath = GetFullPath(fullfile(pathToThisFile(), 'resources'));
+        end
+        
+        % location of resources that should be referenced from the html file
+        % resources will be copied to this location 
+        function path = get.resourcesPathStore(html)
+            path = fullfile(html.basePath, 'resources');
+        end
+
+        function url = get.resourcesRelativeUrl(html)
+            url = html.getRelativeUrl(html.resourcesPathStore);
+        end
+
+        function base = get.basePath(html)
+            base = GetFullPath(fileparts(html.fileName));
+        end
+
+        function relPath = getRelativePath(html, fileName)
+            relPath = relativepath(fileName, html.basePath);
+        end
+
+        function relUrl = getRelativeUrl(html, fileName)
+            relPath = html.getRelativePath(fileName);
+            if strncmp(relPath, './', 2)
+                relPath = relPath(3:end);
+            end
+            relUrl = [relPath];
         end
 
         function openFile(html)
@@ -27,7 +81,10 @@ classdef HTMLWriter < handle
                 html.fileName = [tempname() '.html'];
             end
 
-            html.fid = fopen(html.fileName, 'w');
+            [html.fid message] = fopen(html.fileName, 'w');
+            if html.fid == -1
+                error('Error opening html file:\n%s', message);
+            end
         end
 
         function closeFile(html)
@@ -37,21 +94,26 @@ classdef HTMLWriter < handle
             end
         end
 
+        function success = copyResources(html)
+            src = GetFullPath(html.resourcesPath);
+            dest = html.resourcesPathStore;
+
+            if ~strcmp(src(end), filesep)
+                src = [src filesep];
+            end
+
+            cmd = sprintf('cp -R "%s" "%s"', src, dest);
+            [status, message] = unix(cmd);
+            if status
+                fprintf('Warning: issues copying html resources to target directory\n');
+                fprintf('%s\n', message);
+            end
+            success = ~status;
+        end
+
         function [status result] = tidy(html)
             cmd = sprintf('tidy -indent -m %s', html.fileName);
             [status result] = system(cmd);
-        end
-
-        function openInBrowser(html)
-            if ismac
-                cmd = sprintf('open %s', html.fileName);
-                system(cmd);
-            elseif isunix
-                cmd = sprintf('export LD_LIBRARY_PATH=/usr/lib/firefox && export DISPLAY=:0.0 && firefox %s', html.fileName);
-                unix(cmd);
-            else
-                winopen(html.fileName);
-            end
         end
 
         function checkOpen(html)
@@ -61,6 +123,12 @@ classdef HTMLWriter < handle
         function fprintf(html, varargin)
             html.checkOpen();
             fprintf(html.fid, varargin{:});
+        end
+
+        function lineBreakIfNotInString(html)
+            if ~html.inString
+                html.fprintf('\n');
+            end
         end
 
         function writeTemplate(html, text, varargin)
@@ -101,7 +169,7 @@ classdef HTMLWriter < handle
         function writeTemplateFile(html, filename, varargin)
             % like writeTemplate but the text is read from file filename
             text = fileread(filename);
-            html.writeTemplate(text, 'resourcesPath', html.resourcesPath, varargin{:});
+            html.writeTemplate(text, 'resourcesPath', html.resourcesRelativeUrl, varargin{:});
         end
 
         function writeFileStub(html, filename)
@@ -157,16 +225,23 @@ classdef HTMLWriter < handle
             if isempty(attrList)
                 attrStr = '';
             else
-                attrCell = cellfun(@(name) sprintf(' %s="%s"', name, attr.(name)), attrList, ...
+                if html.inString
+                    quote = '''';
+                else
+                    quote = '"';
+                end
+                attrCell = cellfun(@(name) sprintf(' %s=%s%s%s', name, quote, attr.(name), quote), attrList, ...
                     'UniformOutput', false);
                 attrStr = strjoin(attrCell, '');
             end
 
-            html.fprintf('<%s%s>\n', tag, attrStr);
+            html.fprintf('<%s%s>', tag, attrStr);
+            html.lineBreakIfNotInString();
         end
 
         function closeTag(html, tag)
-            html.fprintf('</%s>\n', tag);
+            html.fprintf('</%s>', tag);
+            html.lineBreakIfNotInString();
         end
 
         function writeTag(html, tag, contents, varargin)

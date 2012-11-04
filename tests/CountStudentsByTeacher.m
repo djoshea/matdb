@@ -35,6 +35,14 @@ classdef CountStudentsByTeacher < DatabaseAnalysis
         % run this analysis on the particular 
         function resultStruct = runOnEntry(da, entry, fields)
             resultStruct.nStudents = entry.classes.students.nEntries;
+
+            close all;
+            figure(1);
+            plot(rand(20,10));
+            da.saveFigure(gcf, 'Figure 1', 'Figure 1 Caption');
+            figure(2);
+            plot(rand(20,10), 'kx', 'MarkerSize', 20);
+            da.saveFigure(gcf, 'Figure 2', 'Figure 2 Caption');
         end
     end
 

@@ -75,7 +75,7 @@ classdef StructTable < DataTable
                 db.entryNamePlural = entryNamePlural;
             end
             
-            db = db.apply();
+            db = initialize@DataTable(db);
         end
     end
 
@@ -152,10 +152,11 @@ classdef StructTable < DataTable
             end
         end
 
-        function db = subclassAddEntry(db, valueMap)
+        % S will be a struct with the same fields as this table and already
+        % converted values
+        function db = subclassAddEntry(db, S)
             db.warnIfNoArgOut(nargout);
 
-            S = mapToStructArray(valueMap);
             S = orderfields(S, db.table);
             S = makecol(S);
             

@@ -5,19 +5,11 @@ classdef CacheManager < handle
 
     methods
         function rootList = get.cacheRootList(cm)
-            rootList = cm.getCacheRootList();
+            rootList = MatdbSettingsStore.settings.pathListCache;
         end
     end
 
     methods % methods a subclass might wish to override
-        function rootList = getCacheRootList(cm)
-            rootList = { ...
-                '/Users/djoshea/npl/cache/', 
-                '/net/share/people/djoshea/cache' };
-            rootList = { ...
-                '/Users/djoshea/npl/cache/' };
-        end
-
         function [tf reason] = isParamValid(cm, param)
             % determine whether the provided param is acceptable
             tf = true;

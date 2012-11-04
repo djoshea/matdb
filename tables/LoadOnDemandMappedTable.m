@@ -46,7 +46,7 @@ classdef LoadOnDemandMappedTable < StructTable
         % these are fields not in load on demand, they will be cached with the 
         % table. the keyFields of the mapped table will be automatically included
         % as part of this set, you need not return them
-        [fields fieldDescriptorMap] = getFieldsAdditional(dt)
+        [fields fieldDescriptorMap] = getFieldsNotLoadOnDemand(dt)
         
         % here's where you specify where the values for the loaded fields come
         % from. When passed a list of fields, guaranteed to be valid, you generate
@@ -117,7 +117,7 @@ classdef LoadOnDemandMappedTable < StructTable
                 table = db.getTable(entryName).keyFieldsTable;
                 
                 % add additional fields
-                [fields dfdMap] = dt.getFieldsAdditional();
+                [fields dfdMap] = dt.getFieldsNotLoadOnDemand();
                 for iField = 1:length(fields)
                     field = fields{iField};
                     table = table.addField(field, [], 'fieldDescriptor', dfdMap(field));
@@ -148,6 +148,21 @@ classdef LoadOnDemandMappedTable < StructTable
             if ~isempty(dt.loadedByEntry) && isstruct(dt.loadedByEntry)
                 dt.loadedByEntry = dt.loadedByEntry(indsInSortOrder);
             end
+            if ~isempty(dt.cacheTimestampsByEntry) && isstruct(dt.cacheTimestampsByEntry)
+                dt.cacheTimestampsByEntry = dt.cacheTimestampsByEntry(indsInSortOrder);
+            end
+        end
+
+        % need to extend this in order to add new rows to loadedByEntry appropriately
+        function dt = subclassAddEntry(dt, S)
+            % we can only assume that any entries which are added are not loaded
+            newLoadedByEntry = emptyStructArray([length(S) 1], dt.fieldsLoadOnDemand, 'val', false);
+            dt.loadedByEntry = [dt.loadedByEntry; newLoadedByEntry];
+
+            % and assume not loaded from cache
+            newCacheTimestampsByEntry = emptyStructArray([length(S) 1], dt.fieldsCacheable);
+            dt.cacheTimestampsByEntry = [dt.cacheTimestampsByEntry; newCacheTimestampsByEntry];
+            dt = subclassAddEntry@StructTable(dt, S); 
         end
     end
 
@@ -294,7 +309,6 @@ classdef LoadOnDemandMappedTable < StructTable
         end
 
         function dt = unloadFields(dt, varargin)
-            debug('Unloading all loaded field values\n');
             dt.warnIfNoArgOut(nargout);
             
             p = inputParser;
@@ -341,16 +355,14 @@ classdef LoadOnDemandMappedTable < StructTable
             cacheTimestamp = dt.getCacheValidTimestampForField(field);
 
             cm = dt.getFieldValueCacheManager();
-            debug('Checking cache for entry %d field %s : ', iEntry, field);
             validCache = cm.hasCacheNewerThan(cacheName, cacheParam, cacheTimestamp);
 
             if validCache
                 [value timestamp] = cm.loadData(cacheName, cacheParam);
-                fprintf('found!\n');
+                %debug('Loading cached value for entry %d field %s\n', iEntry, field);
             else
                 value = [];
                 timestamp = NaN;
-                fprintf('not found.\n');
             end
         end
 
@@ -370,7 +382,7 @@ classdef LoadOnDemandMappedTable < StructTable
             cacheName = dt.getCacheNameForFieldValue(field);
             cacheParam = dt.getCacheParamForFieldValue(iEntry, field);
             cm = dt.getFieldValueCacheManager();
-            debug('Saving cache for entry %d field %s \n', iEntry, field);
+            %debug('Saving cache for entry %d field %s \n', iEntry, field);
             cm.saveData(cacheName, cacheParam, value);
         end
 
@@ -418,11 +430,23 @@ classdef LoadOnDemandMappedTable < StructTable
         function dt = prepareForCache(dt)
             % replace all loaded value with empty values to make cache loading very quick
             dt.warnIfNoArgOut(nargout);
+            debug('Unloading all loadOnDemand field values pre-caching\n');
             dt = dt.unloadFields();
         end
 
-        function dt = postLoadFromCache(dt, param, timestamp)
-
+        % obj is the object newly loaded from cache, preLoadObj is the object 
+        % as it existed before loading from the cache. Transfering data from obj
+        % to preLoadObj will occur automatically for handle classes AFTER this
+        % function is called. preLoadObj is provided only if there is information
+        % in the object before calling loadFromCache that you would like to copy
+        % to the cache-loaded object obj.
+        function obj = postLoadFromCache(obj, param, timestamp, preLoadObj)
+            % here we've loaded obj from the cache, but preLoadObj was the table that we
+            % built in initialize by mapping the one-to-one table in the database.
+            % Therefore we need to make sure that any entries which are present 
+            % in preLoadObj but missing in obj are added to obj. We do this via
+            % mergeEntriesWith
+            obj = preLoadObj.mergeEntriesWith(obj, 'keyFieldMatchesOnly', true);
         end
 
         function deleteCache(dt)

@@ -19,7 +19,13 @@ classdef (HandleCompatible) Cacheable
             obj = obj;
         end
 
-        function obj = postLoadFromCache(obj, param, timestamp)
+        % obj is the object newly loaded from cache, preLoadObj is the object 
+        % as it existed before loading from the cache. Transfering data from obj
+        % to preLoadObj will occur automatically for handle classes AFTER this
+        % function is called. preLoadObj is provided only if there is information
+        % in the object before calling loadFromCache that you would like to copy
+        % to the cache-loaded object obj.
+        function obj = postLoadFromCache(obj, param, timestamp, preLoadObj)
             obj = obj;
         end
 
@@ -93,14 +99,17 @@ classdef (HandleCompatible) Cacheable
             name = obj.getFullCacheName();
             param = obj.getCacheParam();
             
-            [objCached timestamp] = cm.loadData(name, param);
             timestampRef = obj.getCacheValidAfterTimestamp();
-            
-            debug('Cache hit on %s\n', name);
-
+            [objCached timestamp] = cm.loadData(name, param);
             if timestamp < timestampRef
                 error('Cache has expired on %s', name);
             end
+
+            debug('Cache hit on %s\n', name);
+
+            % call postLoadOnCache function in case subclass has overridden it 
+            % we pass along the pre-cache version of obj in case useful.
+            objCached = objCached.postLoadFromCache(param, timestamp, obj);
 
             % when loading a handle class, we must manually transfer
             % all properties to current class (objCached -> obj) because

@@ -1,4 +1,4 @@
-classdef DataSource < handle & Cacheable
+classdef DataSource < handle 
 
     methods(Abstract)
         % return a string describing this datasource
@@ -19,19 +19,14 @@ classdef DataSource < handle & Cacheable
     methods
         function disp(src)
             str = src.describe();
-            fprintf('%s', str);
+            fprintf('%s\n\n', str);
         end
     end
 
-    methods % Cacheable instantiations
+    methods % Cacheable instantiations, in case Cacheable is added going forward
         % return the cacheName to be used when instance 
         function name = getCacheName(obj)
             name = obj.describe();
-        end
-
-        % return the param to be used when caching
-        function param = getCacheParam(obj) 
-            param = [];
         end
     end
 

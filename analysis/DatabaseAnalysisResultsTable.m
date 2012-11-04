@@ -32,8 +32,8 @@ classdef DatabaseAnalysisResultsTable < LoadOnDemandMappedTable
             [dt.fieldsAdditional dt.fieldsAdditionalDescriptorMap] = da.getFieldsAdditional();
             dt.mapsEntryName = da.getMapsEntryName();
             dt.cacheParam = da.getCacheParam();
-            dt.entryName = da.getMapsEntryName();
-            dt.entryNamePlural = da.getMapsEntryName();
+            dt.entryName = da.getName();
+            dt.entryNamePlural = dt.entryName;
             dt = initialize@LoadOnDemandMappedTable(dt, 'database', da.database);
         end
     end
@@ -43,8 +43,9 @@ classdef DatabaseAnalysisResultsTable < LoadOnDemandMappedTable
             entryName = dt.mapsEntryName;
         end
 
+        % load on demand fields = {additional fields, analysis fields}
         function [fields fieldDescriptorMap] = getFieldsLoadOnDemand(dt)
-            fieldDescriptorMap = dt.fieldsAnalysisDescriptorMap;
+            fieldDescriptorMap = dt.fieldsAdditionalDescriptorMap.add(dt.fieldsAnalysisDescriptorMap);
             fields = fieldDescriptorMap.keys;
         end
 
@@ -53,8 +54,13 @@ classdef DatabaseAnalysisResultsTable < LoadOnDemandMappedTable
             fields = fieldDescriptorMap.keys;
         end
 
+        function [fields fieldDescriptorMap] = getFieldsNotLoadOnDemand(dt)
+            fieldDescriptorMap = ValueMap(); 
+            fields = {};
+        end
+
         function fields = getFieldsCacheable(dt)
-            fields = dt.fieldsAnalysis;
+            fields = dt.getFieldsLoadOnDemand();
         end
 
         % here's where you specify where the values for the loaded fields come
