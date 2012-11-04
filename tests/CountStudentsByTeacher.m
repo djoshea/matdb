@@ -36,6 +36,10 @@ classdef CountStudentsByTeacher < DatabaseAnalysis
         function resultStruct = runOnEntry(da, entry, fields)
             resultStruct.nStudents = entry.classes.students.nEntries;
 
+            if rand() < 0.5
+                error('Something messed up!');
+            end
+
             close all;
             figure(1);
             plot(rand(20,10));

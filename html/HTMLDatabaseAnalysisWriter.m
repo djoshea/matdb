@@ -82,7 +82,7 @@ classdef HTMLDatabaseAnalysisWriter < HTMLDataTableWriter
                 html.openTableCell(extras{:});
                 if strcmp(field, 'success')
                     % entry.success will be '0' or '1' as it has been converted to string
-                    if success
+                    if strcmp(success, '1')
                         contents = '<span class="label">Success</span>';
                     else
                         contents = ['<span class="label label-important">Error</span>'];

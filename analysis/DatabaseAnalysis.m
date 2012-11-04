@@ -43,6 +43,7 @@ classdef DatabaseAnalysis < handle & DataSource
     properties(Dependent)
         fieldsAnalysis 
         pathAnalysis 
+        pathCurrent
         pathFigures
         htmlFile
     end
@@ -439,6 +440,13 @@ classdef DatabaseAnalysis < handle & DataSource
                 da.linkOldFigures('saveCache', saveCache);
                 % save the html report (which will copy resources folder over too)
                 da.saveAsHtml();
+
+                % link from analysisName.html to index.html for easy browsing
+                da.linkHtmlAsIndex();
+
+                % link this timestamped directory to current for easy browsing
+                da.linkAsCurrent();
+
             end
 
             if saveCache && resultTableChanged
@@ -516,6 +524,39 @@ classdef DatabaseAnalysis < handle & DataSource
             path = fullfile(da.pathFigures, ext);
             fileName = fullfile(path, sprintf('%s.%s.%s', figName, descriptors{1}, ext));
             fileName = GetFullPath(fileName);
+        end
+
+        % create a symlink to index.html
+        function linkHtmlAsIndex(da)
+            da.checkHasRun();
+            htmlFile = da.htmlFile;
+            filePath = fileparts(htmlFile);
+            indexLink = fullfile(filePath, 'index.html');
+            if exist(indexLink, 'file')
+                cmd = sprintf('rm "%s"', indexLink);
+                [status, message] = unix(cmd);
+                if status
+                    fprintf('Error replacing index.html symlink:\n');
+                    fprintf('%s\n', message);
+                end
+            end
+            makeSymLink(htmlFile, indexLink);
+        end
+
+        % symlink my analysis directory to "current" for ease of navigation
+        function linkAsCurrent(da)
+            da.checkHasRun();
+            currentPath = GetFullPath(da.pathCurrent);
+            thisPath = GetFullPath(da.pathAnalysis);
+            if exist(currentPath, 'dir')
+                cmd = sprintf('rm "%s"', currentPath);
+                [status, message] = unix(cmd);
+                if status
+                    fprintf('Error replacing current symlink:\n');
+                    fprintf('%s\n', message);
+                end
+            end
+            makeSymLink(thisPath, currentPath);
         end
 
         % symlink all figures loaded from cache that are not saved in the same
@@ -625,13 +666,18 @@ classdef DatabaseAnalysis < handle & DataSource
                 root = getFirstExisting(MatdbSettingsStore.settings.pathListAnalysis);
                 name = da.getName();
                 timestr = datestr(da.timeRun, 'yyyy-mm-dd HH.MM.SS');
-                folder = sprintf('%s %s', name, timestr);
-                path = fullfile(root, name, timestr);
+                path = GetFullPath(fullfile(root, name, timestr));
             end
         end
 
+        function path = get.pathCurrent(da)
+            root = getFirstExisting(MatdbSettingsStore.settings.pathListAnalysis);
+            name = da.getName();
+            path = GetFullPath(fullfile(root, name, 'current'));
+        end
+
         function path = get.pathFigures(da)
-            path = fullfile(da.pathAnalysis, 'figures');
+            path = GetFullPath(fullfile(da.pathAnalysis, 'figures'));
         end
 
         function fields = get.fieldsAnalysis(da)
@@ -642,7 +688,7 @@ classdef DatabaseAnalysis < handle & DataSource
             name = da.getName();
             path = da.pathAnalysis;
             fname = sprintf('%s.html', name);
-            htmlFile = fullfile(path,fname); 
+            htmlFile = GetFullPath(fullfile(path,fname));
         end
     end
 
