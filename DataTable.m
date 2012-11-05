@@ -699,6 +699,14 @@ classdef DataTable < DynamicClass & Cacheable
             end
         end
 
+        function value = getValueAsDateStr(db, field, fmat, varargin)
+            value = db.getValue(field, varargin{:});
+
+            dfd = db.fieldDescriptorMap(field);
+            str = dfd.getAsDateStr(value, fmat);
+            value = str{1};
+        end
+
         function valueMap = getValuesMap(db, fields, varargin)
             assert(iscellstr(fields), 'fields must be a cell array of field names');
             db.checkAppliedEntryData();
@@ -908,6 +916,11 @@ classdef DataTable < DynamicClass & Cacheable
 
             db.checkAppliedEntryData(); 
 
+            nEntries = db.nEntries;
+            if nEntries > maxEntries
+                db = db.select(1:maxEntries);
+            end
+
             % filter by displayable fields
             fields = db.fields;
             isDisplayable = cellfun(@(field) db.fieldDescriptorMap(field).isDisplayable(), fields);
@@ -994,11 +1007,11 @@ classdef DataTable < DynamicClass & Cacheable
                 fprintf('\n');
             end
 
-            if db.nEntries == 0
+            if nEntries == 0
                 printf(gridColor, '(empty table)\n');
             end
-            if nEntriesDisplay < db.nEntries
-                printf(gridColor, '(truncated at %d of %d entries)\n', nEntriesDisplay, db.nEntries);
+            if nEntriesDisplay < nEntries
+                printf(gridColor, '(truncated at %d of %d entries)\n', nEntriesDisplay, nEntries);
             end
             if any(~isDisplayable) 
                 omittedFields = db.fields(~isDisplayable);
@@ -1078,7 +1091,7 @@ classdef DataTable < DynamicClass & Cacheable
 
             elseif db.isReference(name)
                 % reference through a database relationship
-                value = db.database.matchRelated(db, name, 'combine', true);
+                value = db.database.getRelated(db, name, 'combine', true);
                 appliedNext = false;
 
             else
@@ -1130,7 +1143,7 @@ classdef DataTable < DynamicClass & Cacheable
                     % rather than return the DataTable instance
                     selected = db.select(idx);
                     % get the matches in a cell array, one table for each of my entries
-                    tableCell = db.database.matchRelated(selected, field, 'combine', false);
+                    tableCell = db.database.getRelated(selected, field, 'combine', false);
                     % extract the entries from each as a struct
                     valueCell = cellfun(@(table) table.getFullEntriesAsStruct(), tableCell, 'UniformOutput', false);
                     appliedNext = true;
@@ -1875,11 +1888,11 @@ classdef DataTable < DynamicClass & Cacheable
 
         function count = getRelatedCount(db, entryName)
             db.checkHasDatabase();
-            relatedCell = db.database.matchRelated(db, entryName, 'combine', false);
+            relatedCell = db.database.getRelated(db, entryName, 'combine', false);
             count = cellfun(@length, relatedCell);
         end
 
-        function match = matchRelated(db, entryName, varargin)
+        function match = getRelated(db, entryName, varargin)
             % one param value useful is combine = true/false
             db.checkHasDatabase();
             match = db.database.matchRelated(db, entryName, varargin{:});

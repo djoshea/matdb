@@ -24,6 +24,9 @@ classdef LoadOnDemandMappedTable < StructTable
     end
 
     methods(Abstract)
+        % Return entry name for this table
+        [entryName entryNamePlural] = getEntryName(dt)
+
         % LoadOnDemandMappedTables are defined via a one-to-one relationship with
         % another data table. Here you define the entryName of that corresponding
         % DataTable. When you call the constructor on this table, you must pass
@@ -101,20 +104,24 @@ classdef LoadOnDemandMappedTable < StructTable
             p.addParamValue('table', '', @(db) isa(db, 'DataTable'));
             % if specifying table directly, rely on user to specify which fields are loaded
             p.addParamValue('fieldsLoaded', {}, @iscellstr);
+            p.addParamValue('entryName', '', @ischar);
+            p.addParamValue('entryNamePlural', '', @ischar);
             p.parse(varargin{:});
             
             db = p.Results.database;
             table = p.Results.table;
             fieldsLoaded = p.Results.fieldsLoaded;
+            entryName = p.Results.entryName;
+            entryNamePlural = p.Results.entryNamePlural;
             if isempty(db) && isempty(table)
                 error('Please provide "database" param in order to lookup mapped table or "table" param directly');
             end
 
             if isempty(table)
                 % no table specified, build it via mapping one-to-one off database table
-                entryName = dt.getMapsEntryName(); 
-                debug('Mapping LoadOnDemand table off table %s\n', entryName);
-                table = db.getTable(entryName).keyFieldsTable;
+                entryNameMap = dt.getMapsEntryName(); 
+                debug('Mapping LoadOnDemand table off table %s\n', entryNameMap);
+                table = db.getTable(entryNameMap).keyFieldsTable;
                 
                 % add additional fields
                 [fields dfdMap] = dt.getFieldsNotLoadOnDemand();
@@ -131,13 +138,28 @@ classdef LoadOnDemandMappedTable < StructTable
                 end
 
                 fieldsLoaded = {};
+            else
+                db = table.database;
+                assert(~isempty(db), 'Table must be linked to a database');
             end
+
+            if isempty(entryName)
+                [entryName entryNamePlural] = dt.getEntryName();
+            else
+                if isempty(entryNamePlural)
+                    entryNamePlural = [entryName 's'];
+                end
+            end
+            table = table.setEntryName(entryName, entryNamePlural);
 
             % initialize in StructTable 
             dt = initialize@StructTable(dt, table, p.Unmatched); 
 
             dt.loadedByEntry = dt.generateLoadedByEntry('fieldsLoaded', fieldsLoaded);
             dt.cacheTimestampsByEntry = dt.generateCacheTimestampsByEntry();
+
+            dt = db.addTable(dt);
+            db.addRelationshipOneToOne(entryNameMap, entryName);
         end
     end
 
@@ -212,7 +234,7 @@ classdef LoadOnDemandMappedTable < StructTable
             p = inputParser;
 
             % specify a subset of fieldsLoadOnDemand to load
-            p.addOptional('fields', dt.fieldsLoadOnDemand, @iscellstr);
+            p.addOptional('fields', dt.fieldsLoadOnDemand, @(x) ischar(x) || iscellstr(x));
 
             % if true, force reload of ALL fields
             p.addParamValue('reload', false, @islogical);
@@ -227,6 +249,9 @@ classdef LoadOnDemandMappedTable < StructTable
             p.addParamValue('saveCache', true, @islogical);
             p.parse(varargin{:});
             fields = p.Results.fields;
+            if ischar(fields)
+                fields = {fields};
+            end
             reload = p.Results.reload;
             loadCache = p.Results.loadCache;
             loadCacheOnly = p.Results.loadCacheOnly;
@@ -279,7 +304,10 @@ classdef LoadOnDemandMappedTable < StructTable
                     if ~isempty(fieldsToRetrieve)
                         debug('Requesting value for entry %d fields %s\n', ...
                             iEntry, strjoin(fieldsToRetrieve, ', '));
-                        S = dt.loadValuesForEntry(dt.select(iEntry), fieldsToRetrieve);
+                        thisEntry = dt.select(iEntry);
+                        mapEntryName = dt.getMapsEntryName();
+                        mapEntry = thisEntry.getRelated(mapEntryName);
+                        S = dt.loadValuesForEntry(mapEntry, fieldsToRetrieve);
                     
                         retFields = fieldnames(S);
                         for iField = 1:length(retFields)
