@@ -1091,7 +1091,7 @@ classdef DataTable < DynamicClass & Cacheable
 
             elseif db.isReference(name)
                 % reference through a database relationship
-                value = db.database.getRelated(db, name, 'combine', true);
+                value = db.database.matchRelated(db, name, 'combine', true);
                 appliedNext = false;
 
             else
@@ -1143,7 +1143,7 @@ classdef DataTable < DynamicClass & Cacheable
                     % rather than return the DataTable instance
                     selected = db.select(idx);
                     % get the matches in a cell array, one table for each of my entries
-                    tableCell = db.database.getRelated(selected, field, 'combine', false);
+                    tableCell = db.database.matchRelated(selected, field, 'combine', false);
                     % extract the entries from each as a struct
                     valueCell = cellfun(@(table) table.getFullEntriesAsStruct(), tableCell, 'UniformOutput', false);
                     appliedNext = true;

@@ -78,27 +78,6 @@ classdef DatabaseAnalysisResultsTable < LoadOnDemandMappedTable
             error('Request for value of field %s unsupported, should have been loaded already or found in cache');
         end
 
-        % augment the set field value method with one that automatically caches
-        % the new value to disk
-        function dt = setFieldValue(dt, idx, field, value, varargin)
-            p = inputParser;
-            p.addParamValue('saveCache', true, @islogical);
-            p.addParamValue('markLoaded', true, @islogical);
-            p.parse(varargin{:});
-            saveCache = p.Results.saveCache;
-            markLoaded = p.Results.markLoaded;
-
-            dt.warnIfNoArgOut(nargout);
-            dt = setFieldValue@LoadOnDemandMappedTable(dt, idx, field, value);
-
-            if markLoaded && ismember(field, dt.fieldsLoadOnDemand)
-                dt.loadedByEntry(idx).(field) = true;
-            end
-
-            if saveCache && ismember(field, dt.fieldsCacheable)  
-                dt.cacheFieldValue(idx, field);
-            end
-        end
     end
 
     methods % Cacheable overrides

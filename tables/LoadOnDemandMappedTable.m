@@ -117,11 +117,20 @@ classdef LoadOnDemandMappedTable < StructTable
                 error('Please provide "database" param in order to lookup mapped table or "table" param directly');
             end
 
+            if isempty(entryName)
+                [entryName entryNamePlural] = dt.getEntryName();
+            else
+                if isempty(entryNamePlural)
+                    entryNamePlural = [entryName 's'];
+                end
+            end
+
             if isempty(table)
                 % no table specified, build it via mapping one-to-one off database table
                 entryNameMap = dt.getMapsEntryName(); 
                 debug('Mapping LoadOnDemand table off table %s\n', entryNameMap);
                 table = db.getTable(entryNameMap).keyFieldsTable;
+                table = table.setEntryName(entryName, entryNamePlural);
                 
                 % add additional fields
                 [fields dfdMap] = dt.getFieldsNotLoadOnDemand();
@@ -142,15 +151,6 @@ classdef LoadOnDemandMappedTable < StructTable
                 db = table.database;
                 assert(~isempty(db), 'Table must be linked to a database');
             end
-
-            if isempty(entryName)
-                [entryName entryNamePlural] = dt.getEntryName();
-            else
-                if isempty(entryNamePlural)
-                    entryNamePlural = [entryName 's'];
-                end
-            end
-            table = table.setEntryName(entryName, entryNamePlural);
 
             % initialize in StructTable 
             dt = initialize@StructTable(dt, table, p.Unmatched); 
@@ -224,6 +224,11 @@ classdef LoadOnDemandMappedTable < StructTable
             % unless field is a member of param fieldsLoaded 
             
             cacheTimestampsByEntry = emptyStructArray([dt.nEntries 1], dt.fieldsCacheable);
+        end
+
+        function dt = loadField(dt, field, varargin)
+            dt.warnIfNoArgOut(nargout);
+            dt = dt.loadFields('fields', field, varargin{:});
         end
 
         % load in the loadable values for fields listed in fields (1st optional
@@ -315,9 +320,9 @@ classdef LoadOnDemandMappedTable < StructTable
                             field = retFields{iField};
                             loadedValues.(field) = S.(field);
                             loaded.(field) = true;
-                            if saveCache
+                            if saveCache && ismember(field, fieldsCacheable)
                                 % cache the newly loaded value
-                                dt.cacheFieldValue(iEntry, field, loadedValues.(field));
+                                dt.cacheFieldValue(iEntry, field, 'value', loadedValues.(field));
                             end
                         end
                     end
@@ -359,6 +364,28 @@ classdef LoadOnDemandMappedTable < StructTable
                     dt = dt.setFieldValue(iEntry, field, [], 'saveCache', false);
                     dt.loadedByEntry(iEntry).(field) = false;
                 end
+            end
+        end
+
+        % augment the set field value method with one that automatically caches
+        % the new value to disk
+        function dt = setFieldValue(dt, idx, field, value, varargin)
+            p = inputParser;
+            p.addParamValue('saveCache', true, @islogical);
+            p.addParamValue('markLoaded', true, @islogical);
+            p.parse(varargin{:});
+            saveCache = p.Results.saveCache;
+            markLoaded = p.Results.markLoaded;
+
+            dt.warnIfNoArgOut(nargout);
+            dt = setFieldValue@StructTable(dt, idx, field, value);
+
+            if markLoaded && ismember(field, dt.fieldsLoadOnDemand)
+                dt.loadedByEntry(idx).(field) = true;
+            end
+
+            if saveCache && ismember(field, dt.fieldsCacheable)  
+                dt.cacheFieldValue(idx, field);
             end
         end
     end

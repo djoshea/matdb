@@ -124,7 +124,7 @@ classdef Database < DynamicClass & handle
         end
         
         function tableEntryNameList = get.tableEntryNameList(db)
-            tableEntryNameList = db.pluralToSingularMap.keys;
+            tableEntryNameList = db.tableMap.keys;
         end
 
         function nTables = get.nTables(db)
@@ -416,7 +416,14 @@ classdef Database < DynamicClass & handle
     end
 
     methods % Data sources
-        function loadSource(db, src)
+        function loadSource(db, src, varargin)
+            p = inputParser;
+            p.addRequired('source', @(s) iscell(s) || isa(s, 'DataSource'));
+            p.addParamValue('reload', false, @islogical);
+            p.parse(src, varargin{:});
+            src = p.Results.source;
+            reload = p.Results.reload;
+
             if isa(src, 'DataSource')
                 srcCell = {src};
             elseif iscell(src)
@@ -434,16 +441,21 @@ classdef Database < DynamicClass & handle
                 assert(isa(src, 'DataSource'), 'Must be a DataSource instance');
 
                 if db.hasSourceLoaded(src)
-                    debug('Already loaded source %s, skipping\n', src.describe());
-                else
-                    debug('Loading DataSource : %s\n', src.describe());
-                    % load required sources
-                    db.loadSource(src.getRequiredSources());
-
-                    % load this source
-                    src.loadInDatabase(db);
-                    db.markSourceLoaded(src); 
+                    if ~reload
+                        debug('Already loaded source %s, skipping\n', src.describe());
+                        continue;
+                    else
+                        debug('Reloading source %s\n', src.describe());
+                    end
                 end
+
+                debug('Loading DataSource : %s\n', src.describe());
+                % load required sources
+                db.loadSource(src.getRequiredSources());
+
+                % load this source
+                src.loadInDatabase(db);
+                db.markSourceLoaded(src); 
             end
         end
 
