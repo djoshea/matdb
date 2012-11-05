@@ -168,10 +168,10 @@ classdef LoadOnDemandMappedTable < StructTable
         function dt = selectSortEntries(dt, indsInSortOrder)
             dt = selectSortEntries@StructTable(dt, indsInSortOrder);
             if ~isempty(dt.loadedByEntry) && isstruct(dt.loadedByEntry)
-                dt.loadedByEntry = dt.loadedByEntry(indsInSortOrder);
+                dt.loadedByEntry = dt.loadedByEntry(indsInSortOrder, 1);
             end
             if ~isempty(dt.cacheTimestampsByEntry) && isstruct(dt.cacheTimestampsByEntry)
-                dt.cacheTimestampsByEntry = dt.cacheTimestampsByEntry(indsInSortOrder);
+                dt.cacheTimestampsByEntry = dt.cacheTimestampsByEntry(indsInSortOrder, 1);
             end
         end
 
