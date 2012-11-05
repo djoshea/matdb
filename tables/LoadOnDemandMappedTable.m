@@ -233,7 +233,7 @@ classdef LoadOnDemandMappedTable < StructTable
 
         % load in the loadable values for fields listed in fields (1st optional
         % argument)
-        function dt = loadFields(dt, varargin)
+        function [dt valuesByEntry] = loadFields(dt, varargin)
             dt.warnIfNoArgOut(nargout);
             
             p = inputParser;
@@ -252,6 +252,10 @@ classdef LoadOnDemandMappedTable < StructTable
 
             % if false, don't save newly loaded values in the cache
             p.addParamValue('saveCache', true, @islogical);
+
+            % if false, don't actually hold onto the value in the table
+            % just return the values
+            p.addParamValue('storeInTable', true, @islogical);
             p.parse(varargin{:});
             
             fields = p.Results.fields;
@@ -270,6 +274,8 @@ classdef LoadOnDemandMappedTable < StructTable
 
             % figure out which fields to check in cache
             fieldsCacheable = intersect(dt.fieldsCacheable, fields);
+
+            valuesByEntry = []; 
 
             % loop through entries, load fields and overwrite table values
             for iEntry = 1:dt.nEntries
@@ -330,16 +336,34 @@ classdef LoadOnDemandMappedTable < StructTable
 
                 % store the values in the table's fields
                 loadedFields = fieldnames(loadedValues);
-                for iField = 1:length(loadedFields)
-                    field = loadedFields{iField};
-                    % no need to save cache here, already handled above
-                    dt = dt.setFieldValue(iEntry, field, loadedValues.(field), ...
-                        'saveCache', false);
+
+                if storeInTable
+                    for iField = 1:length(loadedFields)
+                        field = loadedFields{iField};
+                        % no need to save cache here, already handled above
+                        dt = dt.setFieldValue(iEntry, field, loadedValues.(field), ...
+                            'saveCache', false);
+                    end
+                    dt.loadedByEntry(iEntry) = loaded;
+                    dt.cacheTimestampsByEntry(iEntry) = cacheTimestamps;
                 end
 
-                dt.loadedByEntry(iEntry) = loaded;
-                dt.cacheTimestampsByEntry(iEntry) = cacheTimestamps;
+                % build table of loaded values
+                for iField = 1:length(fields)
+                    field = fields{iField};
+                    if isfield(loadedValues, field)
+                        valuesByEntry(iEntry).(field) = loadedValues.(field);
+                    else
+                        valuesByEntry(iEntry).(field) = [];
+                    end
+                end
             end
+        end
+
+        function value = retrieveValue(dt, field, varargin)
+            assert(dt.nEntries == 1, 'retrieveValue only valid for single entries');
+            [dt values] = dt.loadFields('fields', {field}, 'storeInTable', false, varargin{:});
+            value = values.(field);
         end
 
         function dt = unloadFields(dt, varargin)
