@@ -337,7 +337,7 @@ classdef DatabaseAnalysis < handle & DataSource
 
                         % find the corresponding entry in the mapped table via the database
                         if maskToAnalyze(iResult)
-                            entry = resultTable(iResult).matchRelated(entryName);
+                            entry = resultTable(iResult).getRelated(entryName);
                             if entry.nEntries > 1
                                 debug('WARNING: Multiple matches for analysis row, check uniqueness of keyField tuples in table %s. Choosing first.\n', entryName);
                                 entry = entry.select(1);
