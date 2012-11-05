@@ -2,6 +2,7 @@ classdef DatabaseAnalysisResultsTable < LoadOnDemandMappedTable
 
     properties
         databaseAnalysisClass 
+        analysisName 
         mapsEntryName
         fieldsAnalysis
         fieldsAnalysisDescriptorMap
@@ -32,6 +33,7 @@ classdef DatabaseAnalysisResultsTable < LoadOnDemandMappedTable
             [dt.fieldsAdditional dt.fieldsAdditionalDescriptorMap] = da.getFieldsAdditional();
             dt.mapsEntryName = da.getMapsEntryName();
             dt.cacheParam = da.getCacheParam();
+            dt.analysisName = da.getName();
             dt.entryName = da.getName();
             dt.entryNamePlural = dt.entryName;
             dt = initialize@LoadOnDemandMappedTable(dt, 'database', da.database);
@@ -39,6 +41,11 @@ classdef DatabaseAnalysisResultsTable < LoadOnDemandMappedTable
     end
 
     methods
+        function [entryName entryNamePlural] = getEntryName(dt)
+            entryName = dt.analysisName;
+            entryNamePlural = entryName;
+        end
+
         function entryName = getMapsEntryName(dt)
             entryName = dt.mapsEntryName;
         end

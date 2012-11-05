@@ -234,7 +234,7 @@ classdef LoadOnDemandMappedTable < StructTable
             p = inputParser;
 
             % specify a subset of fieldsLoadOnDemand to load
-            p.addOptional('fields', dt.fieldsLoadOnDemand, @(x) ischar(x) || iscellstr(x));
+            p.addParamValue('fields', dt.fieldsLoadOnDemand, @(x) ischar(x) || iscellstr(x));
 
             % if true, force reload of ALL fields
             p.addParamValue('reload', false, @islogical);
@@ -248,6 +248,7 @@ classdef LoadOnDemandMappedTable < StructTable
             % if false, don't save newly loaded values in the cache
             p.addParamValue('saveCache', true, @islogical);
             p.parse(varargin{:});
+            
             fields = p.Results.fields;
             if ischar(fields)
                 fields = {fields};
