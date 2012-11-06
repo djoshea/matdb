@@ -266,6 +266,7 @@ classdef LoadOnDemandMappedTable < StructTable
             loadCache = p.Results.loadCache;
             loadCacheOnly = p.Results.loadCacheOnly;
             saveCache = p.Results.saveCache;
+            storeInTable = p.Results.storeInTable;
 
             % check fields okay
             validField = ismember(fields, dt.fieldsLoadOnDemand);
