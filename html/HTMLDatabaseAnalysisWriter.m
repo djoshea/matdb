@@ -217,7 +217,7 @@ classdef HTMLDatabaseAnalysisWriter < HTMLDataTableWriter
                         % this will be the absolute path to the figure
                         figFullFileName = info.fileLinkList{extIdx};
                         % get the path of the figure relative to the analysis path
-                        figRelativePath = relativepath(figFullFileName, analysisPath);
+                        figRelativePath = relativepath(figFullFileName, analysisPath, 'dropDotSlash', true);
                         url = ['//' figRelativePath];
 
                         html.openTag('a', 'href', url, 'target', '_blank');
