@@ -182,8 +182,9 @@ classdef HTMLDatabaseAnalysisWriter < HTMLDataTableWriter
                     % this will be the absolute path to the figure
                     figFullFileName = info.fileLinkList{extIdx};
                     % get the path of the figure relative to the analysis path
-                    figRelativePath = relativepath(figFullFileName, analysisPath, 'dropDotSlash', true);
-                    figUrl = ['//' figRelativePath];
+                    figRelativePath = relativepath(figFullFileName, analysisPath, ...
+                        'dropDotSlash', true, 'dropTrailingSlash', true);
+                    figUrl = [figRelativePath];
 
                     figName = info.name;
                     figCaption = info.caption;
@@ -222,8 +223,9 @@ classdef HTMLDatabaseAnalysisWriter < HTMLDataTableWriter
                         % this will be the absolute path to the figure
                         figFullFileName = info.fileLinkList{iExt};
                         % get the path of the figure relative to the analysis path
-                        figRelativePath = relativepath(figFullFileName, analysisPath, 'dropDotSlash', true);
-                        url = ['//' figRelativePath];
+                        figRelativePath = relativepath(figFullFileName, analysisPath, ...
+                            'dropDotSlash', true, 'dropTrailingSlash', true);
+                        url = [figRelativePath];
 
                         html.openTag('a', 'href', url, 'target', '_blank');
                         html.writeTag('small', ext);
