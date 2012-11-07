@@ -166,6 +166,8 @@ classdef HTMLDatabaseAnalysisWriter < HTMLDataTableWriter
                 html.openTag('div', 'id', figureCarouselId, 'class', 'figureCarousel carousel slide');
                 html.openTag('div', 'class', 'carousel-inner figureCarouselInner' );
 
+                analysisPath = html.da.pathAnalysis;
+
                 extList = html.useImageExtensionList;
                 for i = 1:nFigures
                     info = figureInfo(i);
@@ -177,13 +179,7 @@ classdef HTMLDatabaseAnalysisWriter < HTMLDataTableWriter
                     end
                     ext = info.extensions{extIdx};
 
-                    % this will be the absolute path to the figure
-                    % get the path of the figure relative to the analysis path
-                    analysisPath = html.da.pathAnalysis;
-                    figFullFileName = info.fileLinkList{extIdx};
-                    figRelativePath = relativepath(figFullFileName, analysisPath);
 
-                    figUrl = ['//' figRelativePath];
                     figName = info.name;
                     figCaption = info.caption;
                     figWidth = info.width;
@@ -217,7 +213,13 @@ classdef HTMLDatabaseAnalysisWriter < HTMLDataTableWriter
                     %html.writeTag('span', '', 'class', 'icon-download');
                     for iExt = 1:length(info.extensions)
                         ext = info.extensions{iExt};
-                        url = ['file://' info.fileLinkList{iExt}];
+                        
+                        % this will be the absolute path to the figure
+                        figFullFileName = info.fileLinkList{extIdx};
+                        % get the path of the figure relative to the analysis path
+                        figRelativePath = relativepath(figFullFileName, analysisPath);
+                        url = ['//' figRelativePath];
+
                         html.openTag('a', 'href', url, 'target', '_blank');
                         html.writeTag('small', ext);
                         html.closeTag('a');
