@@ -82,15 +82,15 @@ classdef (HandleCompatible) DynamicClass
 
     methods % Methods for assignment (via subsasgn)
         function obj = dynamicPropertyAssign(obj, name, value, s)
-            obj = DynamicProperty.NotSupported;
+            obj = DynamicClass.NotSupported;
         end
 
         function obj = parenAssign(obj, subs, value, s)
-            obj = DynamicProperty.NotSupported;
+            obj = DynamicClass.NotSupported;
         end
 
         function obj = cellAssign(obj, subs, value, s)
-            obj = DynamicProperty.NotSupported;
+            obj = DynamicClass.NotSupported;
         end
     end
 
