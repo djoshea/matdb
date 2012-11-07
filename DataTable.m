@@ -1888,7 +1888,7 @@ classdef DataTable < DynamicClass & Cacheable
 
         function count = getRelatedCount(db, entryName)
             db.checkHasDatabase();
-            relatedCell = db.database.getRelated(db, entryName, 'combine', false);
+            relatedCell = db.database.matchRelated(db, entryName, 'combine', false);
             count = cellfun(@length, relatedCell);
         end
 
