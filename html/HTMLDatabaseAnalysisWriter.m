@@ -183,7 +183,7 @@ classdef HTMLDatabaseAnalysisWriter < HTMLDataTableWriter
                     figFullFileName = info.fileLinkList{extIdx};
                     figRelativePath = relativepath(figFullFileName, analysisPath);
 
-                    figUrl = ['//' figFullFileName];
+                    figUrl = ['//' figRelativePath];
                     figName = info.name;
                     figCaption = info.caption;
                     figWidth = info.width;
