@@ -329,7 +329,7 @@ classdef LoadOnDemandMappedTable < StructTable
                     if ~isempty(fieldsToRetrieve)
                         debug('Requesting value for entry %d fields %s\n', ...
                             iEntry, strjoin(fieldsToRetrieve, ', '));
-                        thisEntry = dt.select(iEntry);
+                        thisEntry = dt.select(iEntry).apply();
                         mapEntryName = dt.getMapsEntryName();
                         mapEntry = thisEntry.getRelated(mapEntryName);
                         S = dt.loadValuesForEntry(mapEntry, fieldsToRetrieve);
