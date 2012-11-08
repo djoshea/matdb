@@ -238,7 +238,15 @@ classdef DatabaseAnalysis < handle & DataSource
                     % in the mapped table that were added after the cache was generated).
                     % 
                     % So we don't need to worry about adding these missing rows
-                    resultTable = resultTable.loadFromCache();
+
+                    % IMPORTANT
+                    % for now, all fields are cached to disk, so this step is unnecessary
+                    % uncomment this if any fields are cached with the table
+                    % because then loadFromCache will need to be called to retrieve
+                    % these values. All fields currently are loaded by the .loadFields()
+                    % call below.
+                    % 
+                    % resultTable = resultTable.loadFromCache();
                 end
 
                 % now we search for field values in fieldsAnalysis in the cache
@@ -318,6 +326,9 @@ classdef DatabaseAnalysis < handle & DataSource
                     % also reanalyze any rows which were listed as unsuccessful
                     maskToAnalyze = maskToAnalyze | maskFailed;
                 end
+
+                savedAutoApply = resultTable.autoApply;
+                resultTable = resultTable.setAutoApply(false);
                 
                 nAnalyze = nnz(maskToAnalyze);
                 if nAnalyze > 0
@@ -337,7 +348,8 @@ classdef DatabaseAnalysis < handle & DataSource
 
                         % find the corresponding entry in the mapped table via the database
                         if maskToAnalyze(iResult)
-                            entry = resultTable(iResult).getRelated(entryName);
+                            resultEntry = resultTable(iResult).apply();
+                            entry = resultEntry.getRelated(entryName);
                             if entry.nEntries > 1
                                 debug('WARNING: Multiple matches for analysis row, check uniqueness of keyField tuples in table %s. Choosing first.\n', entryName);
                                 entry = entry.select(1);
@@ -347,6 +359,10 @@ classdef DatabaseAnalysis < handle & DataSource
                             end
                         end
 
+                        description = entry.getKeyFieldValueDescriptors();
+                        description = description{1};
+                        debug('Running analysis on %s\n', description);
+                        
                         % for saveFigure to look at 
                         da.currentEntry = entry;
 
@@ -413,6 +429,9 @@ classdef DatabaseAnalysis < handle & DataSource
                         resultTable = resultTable.setFieldValue(iResult, 'figureInfo', da.figureInfoCurrentEntry, 'saveCache', saveCache);
                     end
                 end
+
+                resultTable = resultTable.apply();
+                resultTable = resultTable.setAutoApply(savedAutoApply);
             end
 
             % now fill in all of the info fields of this class with the full table data

@@ -130,6 +130,7 @@ classdef LoadOnDemandMappedTable < StructTable
                 entryNameMap = dt.getMapsEntryName(); 
                 debug('Mapping LoadOnDemand table off table %s\n', entryNameMap);
                 table = db.getTable(entryNameMap).keyFieldsTable;
+                
                 table = table.setEntryName(entryName, entryNamePlural);
                 
                 % add additional fields
@@ -137,6 +138,7 @@ classdef LoadOnDemandMappedTable < StructTable
                 for iField = 1:length(fields)
                     field = fields{iField};
                     table = table.addField(field, [], 'fieldDescriptor', dfdMap(field));
+                    table = table.applyFields();
                 end
 
                 % add load on demand fields
@@ -144,6 +146,7 @@ classdef LoadOnDemandMappedTable < StructTable
                 for iField = 1:length(fields)
                     field = fields{iField};
                     table = table.addField(field, [], 'fieldDescriptor', dfdMap(field));
+                    table = table.applyFields();
                 end
 
                 fieldsLoaded = {};
@@ -278,6 +281,12 @@ classdef LoadOnDemandMappedTable < StructTable
 
             valuesByEntry = []; 
 
+            savedAutoApply = dt.autoApply;
+            dt = dt.apply();
+            dt = dt.setAutoApply(false);
+
+            entryDescriptions = dt.getKeyFieldValueDescriptors();
+
             % loop through entries, load fields and overwrite table values
             for iEntry = 1:dt.nEntries
                 % loaded.field is true if field is loaded already for this entry
@@ -293,6 +302,9 @@ classdef LoadOnDemandMappedTable < StructTable
 
                 % first, look up cacheable fields in cache
                 if loadCache
+                    debug('Retrieving cached fields for %s\r', ...
+                        entryDescriptions{iEntry});
+
                     for iField = 1:length(fieldsCacheable)
                         field = fieldsCacheable{iField};
                         if loaded.(field)
@@ -359,6 +371,10 @@ classdef LoadOnDemandMappedTable < StructTable
                     end
                 end
             end
+
+            dt = dt.apply();
+            dt = dt.setAutoApply(savedAutoApply);
+
         end
 
         function value = retrieveValue(dt, field, varargin)
@@ -410,7 +426,7 @@ classdef LoadOnDemandMappedTable < StructTable
             end
 
             if saveCache && ismember(field, dt.fieldsCacheable)  
-                dt.cacheFieldValue(idx, field);
+                dt.cacheFieldValue(idx, field, 'value', value);
             end
         end
     end
@@ -425,7 +441,7 @@ classdef LoadOnDemandMappedTable < StructTable
         % this includes the manually specified params as well as the keyFields
         % of entry idx
         function param = getCacheParamForFieldValue(dt, idx, field)
-            vals = dt.select(idx).getFullEntriesAsStruct();
+            vals = dt.select(idx).apply().getFullEntriesAsStruct();
             param.keyFields = rmfield(vals, setdiff(fieldnames(vals), dt.keyFields));
             param.additional = dt.getCacheParamForField(field);
         end

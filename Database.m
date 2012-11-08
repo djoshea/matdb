@@ -386,7 +386,7 @@ classdef Database < DynamicClass & handle
                 dv = dvCell{iDv};
 
                 if db.hasViewApplied(dv)
-                    debug('Already applied\n');
+                    debug('Already applied DatabaseView : %s\n', dv.describe());
                 else
                     % load required sources
                     db.loadSource(dv.getRequiredSources());

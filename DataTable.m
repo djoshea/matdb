@@ -839,10 +839,15 @@ classdef DataTable < DynamicClass & Cacheable
             db.checkAppliedEntryData();
            
             uniqueIdxMat = nan(db.nEntries, length(fields));
-            uniqueValsCell = cell(db.nFields, 1);
+            uniqueValsCell = cell(length(fields), 1);
             for iField = 1:length(fields)
                 field = fields{iField};
-                [uniqueIdxMat(:, iField) uniqueValsCell{iField}] = db.getValuesAsIdxIntoUnique(field);
+                [uniqueIdxMat(:, iField) uniqueVals] = db.getValuesAsIdxIntoUnique(field);
+
+                if ~iscell(uniqueVals)
+                    uniqueVals = num2cell(uniqueVals);
+                end
+                uniqueValsCell{iField} = uniqueVals;
             end
 
             [tupleLookups ia uniqueTupleIdx] = unique(uniqueIdxMat, 'rows'); 
