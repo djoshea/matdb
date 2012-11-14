@@ -7,6 +7,10 @@ classdef DatabaseAnalysis < handle & DataSource
         % has this analysis run already?
         hasRun
 
+        % is the analysis currently running? used by internal functions
+        % to allow error-free calling of runOnEntry outside of .run()
+        isRunning = false;
+
         % the result table will be an instance of DatabaseAnalysisResultsTable 
         resultTable
 
@@ -198,6 +202,7 @@ classdef DatabaseAnalysis < handle & DataSource
             debug('Preparing for analysis : %s\n', name);
 
             da.database = db;
+            da.isRunning = true;
 
             % mark run timestamp consistently for all entries
             % we'll keep this timestamp unless we don't end up doing any new
@@ -474,12 +479,19 @@ classdef DatabaseAnalysis < handle & DataSource
             end
 
             da.hasRun = true;
+            da.isRunning = true;
         end
 
         function saveFigure(da, figh, figName, figCaption)
             % use this to save figures while running the analysis
             if nargin < 4
                 figCaption = '';
+            end
+
+            drawnow;
+            if isempty(da.isRunning) || ~da.isRunning
+                debug('Figure %s would be saved when run via .run()\n', figName);
+                return;
             end
 
             entryTable = da.currentEntry;
