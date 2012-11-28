@@ -45,23 +45,42 @@ classdef CacheManager < handle
             tf = ~isempty(data) && ~isempty(meta);
         end
 
+        % retrieve the timestamp from the newest meta file
         function [timestamp indexNewest] = retrieveTimestamp(cm, cacheName, param)
+            [timestamp indexNewest isSeparate] = retrieveMeta(cm, cacheName, param);
+        end
+
+        % retrieve all meta info from the newest meta file
+        function [indexNewest timestamp separateFields] = retrieveMeta(cm, cacheName, param)
             fileList = cm.getFileListMetaForRead(cacheName, param);
             if isempty(fileList)
                 timestamp = [];
                 return;
             end
                
-            timestamp = [];
+            % which meta file in fileList is newest? this determines which
+            % data file will be loaded, as the lists are matched
             indexNewest = [];
+
+            % timestamp on the newest meta file
+            timestamp = [];
+            
+            % does this file store separate struct fields as separate variables?
+            separateFields = false;
+
+            % turn off value not found warnings
+            warnId = 'MATLAB:load:variableNotFound';
+            warnStatus = warning('off', warnId);
 
             for iFile = 1:length(fileList)
                 file = fileList{iFile};
-                varsToLoad = {'timestamp', 'param'};
+                varsToLoad = {'timestamp', 'param', 'separateFields'};
+                varsRequired = {'timestamp', 'param'};
+
                 contents = load(file, varsToLoad{:});
 
                 % check has contents 
-                if ~isempty(setdiff(varsToLoad, fieldnames(contents)))
+                if ~isempty(setdiff(varsRequired, fieldnames(contents)))
                     warning('Cache file %s is invalid', file);
                     continue;
                 end
@@ -72,10 +91,21 @@ classdef CacheManager < handle
                 end
 
                 if isempty(timestamp) || contents.timestamp > timestamp
+                    % this is the current newest meta file
                     timestamp = contents.timestamp;
                     indexNewest = iFile;
+
+                    % retrieve separateFields, default to false
+                    if isfield(contents, 'separateFields')
+                        separateFields = contents.separateFields;
+                    else
+                        separateFields = false;
+                    end
                 end
             end
+
+            % restore warning
+            warning(warnStatus);
         end
 
         function tf = hasCacheNewerThan(cm, cacheName, param, refTimestamp)
@@ -83,49 +113,86 @@ classdef CacheManager < handle
             tf = ~isempty(timestamp) && timestamp > refTimestamp;
         end
 
-        function [data timestamp] = loadData(cm, cacheName, param)
+        function [data timestamp] = loadData(cm, cacheName, param, varargin)
+            p = inputParser;
+            p.addRequired('cacheName', @ischar);
+            p.addRequired('param', @(x) true);
+            p.addParamValue('fields', {}, @iscellstr);
+            p.parse(cacheName, param, varargin{:});
+            fields = p.Results.fields;
+
             fileList = cm.getFileListDataForRead(cacheName, param);
             if isempty(fileList)
                 error('No cache files found');
             end
 
             % load the data file with the newest timestamp
-            [~, indexNewest] = cm.retrieveTimestamp(cacheName, param);
+            [indexNewest, timestamp, separateFields] = cm.retrieveMeta(cacheName, param);
             file = fileList{indexNewest};
-            varsToLoad = {'data', 'timestamp', 'param'};
-            contents = load(file, varsToLoad{:});
 
-            % check has contents 
-            if ~isempty(setdiff(varsToLoad, fieldnames(contents)))
-                error('Cache file %s is invalid', file);
+            if separateFields
+                % struct stored as separate fields
+                if ~isempty(fields)
+                    % load only specific fields
+                    varsToLoad = fields;
+                else
+                    % no fields specified, load all
+                    varsToLoad = {};
+                end
+
+                data = load(file, varsToLoad{:});
+
+            else
+                % single value in 'data'
+                varsToLoad = {'data'};
+                contents = load(file, varsToLoad{:}); 
+                
+                % check has contents 
+                if ~isempty(setdiff(varsToLoad, fieldnames(contents)))
+                    error('Cache file %s is invalid', file);
+                end
+
+                data = contents.data;
             end
-
-            % check params match
-            if ~cm.checkParamMatch(contents.param, param)
-                error('Cache param in %s does not match', file);
-            end
-
-            data = contents.data;
-            timestamp = contents.timestamp;
         end 
 
         function saveData(cm, cacheName, param, data, varargin)
             p = inputParser;
-            p.addRequired('cacheName', @ischar);
+            p.addRequired('cacheName', @ischar); 
             p.addRequired('param', @(x) true);
             p.addRequired('data', @(x) true);
+
+            % default timestamp is now, but can be overridden 
             p.addParamValue('timestamp', now, @isscalar);
+            
+            % optional means of saving a struct array's fields as separate variables
+            % within the same mat file, allowing for individual fields to be
+            % selectively loaded easily
+            p.addParamValue('separateFields', false, @islogical);
+
             p.parse(cacheName, param, data, varargin{:});
             timestamp = p.Results.timestamp;
+            separateFields = p.Results.separateFields;
 
             fileMeta = cm.getFileMetaForWrite(cacheName, param);
             fileData = cm.getFileDataForWrite(cacheName, param);
             mkdirRecursive(fileparts(fileMeta));
 
+            % Save cache meta file
             %debug('Saving cache meta %s\n', fileMeta);
-            save(fileMeta, 'param', 'timestamp');
+            save(fileMeta, 'param', 'timestamp', 'separateFields');
+
+            % save cache data file
             %debug('Saving cache data %s\n', fileData);
-            save(fileData, '-v7.3', 'data', 'param', 'timestamp');
+            if separateFields
+                assert(isstruct(data) && isscalar(data), 'Data must be a scalar struct in order to save fields');
+                % save each field separately and include a variable
+                saveLarge(fileData, '-struct', 'data');
+            else
+                saveLarge(fileData, 'data');
+            end
+
+            
         end
     end
     
