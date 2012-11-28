@@ -9,6 +9,9 @@ classdef MatdbSettingsStore < handle
 
     % SET THESE PROPERTIES AND SAVE SOMEWHERE ON PATH AS matdbSettings.mat
     properties
+        % name of the default cache manager class to use
+        defaultCacheManagerName  
+
         % root location of the Matlab cache file 
         pathListCache
 
@@ -42,6 +45,18 @@ classdef MatdbSettingsStore < handle
         end
 
         % STATIC ACCESSORS FOR SAVED VALUES
+        function cm = getDefaultCacheManager()
+            name = MatdbSettingsStore.getDefaultCacheManagerName();
+            cm = eval(sprintf('%s()', name));
+        end
+
+        function name = getDefaultCacheManagerName()
+            name = MatdbSettingsStore.loadSettings.defaultCacheManagerName;
+            if isempty(name)
+                name = 'CacheManager';
+            end
+        end
+
         function pathList = getPathListCache()
             pathList = GetFullPath(MatdbSettingsStore.loadSettings.pathListCache);
         end

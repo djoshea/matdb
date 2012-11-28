@@ -39,8 +39,8 @@ classdef CacheManager < handle
 
     methods % methods that should remain public
         function tf = cacheExists(cm, cacheName, param)
-            data = cm.getFileDataForRead(cacheName, param);
-            meta = cm.getFileMetaForRead(cacheName, param);
+            data = cm.getFileListDataForRead(cacheName, param);
+            meta = cm.getFileListMetaForRead(cacheName, param);
 
             tf = ~isempty(data) && ~isempty(meta);
         end

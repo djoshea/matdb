@@ -12,7 +12,7 @@ classdef (HandleCompatible) Cacheable
 
         % return a cache manager instance
         function cm = getCacheManager(obj);
-            cm = CacheManager();
+            cm = MatdbSettingsStore.getDefaultCacheManager();
         end
 
         function obj = prepareForCache(obj)
