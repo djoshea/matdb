@@ -40,6 +40,19 @@ classdef MatdbSettingsStore < handle
                 error('ERROR: Could not locate matdbSettings.mat on path. See MatdbSettingsStore');
             end
         end
+
+        % STATIC ACCESSORS FOR SAVED VALUES
+        function pathList = getPathListCache()
+            pathList = GetFullPath(MatdbSettingsStore.loadSettings.pathListCache);
+        end
+
+        function pathList = getPathListAnalysis()
+            pathList = GetFullPath(MatdbSettingsStore.loadSettings.pathListAnalysis);
+        end
+
+        function pathList = getPathListCSVData()
+            pathList = GetFullPath(MatdbSettingsStore.loadSettings.pathListCSVData);
+        end
     end
 
     methods

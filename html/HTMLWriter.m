@@ -20,7 +20,7 @@ classdef HTMLWriter < handle
         basePath
     end
 
-    methods(Static)
+    methods
         function openInBrowser(html)
             if isa(html, 'HTMLWriter')
                 fileName = GetFullPath(html.fileName);
