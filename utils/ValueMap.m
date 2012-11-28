@@ -4,15 +4,13 @@ classdef ValueMap < DynamicClass
 % all value classes sharing a reference to a common map. It also supports
 % arbitrary key types (by using DataHash internally).
 %
-% It supports similar key read syntax as containers.Map, e.g.
+% It supports similar key read and write syntax as containers.Map, e.g.
 %
 %   value = map(key)
-%
-% but assigning into a key for now requires a function call, e.g.
-%
-%   map = map.set(key, value)
-%
+%   map(key) = value
 %  
+%  This functionality is provided by utilizing DynamicClass
+%
 
     properties
         KeyType
@@ -146,10 +144,16 @@ classdef ValueMap < DynamicClass
 
         function map = set(map, key, value)
             map.warnIfNoArgOut(nargout);
-            map.hashStruct.(map.hashKey(key)) = value;
-            if map.storeKeys
+            hash = map.hashKey(key)
+            
+            % add the key to our list if not present
+            % could call isKey but want to avoid hashing twice
+            if map.storeKeys && ~isfield(map.hashStruct, hash)
                 map.keySet{end+1} = key;
             end
+
+            % store the value in hashStruct
+            map.hashStruct.(hash) = value;
         end
 
         function map = add(map, otherMap)
