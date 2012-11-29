@@ -1044,6 +1044,7 @@ classdef DataTable < DynamicClass & Cacheable
         
         function html = saveAsHtml(db, fileName)
             html = HTMLDataTableWriter(fileName);
+            html.copyResources();
             html.generate(db);
         end
     end

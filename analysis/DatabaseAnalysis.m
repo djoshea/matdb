@@ -366,7 +366,9 @@ classdef DatabaseAnalysis < handle & DataSource
 
                         description = entry.getKeyFieldValueDescriptors();
                         description = description{1};
+                        debug('---------------------------------\n');
                         debug('Running analysis on %s\n', description);
+                        debug('---------------------------------\n');
                         
                         % for saveFigure to look at 
                         da.currentEntry = entry;
@@ -415,6 +417,10 @@ classdef DatabaseAnalysis < handle & DataSource
                         % load the output from the diary file
                         diary('off');
                         output = fileread(diaryFile);
+                        % don't clutter with temp files
+                        if exist(diaryFile, 'file')
+                            delete(diaryFile);
+                        end
 
                         if success
                             % Copy only fieldsAnalysis that were returned.
