@@ -144,7 +144,7 @@ classdef ValueMap < DynamicClass
 
         function map = set(map, key, value)
             map.warnIfNoArgOut(nargout);
-            hash = map.hashKey(key)
+            hash = map.hashKey(key);
             
             % add the key to our list if not present
             % could call isKey but want to avoid hashing twice
