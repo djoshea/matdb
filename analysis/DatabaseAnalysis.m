@@ -366,9 +366,11 @@ classdef DatabaseAnalysis < handle & DataSource
 
                         description = entry.getKeyFieldValueDescriptors();
                         description = description{1};
-                        debug('---------------------------------\n');
-                        debug('Running analysis on %s\n', description);
-                        debug('---------------------------------\n');
+                        fprintf('\n');
+                        tcprintf('bright yellow', '____________________________________________________\n');
+                        tcprintf('bright yellow', 'Running analysis on %s\n', description);
+                        tcprintf('bright yellow', '____________________________________________________\n');
+                        fprintf('\n');
                         
                         % for saveFigure to look at 
                         da.currentEntry = entry;
