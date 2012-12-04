@@ -47,7 +47,7 @@ classdef CacheManager < handle
 
         % retrieve the timestamp from the newest meta file
         function [timestamp indexNewest] = retrieveTimestamp(cm, cacheName, param)
-            [timestamp indexNewest isSeparate] = retrieveMeta(cm, cacheName, param);
+            [indexNewest, timestamp, isSeparate] = retrieveMeta(cm, cacheName, param);
         end
 
         % retrieve all meta info from the newest meta file
