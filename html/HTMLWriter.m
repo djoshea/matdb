@@ -20,13 +20,9 @@ classdef HTMLWriter < handle
         basePath
     end
 
-    methods
-        function openInBrowser(html)
-            if isa(html, 'HTMLWriter')
-                fileName = GetFullPath(html.fileName);
-            else
-                fileName = GetFullPath(html);
-            end
+    
+    methods(Static)
+        function openFileInBrowser(fileName)
             if ismac
                 cmd = sprintf('open "%s"', fileName);
                 system(cmd);
@@ -36,6 +32,18 @@ classdef HTMLWriter < handle
             else
                 winopen(fileName);
             end
+        end
+    end
+    
+    methods
+        function openInBrowser(html)
+            if isa(html, 'HTMLWriter')
+                fileName = GetFullPath(html.fileName);
+            else
+                fileName = GetFullPath(html);
+            end
+            
+            HTMLWriter.openFileInBrowser(fileName);
         end
     end
 
@@ -81,6 +89,10 @@ classdef HTMLWriter < handle
                 html.fileName = [tempname() '.html'];
             end
 
+            parentDir = fileparts(html.fileName);
+            if ~exist(parentDir, 'dir')
+                mkdirRecursive(parentDir);
+            end
             [html.fid message] = fopen(html.fileName, 'w');
             if html.fid == -1
                 error('Error opening html file:\n%s', message);

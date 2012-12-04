@@ -654,7 +654,7 @@ classdef DatabaseAnalysis < handle & DataSource
             if ~exist(fileName, 'file')
                 html = da.saveAsHtml();
             end
-            HTMLWriter.openInBrowser(fileName);
+            HTMLWriter.openFileInBrowser(fileName);
         end
         
         function html = saveAsHtml(da)

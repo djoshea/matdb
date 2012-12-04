@@ -302,7 +302,7 @@ classdef LoadOnDemandMappedTable < StructTable
 
                 % first, look up cacheable fields in cache
                 if loadCache
-                    debug('Retrieving cached fields for %s\r', ...
+                    debug('Retrieving cached fields for %s          \r', ...
                         entryDescriptions{iEntry});
 
                     for iField = 1:length(fieldsCacheable)

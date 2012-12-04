@@ -54,7 +54,9 @@ classdef CacheManager < handle
         function [indexNewest timestamp separateFields] = retrieveMeta(cm, cacheName, param)
             fileList = cm.getFileListMetaForRead(cacheName, param);
             if isempty(fileList)
+                indexNewest = [];
                 timestamp = [];
+                separateFields = [];
                 return;
             end
                
