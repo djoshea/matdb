@@ -122,6 +122,7 @@ classdef Database < DynamicClass & handle
             db.pluralToSingularMap.remove(entryNamePlural);
             db.singularToPluralMap.remove(entryName);
         end
+
         
         function tableEntryNameList = get.tableEntryNameList(db)
             tableEntryNameList = db.tableMap.keys;
@@ -487,6 +488,20 @@ classdef Database < DynamicClass & handle
             names = cellfun(@(src) src.describe(), db.sourcesLoaded, ...
                 'UniformOutput', false);
             str = strjoin(names, ', ');
+        end
+    end
+
+    methods(Static)
+        function db = loadobj(db)
+            assert(isa(db, 'Database'), 'Must load from Database object');
+
+            % set the .database field in all tables, which is marked as transient
+            % so that the entire database isn't saved with each table
+            tableNames = db.tableMap.keys;
+            for i = 1:length(tableNames)
+                tableName = tableNames{i};
+                db.tableMap(tableName) = db.tableMap(tableName).setDatabase(db);
+            end
         end
     end
 
