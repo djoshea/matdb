@@ -882,9 +882,7 @@ classdef DataTable < DynamicClass & Cacheable
             % print the data in the table in a colorful table like format
             p = inputParser;
             % use a | between columns: simple means ascii, grid means unicode box characters
-            p.addParamValue('gridSimple', [], @(x) isempty(x) || islogical(x));
-            p.addParamValue('grid', [], @(x) isempty(x) || islogical(x));
-            p.addParamValue('outer', false, @islogical);
+            p.addParamValue('grid', true, @(x) isempty(x) || islogical(x));
             p.addParamValue('color', true, @islogical);
             % insert spaces between columns or between columns and |
             p.addParamValue('padding', 0, @(x) isscalar(x) && x >= 0);
@@ -892,104 +890,66 @@ classdef DataTable < DynamicClass & Cacheable
             p.addParamValue('maxWidth', termCols, @(x) isscalar(x) && x >= 0);
             p.parse(varargin{:});
 
-            if isempty(p.Results.grid)
-                if isempty(p.Results.gridSimple)
-                    grid = true;
-                    gridSimple = false;
-                else
-                    gridSimple = p.Results.gridSimple;
-                    grid = ~gridSimple;
-                end
-            else
-                grid = p.Results.grid;
-                gridSimple = ~grid;
-            end
-
-            outer = p.Results.outer;
-
+            grid = p.Results.grid;
             color = p.Results.color;
             padding = round(p.Results.padding);
-            if ~grid && ~gridSimple && padding == 0
+            if ~grid && padding == 0
                 padding = 1;
             end
 
             maxEntries = p.Results.maxEntries;
             maxWidth = p.Results.maxWidth;
 
+            useUTF32 = isunix && ~ismac;
+            useUTF8 = isunix;
+
             if grid
-                if outer
-                    cornerNW = char(hex2dec('250C'));
-                    cornerNE = char(hex2dec('2510'));
-                    cornerSE = char(hex2dec('2518'));
-                    cornerSW = char(hex2dec('2514'));
-                    vlineRightHeader = char(hex2dec('251D'));
-                    vlineLeftHeader = char(hex2dec('2525'));
-
-                    hlineDown = char(hex2dec('252C'));
-                    hlineUp = char(hex2dec('2534'));
-                    hlineHeader = char(hex2dec('2550'));
-
+                if useUTF32
                     crossHeader = char(hex2dec('253F'));
-                else
-                    crossHeader = char(hex2dec('253C'));
-                    hlineHeader = char(hex2dec('2500')); 
-                end
-
-                vline = char(hex2dec('2502'));
-                hline = char(hex2dec('2500'));
-            elseif gridSimple
-                if outer
-                    cornerNW = '+';
-                    cornerNE = '+';
-                    cornerSE = '+';
-                    cornerSW = '+';
-                    vlineRightHeader = '+';
-                    vlineLeftHeader = '+';
-
-                    hlineDown = '+';
-                    hlineUp = '+';
-                    hlineHeader = '-';
-
-                    crossHeader = char(hex2dec('253F'));
+                    vline = char(hex2dec('2502'));
+                    hlineHeader = char(hex2dec('2501'));
+                elseif useUTF8
+                    crossHeader = char(hex2dec({'e2', '94', 'bf'})); 
+                    hlineHeader = char(hex2dec({'e2', '94', '81'}));
+                    vline = char(hex2dec({'e2', '94', '82'}));
                 else
                     crossHeader = '+';
                     hlineHeader = '-';
-                    hline = '-';
                     vline = '|';
                 end
             end
             
-            % now grid just means draw the grid either simple or complex
-            grid = grid || gridSimple;
-
-            if color
+            if color 
                 printf = @tcprintf;
             else
                 printf = @(c, varargin) fprintf(varargin{:});
             end
 
             if grid
-                idxHeaderColor = 'dark gray';
+                idxHeaderColor = 'darkGray';
                 fieldColor = 'bright yellow';
                 keyFieldHeaderColor = 'bright blue';
                 keyFieldColor = 'bright blue';
             else
-                idxHeaderColor = 'dark gray underline';
+                idxHeaderColor = 'darkGray underline';
                 fieldColor = 'bright yellow underline';
                 keyFieldHeaderColor = 'bright blue underline';
                 keyFieldColor = 'bright blue';
             end
             idxColor = 'darkGray';
-            gridColor = 'darkGray';
+            messageColor = 'darkGray';
+            gridColor = 'white';
             valueColor = 'white';
 
             % build divider between columns
             paddingStr = repmat(' ', 1, padding);
             if grid 
                 divider = [paddingStr vline paddingStr];
+                dividerWidth = 2*padding + 1;
                 %divider = vline;
             else
                 divider = paddingStr;
+                dividerWidth = padding;
             end
 
             db.checkAppliedEntryData(); 
@@ -1020,7 +980,7 @@ classdef DataTable < DynamicClass & Cacheable
             idxColWidth = max(3, ceil(log(db.nEntries) / log(10)));
 
             % figure out how many columns to print to fit within window
-            cumWidth = idxColWidth + cumsum(colWidths) + length(divider)*[1:length(colWidths)]';
+            cumWidth = idxColWidth + cumsum(colWidths) + dividerWidth*[1:length(colWidths)]';
             nFieldsPrint = find(cumWidth < maxWidth, 1, 'last'); 
             if isempty(nFieldsPrint)
                 nFieldsPrint == 1;
@@ -1053,7 +1013,7 @@ classdef DataTable < DynamicClass & Cacheable
 
             % print header / values divider line for grid?
             if grid
-                dashFn = @(width) repmat(hline, 1, width);
+                dashFn = @(width) repmat(hlineHeader, 1, width);
                 printf(gridColor, '%s', dashFn(idxColWidth+padding));
                 printf(gridColor, crossHeader);
                 for iField = 1:nFields
@@ -1087,22 +1047,22 @@ classdef DataTable < DynamicClass & Cacheable
             end
 
             if nEntries == 0
-                printf(gridColor, '(empty table)\n');
+                printf(messageColor, '(empty table)\n');
             end
             if nEntriesDisplay < nEntries
-                printf(gridColor, '(truncated at %d of %d entries)\n', nEntriesDisplay, nEntries);
+                printf(messageColor, '(truncated at %d of %d entries)\n', nEntriesDisplay, nEntries);
             end
             if any(~isDisplayable) 
                 omittedFields = db.fields(~isDisplayable);
-                printf(gridColor, '(omitting non-displayable fields %s)\n', ...
+                printf(messageColor, '(omitting non-displayable fields %s)\n', ...
                     strjoin(omittedFields, ', '));
             end
             if ~isempty(truncatedFields)
                 if length(truncatedFields) < 5
-                    printf(gridColor, '(omitting fields %s to fit display)\n', ...
+                    printf(messageColor, '(omitting fields %s to fit display)\n', ...
                         strjoin(truncatedFields, ', '));
                 else
-                    printf(gridColor, '(omitting %d fields to fit display)\n', ...
+                    printf(messageColor, '(omitting %d fields to fit display)\n', ...
                         length(truncatedFields));
                 end
             end
