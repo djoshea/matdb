@@ -1,6 +1,6 @@
 function cacheDelete(key, varargin)
     p = inputParser;
-    p.addRequired('key', @ischar);
+    p.addRequired('key', @(x) true);
     p.addParamValue('cacheName', 'cacheSave', @ischar);
     p.parse(key, varargin{:});
 

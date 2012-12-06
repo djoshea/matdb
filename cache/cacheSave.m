@@ -1,6 +1,6 @@
 function cacheSave(key, value, varargin)
     p = inputParser;
-    p.addRequired('key', @ischar);
+    p.addRequired('key', @(x) true);
     p.addRequired('value', @(x) true);
     p.addParamValue('cacheName', 'cacheSave', @ischar);
     p.parse(key, value, varargin{:});
