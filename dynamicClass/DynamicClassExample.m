@@ -58,5 +58,9 @@ classdef DynamicClassExample < DynamicClass
             valueCell = valueCell(subs{:});
             appliedNext = false;
         end
+
+        function obj = dynamicPropertyAssign(obj, name, value, s)
+            obj.store(name, value);
+        end
     end
 end

@@ -14,6 +14,23 @@ classdef (HandleCompatible) DynamicClass
         NotSupported = DynamicClassEnumeration.NotSupported;
     end
 
+    % Override if you'd like dynamic access to take precedence over declared properties/methods
+    methods(Hidden, Access=protected) 
+        % allow mapDynamicPropertyAccess to handle accessing of declared properties
+        % allow mapDynamicPropertyAssign to handle assiging declared properties
+        % if false, declared properties will always be accessed/assigned directly
+        function tf = allowDynamicPropertyOverride(obj)
+            tf = false;
+        end
+
+        % allow mapDynamicMethod to handle calling of declared methods
+        % if false, declared methods will always be called directly
+        function tf = allowDynamicMethodOverride(obj)
+            tf = false;
+        end
+    end
+
+    % Override as many as you'd like for various forms of dynamic access
     methods % Methods for accessing (via subsref)
         % You should override any or all of these methods as needed
         % The implementations below simply return DynamicClass.NotSupported
@@ -80,6 +97,7 @@ classdef (HandleCompatible) DynamicClass
         end
     end
 
+    % Override as many as you'd like for various forms of dynamic assignment
     methods % Methods for assignment (via subsasgn)
         function obj = dynamicPropertyAssign(obj, name, value, s)
             obj = DynamicClass.NotSupported;
@@ -94,7 +112,59 @@ classdef (HandleCompatible) DynamicClass
         end
     end
 
+    % Internal Implementation
     methods(Sealed)
+        function [result s] = mapDeclaredPropertyAccess(obj, name, meta, s)
+            propInfo = meta.PropertyList;
+            idx = find(strcmp(name, {propInfo.Name}));
+            assert(~isempty(idx), 'Could not find property info for %s', name);
+            if strcmp(propInfo(idx).GetAccess, 'public')
+                % public property, simply access it and store as intermediate
+                result = obj.(name);
+                s = s(2:end);
+            else
+                error('Property %s is not publicly accessible', name);
+            end
+        end
+
+        function [result s returnImmediately] = mapDeclaredMethodCall(obj, name, meta, s, nargout)
+            returnImmediately = false;
+            methodInfo = meta.MethodList;
+            idx = find(strcmp(name, {propInfo.Name}));
+            assert(~isempty(idx), 'Could not find property info for %s', name);
+
+            if strcmp(methodInfo(idx).Access, 'public')
+                % public method, call it and store as intermediate
+                if length(s) > 1 && strcmp(s(2).type, '()')
+                    % method call with argument list
+                    args = s(2).subs;
+                    s = s(3:end);
+                else
+                    % method call without arguments
+                    args = {};
+                    s = s(2:end);
+                end
+                
+                % does further subsref indexing happen after this?
+                if isempty(s)
+                    % no more after this, call the method and return
+                    % this syntax calls the method and preserves
+                    % the correct nargout
+                    [result{1:nargout}] = obj.(name)(args{:});
+                    returnImmediately = true;
+                    return;
+                else
+                    % more subsref indexing happens after this, e.g.
+                    %   obj.method(args).field
+                    % so simply grab the first output and store as
+                    % intermediate
+                    result = obj.(name)(args{:});
+                end
+            else
+                error('Method %s not publically accessible', name);
+            end
+        end
+
         function varargout = subsref(obj, s)
             % Handle all subsref type usage of instance, make direct property
             % and method calls, or defer to appropriate abstract methods above
@@ -111,57 +181,21 @@ classdef (HandleCompatible) DynamicClass
                     % obj.name...
                     name = s(1).subs;
                     meta = metaclass(obj);
+                    isProp = isprop(obj, name);
+                    isMethod = ismethod(obj, name);
 
                     % is this a defined property?
-                    if isprop(obj, name)
+                    if ~obj.allowDynamicPropertyOverride && isProp
                         % is it a public property
-                        %
-                        propInfo = meta.PropertyList;
-                        idx = find(strcmp(name, {propInfo.Name}));
-                        assert(~isempty(idx), 'Could not find property info for %s', name);
-                        if strcmp(propInfo(idx).GetAccess, 'public')
-                            % public property, simply access it and store as intermediate
-                            result = obj.(name);
-                            s = s(2:end);
-                        else
-                            error('Property %s is not publicly accessible', name);
-                        end
+                        [result s] = obj.mapDeclaredPropertyAccess(name, meta, s);
 
                     % is it a defined method?
-                    elseif ismethod(obj, name)
+                    elseif ~obj.allowDynamicMethodOverride && isMethod
                         % is it a public method?
-                        propInfo = meta.MethodList;
-                        idx = find(strcmp(name, {propInfo.Name}));
-                        assert(~isempty(idx), 'Could not find property info for %s', name);
-
-                        if strcmp(propInfo(idx).Access, 'public')
-                            % public method, call it and store as intermediate
-                            if length(s) > 1 && strcmp(s(2).type, '()')
-                                % method call with argument list
-                                args = s(2).subs;
-                                s = s(3:end);
-                            else
-                                % method call without arguments
-                                args = {};
-                                s = s(2:end);
-                            end
-                            
-                            % does further subsref indexing happen after this?
-                            if isempty(s)
-                                % no more after this, call the method and return
-                                % this syntax calls the method and preserves
-                                % the correct nargout
-                                [varargout{1:nargout}] = obj.(name)(args{:});
-                                return;
-                            else
-                                % more subsref indexing happens after this, e.g.
-                                %   obj.method(args).field
-                                % so simply grab the first output and store as
-                                % intermediate
-                                result = obj.(name)(args{:});
-                            end
-                        else
-                            error('Method %s not publically accessible', name);
+                        [result s returnImmediately] = obj.mapDeclaredMethodCall(name, meta, s, nargout);
+                        if returnImmediately
+                            varargout = result;
+                            return;
                         end
 
                     else
@@ -230,8 +264,21 @@ classdef (HandleCompatible) DynamicClass
                         end
 
                         if ~foundSupported
-                            % unclear what this is
-                            error('Could not find defined or dynamic property or method %s', name);
+                            % now try the static property and method access again
+                            if obj.allowDynamicPropertyOverride && isProp 
+                                [result s] = obj.mapDeclaredPropertyAccess(name, meta, s);
+                                
+                            elseif obj.allowDymamicMethodOverride && isMethod
+                                [result s returnImmediately] = obj.mapDeclaredMethodCall(name, meta, s)
+                                if returnImmediately
+                                    varargout = result;
+                                    return;
+                                end
+                                
+                            else
+                                % unclear what this is
+                                error('Could not find defined or dynamic property or method %s', name);
+                            end
                         end
                     end
 
@@ -293,10 +340,21 @@ classdef (HandleCompatible) DynamicClass
             switch s(1).type;
                 case '.'
                     name = s(1).subs;
+                    isProp = isprop(obj, name);
                     
-                    % is this a defined property?
-                    if isprop(obj, name)
-                        % is it a public property
+                    retVal = DynamicClass.NotSupported;
+                    if obj.allowDynamicPropertyOverride || ~isProp
+                        % it's either not a declared property, or we're allowing 
+                        % dynamicPropertyAssign to handle declared properties
+                        retVal = obj.dynamicPropertyAssign(name, value, sExtra);
+                    end
+
+                    if isProp && isequal(retVal, DynamicClass.NotSupported)
+                        % either we're not allowing dynamic property override
+                        % or dynamicPropertyAssign doesn't want to handle it
+                        % access it like a declared property
+                        
+                        % is this a public property?
                         meta = metaclass(obj);
                         propInfo = meta.PropertyList;
                         idx = find(strcmp(name, {propInfo.Name}));
@@ -307,8 +365,6 @@ classdef (HandleCompatible) DynamicClass
                         else
                             error('Property %s is not publically setable', name);
                         end
-                    else
-                        retVal = obj.dynamicPropertyAssign(name, value, sExtra);
                     end
 
                 case '()'
