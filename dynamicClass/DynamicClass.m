@@ -130,7 +130,7 @@ classdef (HandleCompatible) DynamicClass
         function [result s returnImmediately] = mapDeclaredMethodCall(obj, name, meta, s, nargout)
             returnImmediately = false;
             methodInfo = meta.MethodList;
-            idx = find(strcmp(name, {propInfo.Name}));
+            idx = find(strcmp(name, {methodInfo.Name}));
             assert(~isempty(idx), 'Could not find property info for %s', name);
 
             if strcmp(methodInfo(idx).Access, 'public')

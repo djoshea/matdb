@@ -10,7 +10,7 @@ classdef DateField < DataFieldDescriptor
 
     properties(Constant)
         standardDateFormat = 'yyyy-mm-dd';
-        standardDisplayFormat = 'ddd dd mmm yyyy';
+        standardDisplayFormat = 'dd mmm yyyy';
     end
 
     methods

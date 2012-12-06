@@ -877,22 +877,90 @@ classdef DataTable < DynamicClass & Cacheable
         end
 
         function printTable(db, varargin)
+            [termRows termCols] = getTerminalSize();
+
             % print the data in the table in a colorful table like format
             p = inputParser;
-            % use a | between columns
-            p.addParamValue('grid', true, @islogical);
+            % use a | between columns: simple means ascii, grid means unicode box characters
+            p.addParamValue('gridSimple', [], @(x) isempty(x) || islogical(x));
+            p.addParamValue('grid', [], @(x) isempty(x) || islogical(x));
+            p.addParamValue('outer', false, @islogical);
             p.addParamValue('color', true, @islogical);
             % insert spaces between columns or between columns and |
-            p.addParamValue('padding', 1, @(x) isscalar(x) && x >= 0);
-            p.addParamValue('maxEntries', 15, @(x) isscalar(x) && x >= 0);
-            p.addParamValue('maxWidth', 80, @(x) isscalar(x) && x >= 0);
+            p.addParamValue('padding', 0, @(x) isscalar(x) && x >= 0);
+            p.addParamValue('maxEntries', termRows-9, @(x) isscalar(x) && x >= 0);
+            p.addParamValue('maxWidth', termCols, @(x) isscalar(x) && x >= 0);
             p.parse(varargin{:});
 
-            grid = p.Results.grid;
+            if isempty(p.Results.grid)
+                if isempty(p.Results.gridSimple)
+                    grid = true;
+                    gridSimple = false;
+                else
+                    gridSimple = p.Results.gridSimple;
+                    grid = ~gridSimple;
+                end
+            else
+                grid = p.Results.grid;
+                gridSimple = ~grid;
+            end
+
+            outer = p.Results.outer;
+
             color = p.Results.color;
             padding = round(p.Results.padding);
+            if ~grid && ~gridSimple && padding == 0
+                padding = 1;
+            end
+
             maxEntries = p.Results.maxEntries;
             maxWidth = p.Results.maxWidth;
+
+            if grid
+                if outer
+                    cornerNW = char(hex2dec('250C'));
+                    cornerNE = char(hex2dec('2510'));
+                    cornerSE = char(hex2dec('2518'));
+                    cornerSW = char(hex2dec('2514'));
+                    vlineRightHeader = char(hex2dec('251D'));
+                    vlineLeftHeader = char(hex2dec('2525'));
+
+                    hlineDown = char(hex2dec('252C'));
+                    hlineUp = char(hex2dec('2534'));
+                    hlineHeader = char(hex2dec('2550'));
+
+                    crossHeader = char(hex2dec('253F'));
+                else
+                    crossHeader = char(hex2dec('253C'));
+                    hlineHeader = char(hex2dec('2500')); 
+                end
+
+                vline = char(hex2dec('2502'));
+                hline = char(hex2dec('2500'));
+            elseif gridSimple
+                if outer
+                    cornerNW = '+';
+                    cornerNE = '+';
+                    cornerSE = '+';
+                    cornerSW = '+';
+                    vlineRightHeader = '+';
+                    vlineLeftHeader = '+';
+
+                    hlineDown = '+';
+                    hlineUp = '+';
+                    hlineHeader = '-';
+
+                    crossHeader = char(hex2dec('253F'));
+                else
+                    crossHeader = '+';
+                    hlineHeader = '-';
+                    hline = '-';
+                    vline = '|';
+                end
+            end
+            
+            % now grid just means draw the grid either simple or complex
+            grid = grid || gridSimple;
 
             if color
                 printf = @tcprintf;
@@ -901,11 +969,15 @@ classdef DataTable < DynamicClass & Cacheable
             end
 
             if grid
+                idxHeaderColor = 'dark gray';
                 fieldColor = 'bright yellow';
+                keyFieldHeaderColor = 'bright blue';
                 keyFieldColor = 'bright blue';
             else
+                idxHeaderColor = 'dark gray underline';
                 fieldColor = 'bright yellow underline';
-                keyFieldColor = 'bright blue underline';
+                keyFieldHeaderColor = 'bright blue underline';
+                keyFieldColor = 'bright blue';
             end
             idxColor = 'darkGray';
             gridColor = 'darkGray';
@@ -914,7 +986,8 @@ classdef DataTable < DynamicClass & Cacheable
             % build divider between columns
             paddingStr = repmat(' ', 1, padding);
             if grid 
-                divider = [paddingStr '|' paddingStr];
+                divider = [paddingStr vline paddingStr];
+                %divider = vline;
             else
                 divider = paddingStr;
             end
@@ -967,7 +1040,7 @@ classdef DataTable < DynamicClass & Cacheable
             for iField = 1:nFields
                 field = fields{iField};
                 if isKeyField(iField)
-                    color = keyFieldColor;
+                    color = keyFieldHeaderColor;
                 else
                     color = fieldColor;
                 end
@@ -980,17 +1053,18 @@ classdef DataTable < DynamicClass & Cacheable
 
             % print header / values divider line for grid?
             if grid
-                dashFn = @(width) repmat('-', 1, width);
-                printf(gridColor, '%s+', dashFn(idxColWidth+padding));
+                dashFn = @(width) repmat(hline, 1, width);
+                printf(gridColor, '%s', dashFn(idxColWidth+padding));
+                printf(gridColor, crossHeader);
                 for iField = 1:nFields
                     printf(gridColor, '%s', dashFn(padding+colWidths(iField)+padding));
                     if iField < nFields 
-                        printf(gridColor, '+');
+                        printf(gridColor, crossHeader);
                     end
                 end
                 fprintf('\n');
             end
-                
+
             % print each entry row
             nEntriesDisplay = min(maxEntries, db.nEntries);
             for iEntry = 1:nEntriesDisplay
@@ -1034,6 +1108,7 @@ classdef DataTable < DynamicClass & Cacheable
             end
 
             fprintf('\n');
+            fprintf('%c\n', 15);
         end
 
         function viewAsHtml(db)
@@ -1041,7 +1116,7 @@ classdef DataTable < DynamicClass & Cacheable
             html = db.saveAsHtml(fileName);
             html.openInBrowser();
         end
-        
+
         function html = saveAsHtml(db, fileName)
             html = HTMLDataTableWriter(fileName);
             html.copyResources();
@@ -1074,26 +1149,26 @@ classdef DataTable < DynamicClass & Cacheable
                 appliedNext = true;
 
             elseif db.isField(name)
-%                 if strcmp(typeNext, '()')
-%                     assert(length(subsNext) == 1, 'Only vector indexing is allowed');
-%                     idx = subsNext{1};
-%                     value = db.getValues(name, idx);
-%                     appliedNext = true;
-%                 else
-                    value = db.getValues(name);
-                    % The following line removes the unnecessary cell array around
-                    % a singular value when there is only one entry
-                    % This is nice for the extremely common case of t(1).field
-                    % but could potentially be confusing when filtering with a mask
-                    % that may or may not have more than one match. Technically, 
-                    % there are better ways to do this (i.e. call .select) and then
-                    % loop through the entries. Note that this makes the common case
-                    % more convenient but can cause confusion in the less common case
-                    if db.nEntries == 1 && iscell(value) 
-                        value = value{1};
-                    end
-                    appliedNext = false;
-%                 end
+                %                 if strcmp(typeNext, '()')
+                %                     assert(length(subsNext) == 1, 'Only vector indexing is allowed');
+                %                     idx = subsNext{1};
+                %                     value = db.getValues(name, idx);
+                %                     appliedNext = true;
+                %                 else
+                value = db.getValues(name);
+                % The following line removes the unnecessary cell array around
+                % a singular value when there is only one entry
+                % This is nice for the extremely common case of t(1).field
+                % but could potentially be confusing when filtering with a mask
+                % that may or may not have more than one match. Technically, 
+                % there are better ways to do this (i.e. call .select) and then
+                % loop through the entries. Note that this makes the common case
+                % more convenient but can cause confusion in the less common case
+                if db.nEntries == 1 && iscell(value) 
+                    value = value{1};
+                end
+                appliedNext = false;
+                %                 end
 
             elseif db.isReference(name)
                 % reference through a database relationship
@@ -1125,7 +1200,7 @@ classdef DataTable < DynamicClass & Cacheable
 
             elseif strcmp(typeNext, '.')
                 field = subsNext;
-                
+
                 if db.isField(field)
                     % just grab that one field's values, filtered by idx 
                     entry = db.getFieldToValuesMap({field}, idx);
@@ -1190,11 +1265,11 @@ classdef DataTable < DynamicClass & Cacheable
         function tf = get.supportsWrite(db)
             tf = db.subclassSupportsWrite();
         end
-        
+
         function checkSupportsWrite(db)
             assert(db.supportsWrite);
         end
-        
+
         function db = addField(db, field, values, varargin)
             % db = addField(db, field, values, ['fieldDescriptor', dfd])
             % adds a field to the table, filled with values in values
@@ -1214,7 +1289,7 @@ classdef DataTable < DynamicClass & Cacheable
             %
             % Lastly, values will be converted using  dfd.convertValues before
             % storing for consistency
-            
+
             p = inputParser;
             p.addRequired('field', @ischar);
             p.addOptional('values', [], @(x) true);
@@ -1225,7 +1300,7 @@ classdef DataTable < DynamicClass & Cacheable
             values = p.Results.values;
             dfd = p.Results.fieldDescriptor;
             position = p.Results.position;
-        
+
             if isempty(dfd) 
                 % no field descriptor provided, infer from values
                 dfd = DataFieldDescriptor.inferFromValues(values);
@@ -1235,11 +1310,11 @@ classdef DataTable < DynamicClass & Cacheable
                 position = db.nFields + 1;
             end
             assert(position > 0 && position <= db.nFields + 1, 'Field position out of range');
-        
+
             db.warnIfNoArgOut(nargout);
 
             db.checkSupportsWrite();
-            
+
             % check whether this field already exists
             if db.isField(field)
                 warning('Field %s already exists in database. Overwriting', field); 
@@ -1293,7 +1368,7 @@ classdef DataTable < DynamicClass & Cacheable
             %   e(1).a = 1; e(1).b = 'b1';
             %   e(2).a = 2; e(2).b = 'b2';
             db.warnIfNoArgOut(nargout);
-            
+
             if isempty(varargin)
                 error('Usage: splitEntriesWithMultipleValues(''field1'', ''field2'', ...)');
             end
@@ -1323,7 +1398,7 @@ classdef DataTable < DynamicClass & Cacheable
                     if any(nValuesByField ~= nValuesByField(1) & nValuesByField > 1)
                         error('Differing value counts found for entry %d', iE);
                     end
-                    
+
                     entry = origGridData(iE); 
                     if nValuesByField == 1
                         newGridData(iNew) = entry;
@@ -1346,7 +1421,7 @@ classdef DataTable < DynamicClass & Cacheable
                     end
                 end
             end
-            
+
             db.origGridData = makecol(newGridData);
             db = db.invalidateCaches();
         end
@@ -1365,7 +1440,7 @@ classdef DataTable < DynamicClass & Cacheable
 
             p = inputParser;
             p.addRequired('entryTable', validateentryTable);
-            
+
             % if true, checks for exact keyfields matches and overwrites this entries data
             % with the other tables
             p.addParamValue('overwriteKeyFieldsMatch', false, @islogical);
@@ -1440,7 +1515,7 @@ classdef DataTable < DynamicClass & Cacheable
                 % from the new table
                 S = S(hasMatchMask);
             end
-                
+
             if ~isempty(S)
                 db = db.subclassAddEntry(S);
             end
@@ -1486,7 +1561,7 @@ classdef DataTable < DynamicClass & Cacheable
             % a field descriptor does not match, it will be converted to the first
             % table's dfd or to one of the dfds in 'fallbackFieldDescriptors', unless
             % 'convertMismatchedFields' is false, then an error will be thrown.
-           
+
             db.checkSupportsWrite();
             db.warnIfNoArgOut(nargout);
 
@@ -1501,7 +1576,7 @@ classdef DataTable < DynamicClass & Cacheable
             p.parse(other, varargin{:});
             convertMismatchedFields = p.Results.convertMismatchedFields;
             fallbackFieldDescriptors = p.Results.fallbackFieldDescriptors;
-             
+
             fieldsThis = db.fields;
             fieldsOther = other.fields;
 
@@ -1547,7 +1622,7 @@ classdef DataTable < DynamicClass & Cacheable
                     for iTry = 1:length(dfdToTry)
                         dfd = dfdToTry{iTry};
                         if dfd.canDescribeValues(valueMapOther(field)) && ...
-                           dfd.canDescribeValues(valueMapThis(field))
+                                dfd.canDescribeValues(valueMapThis(field))
 
                             other = other.setFieldDescriptor(field, dfd);
                             db = db.setFieldDescriptor(field, dfd);
@@ -1591,7 +1666,7 @@ classdef DataTable < DynamicClass & Cacheable
     methods % Filtering and grouping (OLD)
         function db = groupBy(db, varargin)
             db.warnIfNoArgOut(nargout);
-            
+
             % db = groupBy('field1', 'field2', ...)
             % set the current group by field to the list of input fields
             % groupBy overwrites the current grouping, unlike filters
@@ -1615,9 +1690,9 @@ classdef DataTable < DynamicClass & Cacheable
                 else
                     [idxIntoUniqueByField uniqueValsByField] = ...
                         db.getGridDataAsIdxIntoUnique('fields', db.groupByFields, ...
-                                                      'asMatrix', true);
+                        'asMatrix', true);
                     uniqueIdxIntoUnique = unique(idxIntoUniqueByField, 'rows');
-                    
+
                     nGroups = size(uniqueIdxIntoUnique, 1);
                     for iGrp = 1:nGroups
                         for iFld = 1:length(db.groupByFields)
@@ -1645,25 +1720,25 @@ classdef DataTable < DynamicClass & Cacheable
             results = cell(db.nEntries, 1);
             status = repmat(struct('success', false, 'exception', []), db.nEntries, 1);
 
-           % textprogressbar('Running on each entry');
+            % textprogressbar('Running on each entry');
             for iEntry = 1:db.nEntries
                 %textprogressbar(iEntry / db.nEntries);
                 try
                     results{iEntry} = fn(db.select(iEntry), iEntry);
                     status(iEntry).success = true;
-                 catch exc
-                     status(iEntry).success = false;
-                     status(iEntry).exception = exc;
-                     if ~catchErrors
-                         rethrow(exc);
-                     else
+                catch exc
+                    status(iEntry).success = false;
+                    status(iEntry).exception = exc;
+                    if ~catchErrors
+                        rethrow(exc);
+                    else
                         debug('Exception caught:\n');
                         tcprintf('bright yellow', exc.getReport());
                         fprintf('\n');
                     end
-                 end
+                end
             end
-         %   textprogressbar('done', true);
+            %   textprogressbar('done', true);
 
             resultStruct = structcat(results);
         end
@@ -1765,7 +1840,7 @@ classdef DataTable < DynamicClass & Cacheable
             if isa(resultStruct, 'ValueMap')
                 resultStruct = mapToStructArray(resultStruct);
             end
-            
+
             if isempty(resultStruct)
                 resultStruct = struct([]);
             end
@@ -1793,7 +1868,7 @@ classdef DataTable < DynamicClass & Cacheable
             resultTable = StructTable(resultStruct, 'entryName', entryName, ...
                 'entryNamePlural', entryNamePlural);
             resultTable.keyFields = db.keyFields;
-            
+
             % copy the keyFields' fieldDescriptors over for consistency
             dfdMap = db.fieldDescriptorMap;
             for iKeyField = 1:length(keyFieldMap)
@@ -1829,7 +1904,7 @@ classdef DataTable < DynamicClass & Cacheable
         function checkHasDatabase(db)
             assert(~isempty(db.database), 'This DataTable is not linked to a Database');
         end
-        
+
         function db = setDatabase(db, database)
             db.warnIfNoArgOut(nargout);
             assert(nargin == 2 && isa(database, 'Database'), 'Must provide a Database instance');
@@ -1911,7 +1986,7 @@ classdef DataTable < DynamicClass & Cacheable
             db.database.updateTable(db);
         end
     end
- 
+
     methods(Access=protected) % Caching
         function timestamp = getLastUpdated(obj)
             timestamp = obj.modifiedTimestamp;
@@ -1936,7 +2011,7 @@ classdef DataTable < DynamicClass & Cacheable
         function param = getCacheParam(obj) 
             param = [];
         end
-        
+
         function obj = updateModifiedTimestamp(obj)
             obj.warnIfNoArgOut(nargout);
             obj.modifiedTimestamp = now;
