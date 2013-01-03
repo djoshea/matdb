@@ -2,12 +2,12 @@ classdef Database < DynamicClass & handle
 
     properties(Hidden)
         tableMap % containers.Map : entryName --> Table
-        relationships 
-        singularToPluralMap
-        pluralToSingularMap
+        relationships % cell array of DataRelationship instances 
+        singularToPluralMap % conversion table from entryName to entryNamePlural
+        pluralToSingularMap % vice versa
 
-        viewsApplied = {};
-        sourcesLoaded = {};
+        viewsApplied = {}; % cell array of DatabaseView
+        sourcesLoaded = {}; % cell array of DataSource
     end
 
     properties(Dependent)
@@ -28,6 +28,34 @@ classdef Database < DynamicClass & handle
     end
 
     methods % Tables
+
+        function disp(db)
+            tcprintf('light blue', 'Database with %d tables, %d relationships\n\n', ...
+                db.nTables, db.nRelationships);
+
+            tables = db.tableEntryNameList;
+            tcprintf('light blue', 'Tables: ');
+            for i = 1:length(tables)
+                fprintf('%s', tables{i});
+                if i < length(tables)
+                    fprintf(', ');
+                end
+            end
+
+            tcprintf('light blue', '\nRelationships: \n');
+            relationships = db.relationships;
+            for i = 1:length(relationships)
+                fprintf('\t%s\n', relationships{i}.describeLink());
+            end
+
+            tcprintf('light blue', 'Sources Loaded: ');
+            fprintf('%s\n', db.sourcesLoadedDescription);
+
+            tcprintf('light blue', 'Views Applied: ');
+            fprintf('%s\n', db.viewsAppliedDescription);
+
+            fprintf('\n'); 
+        end
 
         function table = addTable(db, table, varargin)
             if nargout == 0
