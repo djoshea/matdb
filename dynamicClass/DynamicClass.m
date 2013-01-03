@@ -31,7 +31,7 @@ classdef (HandleCompatible) DynamicClass
     end
 
     % Override as many as you'd like for various forms of dynamic access
-    methods % Methods for accessing (via subsref)
+    methods(Hidden) % Methods for accessing (via subsref)
         % You should override any or all of these methods as needed
         % The implementations below simply return DynamicClass.NotSupported
        
@@ -98,7 +98,7 @@ classdef (HandleCompatible) DynamicClass
     end
 
     % Override as many as you'd like for various forms of dynamic assignment
-    methods % Methods for assignment (via subsasgn)
+    methods(Hidden) % Methods for assignment (via subsasgn)
         function obj = dynamicPropertyAssign(obj, name, value, s)
             obj = DynamicClass.NotSupported;
         end
@@ -185,12 +185,12 @@ classdef (HandleCompatible) DynamicClass
                     isMethod = ismethod(obj, name);
 
                     % is this a defined property?
-                    if ~obj.allowDynamicPropertyOverride && isProp
+                    if ~obj.allowDynamicPropertyOverride() && isProp
                         % is it a public property
                         [result s] = obj.mapDeclaredPropertyAccess(name, meta, s);
 
                     % is it a defined method?
-                    elseif ~obj.allowDynamicMethodOverride && isMethod
+                    elseif ~obj.allowDynamicMethodOverride() && isMethod
                         % is it a public method?
                         [result s returnImmediately] = obj.mapDeclaredMethodCall(name, meta, s, nargout);
                         if returnImmediately
@@ -265,10 +265,10 @@ classdef (HandleCompatible) DynamicClass
 
                         if ~foundSupported
                             % now try the static property and method access again
-                            if obj.allowDynamicPropertyOverride && isProp 
+                            if obj.allowDynamicPropertyOverride() && isProp 
                                 [result s] = obj.mapDeclaredPropertyAccess(name, meta, s);
                                 
-                            elseif obj.allowDymamicMethodOverride && isMethod
+                            elseif obj.allowDynamicMethodOverride() && isMethod
                                 [result s returnImmediately] = obj.mapDeclaredMethodCall(name, meta, s)
                                 if returnImmediately
                                     varargout = result;
