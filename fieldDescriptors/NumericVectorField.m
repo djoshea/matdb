@@ -45,8 +45,16 @@ classdef NumericVectorField < DataFieldDescriptor
             end
 
             % use first value of vector
-            values = cellfun(@(x) x(1), values);
+            values = cellfun(@getFirstOrNaN, values);
             [~, sortIdx] = sort(values, 1, sortMode); 
+            
+            function v = getFirstOrNaN(vec)
+                if isempty(vec)
+                    v = NaN;
+                else
+                    v = vec(1);
+                end
+            end
         end
 
         % converts field values to an appropriate format

@@ -418,6 +418,7 @@ classdef DataTable < DynamicClass & Cacheable
         end
 
         function db = none(db, idx)
+            % get empty table
             db.warnIfNoArgOut(nargout)
             filt = IndexSelectDataFilter(false(db.nEntries, 1));
             db = db.filterEntries(filt);
@@ -688,6 +689,16 @@ classdef DataTable < DynamicClass & Cacheable
             s = db.getEntriesAsStruct(true(db.nEntries, 1), db.fields);
         end
 
+        function s = getEmptyEntryAsStruct(db)
+            % filter out all the existing entries, add one using entirely
+            % empty/default values, and return as struct
+            s = db.none().addEntry(struct()).getFullEntriesAsStruct();
+            
+            % this way of doing things is simpler, but returns an empty
+            % struct (size 0 x 1) with no values filled in with defaults
+            %s = db.getEntriesAsStruct(false(db.nEntries, 1), db.fields);
+        end
+
         function s = getFullEntriesAsStringsAsStruct(db)
             s = mapToStructArray(db.getValueMapAsStrings(db.fields));
             s = orderfields(s, db.fields);
@@ -913,9 +924,18 @@ classdef DataTable < DynamicClass & Cacheable
         end
 
         function printTable(db, varargin)
+            % get the dimensions of the terminal we're in to size the printout
+            % appropriately
             [termRows termCols] = getTerminalSize();
 
-            % print the data in the table in a colorful table like format
+            % determine if we are in a data tip
+            inDataTip = calledViaDataTip();
+            if inDataTip
+                % constrain the size in a data tip
+                termRows = 15;
+                termCols = 78;
+            end
+    
             p = inputParser;
             % use a | between columns: simple means ascii, grid means unicode box characters
             p.addParamValue('grid', true, @(x) isempty(x) || islogical(x));
@@ -936,9 +956,11 @@ classdef DataTable < DynamicClass & Cacheable
             maxEntries = p.Results.maxEntries;
             maxWidth = p.Results.maxWidth;
 
-            useUTF32 = isunix && ~ismac;
-            useUTF8 = isunix;
+            % use utf depending on OS, but never in data tip
+            useUTF32 = isunix && ~ismac && ~inDataTip;
+            useUTF8 = ~useUTF32 && isunix && ~inDataTip;
 
+            % determine utf bytecodes for + - | characters
             if grid
                 if useUTF32
                     crossHeader = char(hex2dec('253F'));
@@ -955,7 +977,7 @@ classdef DataTable < DynamicClass & Cacheable
                 end
             end
             
-            if color 
+            if color && ~inDataTip
                 printf = @tcprintf;
             else
                 printf = @(c, varargin) fprintf(varargin{:});
@@ -1519,6 +1541,13 @@ classdef DataTable < DynamicClass & Cacheable
 
             S = makecol(S);
             nNewEntries = length(S);
+            
+            % check for extra fields that will mess this up
+            extraFields = setdiff(fieldnames(S), db.fields);
+            if ~isempty(extraFields)
+                error('Entries to add contain unknown fields: %s', ...
+                    strjoin(extraFields));
+            end
 
             % S is now a struct array with values for each field
             % convert each value if requested
@@ -1536,7 +1565,7 @@ classdef DataTable < DynamicClass & Cacheable
                 else
                     % field is missing
                     % use default empty value for this field
-                    values = dfd.emptyValue(numel(S));
+                    values = dfd.getEmptyValue(numel(S));
                     S = assignIntoStructArray(S, field, values);
                 end
             end

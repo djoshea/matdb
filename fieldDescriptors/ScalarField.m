@@ -95,7 +95,12 @@ classdef ScalarField < DataFieldDescriptor
             % this is similar to compareValuesTo except it is faster for some 
             % field types if you don't care about the sign of the comparison
 
-            isEqual = (isnan(values) & isnan(ref)) | (values == ref);
+            if ~isscalar(ref)
+                debug('Warning: comparing scalar to vector for now yields no matches\n');
+                isEqual = false(size(values));
+            else
+                isEqual = (isnan(values) & isnan(ref)) | (values == ref);
+            end
         end
     end
 

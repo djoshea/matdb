@@ -47,20 +47,33 @@ classdef DateTimeField < DataFieldDescriptor
 
         % converts DataFieldType.DateField values to a scalar datenum
         function num = getAsDateNum(dfd, values)
-            if ~iscell(values)
-                values = {values};
+            if isempty(values)
+                num = [];
+                return;
             end
-            num = nan(length(values), 1);
-            for i = 1:length(values)
-                value = values{i};
-                if isempty(value)
-                    num(i) = NaN;
-                elseif ~isempty(dfd.dateFormat)
-                    num(i) = datenum(value, dfd.dateFormat);
-                else
-                    num(i) = datenum(value);
-                end
+            
+            if ~isempty(dfd.dateFormat)
+                datenumFn = @(values) datenum(values, dfd.dateFormat);
+                defaultValue = datestr(0, dfd.dateFormat);
+            else
+                datenumFn = @(values) datenum(values);
+                defaultValue = datestr(0);
             end
+            
+            % replace empty or nan entries with the default value
+            % pre conversion
+            invalidFn = @(v) isempty(v) || ~isscalar(v) || isnan(v);
+            if iscell(values)
+                defaultMask = cellfun(invalidFn, values);
+            else
+                defaultMask = arrayfun(invalidFn, values);
+            end
+            if any(defaultMask)
+                %debug('Warning: using default date value during conversion\n');
+                values{defaultMask} = deal(defaultValue);
+            end
+            
+            num = datenumFn(values);
         end
 
         function strCell = getAsDateStr(dfd, values, format)

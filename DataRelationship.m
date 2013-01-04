@@ -154,7 +154,7 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
         end
     end
 
-    methods
+    methods % Constructor, Swap-Left-Right and description
         function rel = DataRelationship(varargin)
             p = inputParser;
             p.addParamValue('tableLeft', [], @(t) isa(t, 'DataTable'));
@@ -405,7 +405,7 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
         end
     end
 
-    methods(Access=protected)
+    methods(Access=protected) % Internal .setTable accessor
         function setTable(rel, ind, varargin)
             % sets the properties of one side of this table-to-table relationship
             % this is an internal method, you will want setTable1 or setTable2 
@@ -469,7 +469,7 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
         end
     end
 
-    methods
+    methods % Accessor methods
         function setTableLeft(rel, varargin)
             rel.setTable(1, varargin{:});
         end
@@ -487,7 +487,9 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                 referenceName = '';
             end
         end
+    end
 
+    methods % Matching methods for looking up across reference
         function idx = mapEntryNameToIdx(rel, entryName)
             idxS = find(strcmp(entryName, rel.entryNames), 1, 'first');
             idxP = find(strcmp(entryName, rel.entryNamesPlural), 1, 'first');
@@ -699,8 +701,63 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
         end
     end
 
+    methods % Tools for creating junction table entries
+        function entryJunction = createJunctionTableEntry(rel, entryLeft, entryRight)
+            assert(rel.isJunction, 'Relationship must be via junction table');
+            
+            if ~isstruct(entryLeft)
+                entryLeft = entryLeft.getFullEntriesAsStruct();
+            end
+            if ~isstruct(entryRight)
+                entryRight = entryRight.getFullEntriesAsStruct();
+            end
+
+            assert(length(entryLeft) == 1 || length(entryRight) == 1, ...
+                'Either entryLeft or entryRight must be a single entry');
+
+            keyFieldsLeft = rel.keyFieldsLeft;
+            keyFieldsLeftInRight = rel.keyFieldsLeftInRight;
+            keyFieldsRight = rel.keyFieldsRight;
+            keyFieldsRightInLeft = rel.keyFieldsRightInLeft;
+
+            % build up the junction entries for each left with each right
+            % due to the assert above one of the two outer loops will have one
+            % iteration only
+            iJunction = 1;
+            entryJunction = emptyStructArray([0 1], [keyFieldsLeftInRight; keyFieldsRightInLeft]);
+            for iLeft = 1:length(entryLeft)
+                for iRight = 1:length(entryRight)
+                
+                    for iField = 1:length(keyFieldsLeft)
+                        fieldLeft = keyFieldsLeft{iField};
+                        fieldJunction = keyFieldsLeftInRight{iField};
+                        entryJunction(iJunction).(fieldJunction) = entryLeft(iLeft).(fieldLeft);
+                    end
+                    for iField = 1:length(keyFieldsRight)
+                        fieldRight = keyFieldsRight{iField};
+                        fieldJunction = keyFieldsRightInLeft{iField};
+                        entryJunction(iJunction).(fieldJunction) = entryRight(iRight).(fieldRight);
+                    end
+                    
+                    iJunction = iJunction + 1;
+                end
+            end
+            
+            entryJunction = makecol(entryJunction);
+        end
+    end
+
     methods(Static) % Utilities
-        function names = defaultFieldReference(tableWithFields, tableReferenced)
+        function name = combinedTableFieldName(table, field)
+            % returns a camel-case-concatenation of the table entry name on to the field names
+            % i.e. teacher.id --> teacherId 
+            entryName = table.entryName;
+            name = strcat(entryName, upper(field(1)), field(2:end));
+        end
+
+        function names = defaultFieldReference(tableWithFields, tableReferenced, varargin)
+            % return the names of fields within tableWithFields that would be used to 
+            % reference the keyFields of tableReferenced from within tableWithFields
             if isempty(tableWithFields)
                 names = {};
                 return;
@@ -709,14 +766,18 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                 names = {};
                 return;
             end
+            
+            p = inputParser;
+            p.addRequired('tableWithFields', @(x) isa(x, 'DataTable'));
+            p.addRequired('tableReferenced', @(x) isa(x, 'DataTable'));
+            p.addParamValue('fields', tableReferenced.keyFields, @(x) ischar(x) || iscellstr(x));
+            p.parse(tableWithFields, tableReferenced, varargin{:});
 
-            assert(isa(tableWithFields, 'DataTable'));
-            assert(isa(tableReferenced, 'DataTable'));
+            fieldsInOther = p.Results.fields;
             entryName = tableReferenced.entryName;
-            fieldsInOther = tableReferenced.keyFields;
             
             % first try camel-casing the table entry name on to the field names
-            catFn = @(field) strcat(entryName, upper(field(1)), field(2:end));
+            catFn = @(field) DataRelationship.combinedTableFieldName(tableReferenced, field); 
             if ischar(fieldsInOther)
                 names = catFn(fieldsInOther);
             else
@@ -741,6 +802,52 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
         function oddList = fillCellOddEntries(list) 
             oddList = cell(length(list)*2, 1);
             oddList(1:2:end) = list;
+        end
+
+        function [jTbl rel] = buildEmptyJunctionTable(tbl1, tbl2, varargin)
+            p = inputParser;
+            p.addRequired('table1', @(x) isa(x, 'DataTable'));
+            p.addRequired('table2', @(x) isa(x, 'DataTable'));
+            p.addParamValue('entryName', [], @ischar);
+            p.addParamValue('entryNamePlural', [], @ischar);
+            p.parse(tbl1, tbl2, varargin{:});
+            
+            entryName1 = tbl1.entryName;
+            entryNamePlural1 = tbl1.entryNamePlural;
+            keyFields1 = tbl1.keyFields;
+            entryName2 = tbl2.entryName;
+            entryNamePlural2 = tbl2.entryNamePlural;
+            keyFields2 = tbl2.keyFields;
+
+            % default entryName junction12
+            entryName = p.Results.entryName;
+            entryNamePlural = p.Results.entryNamePlural;
+            if isempty(entryName)
+                entryName = sprintf('junction%s%s', ...
+                    upperFirst(entryName1), upperFirst(entryName2));
+            end
+            if isempty(entryNamePlural)
+                entryNamePlural = entryName;
+            end
+
+            jTbl = StructTable('entryName', entryName, ...
+                'entryNamePlural', entryNamePlural);
+            
+            % add keyFields from tbl1,2 using concatenated entryNameField names
+            for i = 1:length(keyFields1)
+                field = keyFields1{i};
+                jField = DataRelationship.combinedTableFieldName(tbl1, field);
+                jTbl = tbl1.copyFieldToDataTable(field, jTbl, 'as', jField, 'keyField', true);
+            end
+            for i = 1:length(keyFields2)
+                field = keyFields2{i};
+                jField = DataRelationship.combinedTableFieldName(tbl2, field);
+                jTbl = tbl2.copyFieldToDataTable(field, jTbl, 'as', jField, 'keyField', true);
+            end
+            
+            % build many to many relationship for convenience
+            rel = DataRelationship('tableLeft', tbl1, 'tableRight', tbl2, ...
+                'tableJunction', jTbl, 'isManyLeft', true, 'isManyRight', true); 
         end
     end  
 
