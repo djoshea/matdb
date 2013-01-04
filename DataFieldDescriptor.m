@@ -78,6 +78,15 @@ classdef DataFieldDescriptor < handle
             if nargin < 2
                 nValues = 1;
             end
+            
+            if nValues == 0
+                if dfd.matrix
+                    emptyValue = [];
+                else
+                    emptyValue = {};
+                end
+                return;
+            end
 
             % for simplicity, use convert values to take care of this for us
             % we just pass it an array of the correct size
