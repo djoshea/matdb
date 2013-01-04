@@ -107,28 +107,33 @@ classdef DateField < DataFieldDescriptor
             % for this DataFieldDescriptor.
            
             % convert these to string cell array
-            if isempty(values) || iscell(values)
-                [valid convValues] = isStringCell(values, 'convertVector', true);
-                assert(valid, 'Cannot convert values into string cell array');
-
-                % furthermore, convert the date to a standard date format
-                nums = dfd.getAsDateNum(convValues);
-
-            elseif isnumeric(values)
-                nums = values;
+            if isempty(values)
+                convValues = {};
+                
             else
-                error('Cannot convert values into DateField');
+                if iscell(values)
+                    [valid convValues] = isStringCell(values, 'convertVector', true);
+                    assert(valid, 'Cannot convert values into string cell array');
+
+                    % furthermore, convert the date to a standard date format
+                    nums = dfd.getAsDateNum(convValues);
+
+                elseif isnumeric(values)
+                    nums = values;
+                else
+                    error('Cannot convert values into DateField');
+                end
+
+                % since we only care about the date component, drop the decimal
+                nums = floor(nums);
+
+                convValues = arrayfun(@(num) datestr(num, ...
+                    DateField.standardDateFormat), nums, ...
+                    'UniformOutput', false);
+                dfd.dateFormat = DateField.standardDateFormat;
+
+                convValues = makecol(convValues);
             end
-
-            % since we only care about the date component, drop the decimal
-            nums = floor(nums);
-
-            convValues = arrayfun(@(num) datestr(num, ...
-                DateField.standardDateFormat), nums, ...
-                'UniformOutput', false);
-            dfd.dateFormat = DateField.standardDateFormat;
-
-            convValues = makecol(convValues);
         end
 
         % uniquifies field values

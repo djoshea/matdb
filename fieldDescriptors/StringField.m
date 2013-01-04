@@ -58,7 +58,7 @@ classdef StringField < DataFieldDescriptor
             if ischar(values)
                 convValues = {values};
             elseif isempty(values) 
-                convValues = {''};
+                convValues = {};
             elseif iscell(values)
                 [valid convValues] = isStringCell(values, 'convertVector', true);
                 assert(valid, 'Cannot convert values into string cell array');
