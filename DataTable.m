@@ -98,6 +98,10 @@ classdef DataTable < DynamicClass & Cacheable
         % values (which you may assume have already been appropriately converted)
         db = subclassAddField(db, field, values, dfd)
 
+        % add a field with DataFieldDescriptor dfd, name field, and value vector
+        % values (which you may assume have already been appropriately converted)
+        db = subclassRemoveField(db, field)
+
         % add one or more new entries. valueMap is a ValueMap fieldName ->
         % values. Values have already been converted according to the field 
         % descriptor.
@@ -225,6 +229,10 @@ classdef DataTable < DynamicClass & Cacheable
             end
         end
 
+        function dfd = getFieldDescriptor(db, field)
+            dfd = db.fieldDescriptorMapCache(field);
+        end
+
         function db = setFieldDescriptor(db, field, dfd)
             % call subclassSetFieldDescriptor to update the dfd for a particular
             % field, then force a full update by applying fields
@@ -239,6 +247,34 @@ classdef DataTable < DynamicClass & Cacheable
 
             db.pendingApplyFields = true;
             db = db.autoApplyFields();
+        end
+
+        function other = copyFieldToDataTable(db, field, other, varargin)
+            % adds a field to table other with the same field descriptor and name
+            % as `field` in this table
+            
+            p = inputParser;
+            p.addRequired('field', @ischar);
+            p.addRequired('other', @(x) isa(x, 'DataTable'));
+            
+            % make a key field in the other table
+            p.addParamValue('keyField', false, @islogical);
+
+            % rename the field to this in the other table
+            p.addParamValue('as', field, @ischar);
+
+            % pass this along as values to other.addField()
+            p.addParamValue('values', []);
+            p.parse(field, other, varargin{:});
+
+            as = p.Results.as;
+            values = p.Results.values;
+            keyField = p.Results.keyField;
+
+            db.warnIfNoArgOut(nargout);
+
+            dfd = db.getFieldDescriptor(field);
+            other = other.addField(as, values, 'fieldDescriptor', dfd, 'keyField', keyField);
         end
 
         function fieldDescriptorMap = get.fieldDescriptorMap(db)
@@ -1255,21 +1291,18 @@ classdef DataTable < DynamicClass & Cacheable
             p.addOptional('values', [], @(x) true);
             p.addParamValue('fieldDescriptor', [], @(x) isa(x, 'DataFieldDescriptor'));
             p.addParamValue('position', [], @(x) isnumeric(x) && isscalar(x));
+            p.addParamValue('keyField', false, @islogical);
             p.parse(field, values, varargin{:});
             field = p.Results.field;
             values = p.Results.values;
             dfd = p.Results.fieldDescriptor;
             position = p.Results.position;
+            keyField = p.Results.keyField;
 
             if isempty(dfd) 
                 % no field descriptor provided, infer from values
                 dfd = DataFieldDescriptor.inferFromValues(values);
             end
-
-            if isempty(position)
-                position = db.nFields + 1;
-            end
-            assert(position > 0 && position <= db.nFields + 1, 'Field position out of range');
 
             db.warnIfNoArgOut(nargout);
 
@@ -1278,10 +1311,17 @@ classdef DataTable < DynamicClass & Cacheable
             % check whether this field already exists
             if db.isField(field)
                 warning('Field %s already exists in database. Overwriting', field); 
+                % have the subclass remove this field in preparation for adding it back in
+                db = db.subclassRemoveField(field);
                 overwritingExistingField = true;
             else
                 overwritingExistingField = false;
             end
+
+            if isempty(position)
+                position = db.nFields + 1;
+            end
+            assert(position > 0 && position <= db.nFields + 1, 'Field position out of range');
 
             if isempty(values)
                 % if no values specified, fill with default empty values
@@ -1299,7 +1339,7 @@ classdef DataTable < DynamicClass & Cacheable
             end
 
             % check for size match
-            assert(isvector(values), 'Values must be a vector');
+            assert(isempty(values) || isvector(values), 'Values must be a vector');
             assert(length(values) == db.nEntries, 'Length of values must match .nEntries');
             values = makecol(values);
 
@@ -1308,8 +1348,60 @@ classdef DataTable < DynamicClass & Cacheable
 
             db.pendingApplyFields = true;
             db = db.doAutoApply();
+
+            if keyField
+                keyFields = db.keyFields;
+                keyFields{end+1} = field;
+                db = db.setKeyFields(keyFields);
+
+                % not sure this is necessary right now, but it might be in the future
+                % db.pendingApplyFields = true;
+                % db = db.doAutoApply();
+            end
+
         end
 
+        % same as addField, except with keyField set to true
+        function db = addKeyField(db, varargin)
+            db.warnIfNoArgOut(nargout);
+            db = db.addField(varargin{:}, 'keyField', true);
+        end
+
+        function db = removeField(db, field)
+            p = inputParser;
+            p.addRequired('field', @(x) ischar(x) || iscellstr(x));
+            p.parse(field, values, varargin{:});
+            field = p.Results.field;
+
+            if ~iscell(field)
+                fields = {field};
+            else
+                fields = field;
+            end
+
+            db.warnIfNoArgOut(nargout);
+            db.checkSupportsWrite();
+
+            for iField = 1:length(fields)
+                field = fields{iField};
+                % check whether this field already exists
+                if ~db.isField(field)
+                    error('Field %s not found.', field); 
+                end
+
+                % remove from keyFields list
+                if db.isKeyField(field)
+                    keyFields = setdiff(db.keyFields, field);
+                    db.setKeyFields(keyFields);
+                end
+
+                % have subclass actually add this fields data
+                db = db.subclassRemoveField(field);
+            end
+
+            db.pendingApplyFields = true;
+            db = db.doAutoApply();
+        end
         function db = splitEntriesWithMultipleValues(db, varargin)
             error('not yet implemented');
             % db = splitEntriesWithMultipleValues(db, fieldNames ...)

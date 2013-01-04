@@ -137,7 +137,7 @@ classdef StructTable < DataTable
             tf = true;
         end
 
-        function db = subclassAddField(db, field, values, dfd, position);
+        function db = subclassAddField(db, field, values, dfd, position)
             db.warnIfNoArgOut(nargout);
             db.localDfdMap(field) = dfd;
             db.table = assignIntoStructArray(db.table, field, values);
@@ -152,6 +152,14 @@ classdef StructTable < DataTable
             end
         end
 
+        function db = subclassRemoveField(db, field)
+            % remove field from the list of fields
+            db.warnIfNoArgOut(nargout);
+
+            db.localDfdMap = db.localDfdMap.remove(field);
+            db.table = rmfield(db.table, field);
+        end
+        
         % S will be a struct with the same fields as this table and already
         % converted values
         function db = subclassAddEntry(db, S)
