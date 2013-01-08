@@ -277,6 +277,13 @@ classdef DataTable < DynamicClass & Cacheable
             other = other.addField(as, values, 'fieldDescriptor', dfd, 'keyField', keyField);
         end
 
+        function db = copyField(db, field, newField, varargin)
+            db.warnIfNoArgOut(nargout);
+
+            values = db.getValues(field);
+            db = db.copyFieldToDataTable(field, db, 'as', newField, 'values', values, varargin{:});
+        end
+
         function fieldDescriptorMap = get.fieldDescriptorMap(db)
             % access to the fieldDescriptorMap
             db.checkAppliedFields();
@@ -1997,8 +2004,9 @@ classdef DataTable < DynamicClass & Cacheable
             db.warnIfNoArgOut(nargout);
             db.entryName = entryName;
             if nargin < 3
-                db.entryNamePlural = [entryName 's'];
+                entryNamePlural = [entryName 's'];
             end
+            db.entryNamePlural = entryNamePlural;
         end
 
         function db = setKeyFields(db, keyFields)
