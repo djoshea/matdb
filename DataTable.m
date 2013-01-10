@@ -754,9 +754,17 @@ classdef DataTable < DynamicClass & Cacheable
         end
 
         function value = getValueAsDateStr(db, field, fmat, varargin)
+            dfd = db.fieldDescriptorMap(field);
+            assert(isa(dfd, 'DateField') || isa(dfd, 'DateTimeField'), ...
+                'Field %s is not a DateField or DateTimeField', field);
+            
+            if ~exist('fmat', 'var')
+                % use default format when no format provided
+                fmat = dfd.standardDisplayFormat;
+            end
+                
             value = db.getValue(field, varargin{:});
 
-            dfd = db.fieldDescriptorMap(field);
             str = dfd.getAsDateStr(value, fmat);
             value = str{1};
         end

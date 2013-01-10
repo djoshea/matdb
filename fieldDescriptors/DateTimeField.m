@@ -70,7 +70,7 @@ classdef DateTimeField < DataFieldDescriptor
             end
             if any(defaultMask)
                 %debug('Warning: using default date value during conversion\n');
-                values{defaultMask} = deal(defaultValue);
+                [values{defaultMask}] = deal(defaultValue);
             end
             
             num = datenumFn(values);

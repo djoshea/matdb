@@ -213,8 +213,12 @@ classdef StructTable < DataTable
                 
                 % extract values as cell
                 cellValues = {db.table.(field)};
-                values = dfd.convertValues(cellValues);
-                db.table = assignIntoStructArray(db.table, field, values);
+                if ~isempty(cellValues)
+                    % don't want to accidentally add an entry when its
+                    % empty
+                    values = dfd.convertValues(cellValues);
+                    db.table = assignIntoStructArray(db.table, field, values);
+                end
             end
         end  
     end

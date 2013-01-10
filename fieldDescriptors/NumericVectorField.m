@@ -62,8 +62,10 @@ classdef NumericVectorField < DataFieldDescriptor
             % converts the set of field values in values to a format appropriate
             % for this DataFieldDescriptor.
             %
-            assert(isvector(values), 'Values must be a vector');
-            if ~iscell(values)
+            assert(isempty(values) || isvector(values), 'Values must be a vector');
+            if isempty(values)
+                convValues = [];
+            elseif ~iscell(values)
                 if isnumeric(values) || islogical(values)
                     convValues = num2cell(values);
                 else
