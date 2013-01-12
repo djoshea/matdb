@@ -77,6 +77,9 @@ classdef DatabaseAnalysis < handle & DataSource
     end
 
     methods % not necessary to override if the defaults are okay
+
+        % determine if this DatabaseAnalysis instance is equivalent to other,
+        % an instance which has already been loaded in the Database.
         function tf = isequal(da, other)
             tf = true;
             if ~strcmp(class(da), class(other))
@@ -360,7 +363,8 @@ classdef DatabaseAnalysis < handle & DataSource
                                 entry = entry.select(1);
                             elseif entry.nEntries == 0
                                 % this likely indicates a bug in building / loading resultTable from cache
-                                error('Could not find match for resultTable row in order to do analysis');
+                                debug('WARNNG: Could not find match for resultTable row in order to do analysis');
+                                success = false;
                             end
                         end
 
