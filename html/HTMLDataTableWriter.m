@@ -16,6 +16,20 @@ classdef HTMLDataTableWriter < HTMLReportWriter
         end
 
         function writeDataTable(html, varargin)
+            p = inputParser;
+            p.addParamValue('displayableFieldsOnly', true, @islogical)
+            p.parse(varargin{:});
+
+            if p.Results.displayableFieldsOnly
+                % strip non-displayable fields from table
+                dfdMap = html.table.fieldDescriptorMap;
+                fields = html.table.fields;
+                for iField = 1:length(fields)
+                    removeMask(iField) = ~dfdMap(fields{iField}).isDisplayable;
+                end
+                html.table = html.table.removeField(fields(removeMask));
+            end
+            
             html.buildValueStruct();
 
             html.buildColumnAttrMap();

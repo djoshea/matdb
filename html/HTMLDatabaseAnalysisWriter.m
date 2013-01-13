@@ -359,7 +359,18 @@ classdef HTMLDatabaseAnalysisWriter < HTMLDataTableWriter
             html.openFile();
             html.writeHeader();
 
-            html.writeDataTable();
+            % strip the non-displayable analysis fields from the data table
+            fieldsAnalysis = intersect(html.table.fields, da.fieldsAnalysis);
+            dfdMap = html.table.fieldDescriptorMap;
+            for iField = 1:length(fieldsAnalysis)
+                removeMask(iField) = ~dfdMap(fieldsAnalysis{iField}).isDisplayable;
+            end
+            html.table = html.table.removeField(fieldsAnalysis(removeMask));
+
+            % don't automatically strip non-displayable fields as we use some of them
+            % as placeholders for figures, output, etc.
+
+            html.writeDataTable('displayableFieldsOnly', false);
 
             html.writeFooter();
             html.closeFile();

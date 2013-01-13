@@ -162,6 +162,16 @@ classdef DatabaseAnalysis < handle & DataSource
         end
     end
 
+    methods % Constructor
+        function da = DatabaseAnalysis(varargin)
+            p = inputParser;
+            p.addOptional('database', [], @(x) isa(x, 'Database'));
+            p.parse(varargin{:});
+
+            da.database = p.Results.database;
+        end 
+    end
+
     methods
         function checkHasRun(da)
             if ~da.hasRun
@@ -169,9 +179,9 @@ classdef DatabaseAnalysis < handle & DataSource
             end
         end
 
-        function resultTable = run(da, db, varargin)
+        function run(da, db, varargin)
             p = inputParser();
-            p.addRequired('db', @(db) isa(db, 'Database'));
+            p.addParamValue('database', @(db) isempty(db) || isa(db, 'Database'));
             % optionally select subset of fields for analysis
             p.addParamValue('fields', da.fieldsAnalysis, @iscellstr); 
             % check the cache for existing analysis values
@@ -198,13 +208,21 @@ classdef DatabaseAnalysis < handle & DataSource
             loadCacheOnly = p.Results.loadCacheOnly;
             catchErrors = p.Results.catchErrors;
             forceReport = p.Results.forceReport;
+            db = p.Results.database;
 
             % get analysis name
             name = da.getName();
             assert(isvarname(name), 'getName() must return a valid variable name');
             debug('Preparing for analysis : %s\n', name);
 
-            da.database = db;
+            if ~isempty(db)
+                da.database = db;
+            elseif isempty(db) && isempty(da.database)
+                error('Please set .database or provide ''database'' param value');
+            else
+                db = da.database;
+            end
+
             da.isRunning = true;
 
             % mark run timestamp consistently for all entries
@@ -212,6 +230,12 @@ classdef DatabaseAnalysis < handle & DataSource
             % analysis, then we'll just pick the most recent prior timestamp
             da.timeRun = now;
             fieldsAdditional = da.getFieldsAdditional();
+
+            [allFieldsAnalysis allDFDAnalysis] = da.getFieldsAnalysis();
+            for iField = 1:length(fieldsAnalysis)
+                dfd = allDFDAnalysis(fieldsAnalysis{iField});
+                fieldsAnalysisIsDisplayable(iField) = dfd.isDisplayable();
+            end
 
             % keep track of whether we need to re-cache the result table 
             resultTableChanged = false;
@@ -235,12 +259,17 @@ classdef DatabaseAnalysis < handle & DataSource
             % this will be a skeleton containing all of the fields for the analysis
             % none of which will be loaded initially
             resultTable = DatabaseAnalysisResultsTable(da);
+            da.database.addRelationshipOneToOne(resultTable.entryName, entryName); 
 
-            % now we ask resultTable load whatever it can from the cache
+            % mask by entry of which entries must be run
+            maskToAnalyze = true(resultTable.nEntries, 1);
+            
+            % here we ask resultTable to check cache existence and timestamps
+            % for all entries in the table. Timestamps are checked against
             if loadCache
                 % load the table itself from cache and copy over additional field
                 % values from the cache hit if present
-                if resultTable.hasCache()
+                %if resultTable.hasCache()
                     % LoadOnDemandMappedTable will automatically add all rows in
                     % resultTable that are missing in the cached copy (i.e. rows
                     % in the mapped table that were added after the cache was generated).
@@ -255,67 +284,74 @@ classdef DatabaseAnalysis < handle & DataSource
                     % call below.
                     % 
                     % resultTable = resultTable.loadFromCache();
-                end
+                %end
 
                 % now we search for field values in fieldsAnalysis in the cache
-                debug('Loading analysis field values from cache\n');
-                % have the table load values from cache, but not call the loadValue
-                % callback to request the field value as we'll run the actual
-                % analysis below
-                resultTable = resultTable.loadFields('loadCacheOnly', true);
+                debug('Checking cached field timestamps\n');
 
-                % get information about which field values were loaded from cache
-                loadedByEntry = resultTable.loadedByEntry;
+                % check the cache timestamps to determine
+                % which entry x field cells are out of date 
+                resultTable = resultTable.loadFields('loadCacheTimestampsOnly', true);
+                resultTable = resultTable.updateInDatabase();
                 cacheTimestamps = resultTable.cacheTimestampsByEntry;
 
-                % check whether we should warn about modifications that could
-                % theoretically affect the cached analysis but weren't explicitly
-                % returned by getEntryNamesChangesInvalidateCache()
-                references = makecol(da.getReferencesRelatedEntryNames());
-                relevantTableList = [entryName; references];
-                lastRelevantUpdate = db.getLastUpdated(relevantTableList);
+                % check for modifications to related tables that should invalidate
+                % the cached results. Entries with cached fields older than the 
+                % most recent modification to the related entry names will be 
+                % re run. The list of table entryNames to check is returned by
+                % da.getEntryNamesChangesInvalidateCache()
+                %
+                % Also for the list of referenced entry names  returned by 
+                % da.getReferencesRelatedEntryNames(), generate a warning 
+                % if the cache is older than this value, but don't re run it
+                tableListCacheWarning = makecol(da.getReferencesRelatedEntryNames());
+                tableListCacheInvalidate = makecol(da.getEntryNamesChangesInvalidateCache());
 
-                % calculate the oldest cache value loaded 
-                fieldCacheOlderThanTableCount = 0;
-                for iField = 1:length(fieldsAnalysis)
-                    field = fieldsAnalysis{iField};
-                    for iEntry = 1:resultTable.nEntries
-                        if loadedByEntry(iEntry).(field)
+                maskCacheInvalidates = false(resultTable.nEntries, 1);
+                
+                if ~isempty(tableListCacheWarning) || ~isempty(tableListCacheInvalidate)
+                    % get the most recent update for each table list
+                    cacheWarningReference = db.getLastUpdated(tableListCacheWarning);
+                    cacheInvalidateReference = db.getLastUpdated(tableListCacheInvalidate);
+
+                    cacheWarningEntryCount = 0;
+                    for iField = 1:length(fieldsAnalysis)
+                        field = fieldsAnalysis{iField};
+                        for iEntry = 1:resultTable.nEntries
                             timestamp = cacheTimestamps(iEntry).(field);
-                            if timestamp < lastRelevantUpdate
-                                fieldCacheOlderThanTableCount = fieldCacheOlderThanTableCount + 1;  
+                            if isempty(timestamp) || timestamp < cacheWarningReference 
+                                cacheWarningEntryCount = cacheWarningEntryCount + 1;
+                            end
+                            if isempty(timestamp) || timestamp < cacheInvalidateReference
+                                maskCacheInvalidates(iEntry) = true;
                             end
                         end
                     end
+                    if cacheWarningEntryCount > 0 
+                        debug('Warning: This DatabaseAnalysis has % entries with cached field values older than\nthe modification time of tables this analysis references (see getReferencesRelatedEntryNames()).\nUse .deleteCache() or call with ''loadCache'', false to force a full re-run.\n', ...
+                            cacheWarningEntryCount);
+                    end
+                    if any(maskCacheInvalidates)
+                        debug('Warning: This DatabaseAnalysis has % entries with cached field values older than\nthe modification time of tables this analysis depends upon (see getEntryNamesChangesInvalidatesCache()).\nUse .deleteCache() or call with ''loadCache'', false to force a full re-run.\n', ...
+                            nnz(maskCacheInvalidates));
+                    end
                 end
-                if fieldCacheOlderThanTableCount > 0 
-                    debug('Warning: This DatabaseAnalysis has field values which were loaded from cache, but references tables modified after %d cached values were written. Use .deleteCache() to force a full re-run.\n', ...
-                        fieldCacheOlderThanTableCount);
-                end
-            end
-
-            resultTable = da.database.updateTable(resultTable);
-            da.database.addRelationshipOneToOne(resultTable.entryName, entryName); 
-            
-            % NOTE: At this point you cannot assume that resultsTable and table (the mapped table)
-            % are in the same order. They simply have the same number of rows mapped via
-            % key field equivalence (1:1 relationship)
-
-            % analyze entries that haven't been loaded from cache?
-            if ~loadCacheOnly
-                % figure out which entries have not yet been loaded
-                loadedByEntry = resultTable.loadedByEntry;
-                maskToAnalyze = true(resultTable.nEntries, 1);
+                
+                % now we determine which entries have fully cached field values
+                % and thus need not be rerun
+                timestampsByEntry = resultTable.cacheTimestampsByEntry;
                 for iEntry = 1:resultTable.nEntries
                     allLoaded = true; 
                     for iField = 1:length(fieldsAnalysis)
                         field = fieldsAnalysis{iField};
-                        if ~loadedByEntry(iEntry).(field)
+                        if isempty(timestampsByEntry(iEntry).(field))
                             allLoaded = false;
                             break;
                         end
                     end
-                    maskToAnalyze(iEntry) = ~allLoaded;
+
+                    % reanalyze if any fields are missing, or if the cache is invalid
+                    maskToAnalyze(iEntry) = ~allLoaded || maskCacheInvalidates(iEntry);
 
                     % check whether this row has ever been run in the cache
                     % which is useful when the analysis does not use fields
@@ -324,9 +360,15 @@ classdef DatabaseAnalysis < handle & DataSource
                     end
                 end
 
-                debug('Analysis already loaded or cached for %d of %d entries\n', ...
-                    nnz(~maskToAnalyze), resultTable.nEntries);
-                        
+                debug('Valid cached field values found for %d of %d entries\n', ~nnz(maskToAnalyze), length(maskToAnalyze));
+            end
+
+            % NOTE: At this point you cannot assume that resultsTable and table (the mapped table)
+            % are in the same order. They simply have the same number of rows mapped via
+            % key field equivalence (1:1 relationship)
+
+            % here we analyze entries that haven't been loaded from cache
+            if ~loadCacheOnly
                 % do we re-run failed runs from last time
                 if da.getRerunCachedUnsuccessful() || rerunFailed
                     maskFailed = makecol(~resultTable.success);
@@ -370,9 +412,10 @@ classdef DatabaseAnalysis < handle & DataSource
 
                         description = entry.getKeyFieldValueDescriptors();
                         description = description{1};
+                        progressStr = sprintf('[%4.1f %%]', iAnalyze/nAnalyze*100);
                         fprintf('\n');
                         tcprintf('bright yellow', '____________________________________________________\n');
-                        tcprintf('bright yellow', 'Running analysis on %s\n', description);
+                        tcprintf('bright yellow', '%s Running analysis on %s\n', progressStr, description);
                         tcprintf('bright yellow', '____________________________________________________\n');
                         fprintf('\n');
                         
@@ -429,12 +472,19 @@ classdef DatabaseAnalysis < handle & DataSource
                         end
 
                         if success
+                            tcprintf('light green', 'Analysis ran successfully on this entry\n');
                             % Copy only fieldsAnalysis that were returned.
                             % Fields in dt.fieldsAnalysis but not fieldsAnalysis are okay
-                            fieldsCopy = intersect(da.fieldsAnalysis, fieldnames(resultStruct));
+                            [fieldsCopy fieldsReturnedMask] = intersect(da.fieldsAnalysis, fieldnames(resultStruct));
+                            fieldsCopyIsDisplayable = fieldsAnalysisIsDisplayable(fieldsReturnedMask); 
                             for iField = 1:length(fieldsCopy)
                                 field = fieldsCopy{iField};
-                                resultTable = resultTable.setFieldValue(iResult, field, resultStruct.(field), 'saveCache', saveCache);
+                                % don't keep any values in the table, this way we don't run out of memory as the
+                                % analysis drags on
+                                % Displayable field values needed for report generation will be reloaded
+                                % later on in this function
+                                resultTable = resultTable.setFieldValue(iResult, field, resultStruct.(field), ...
+                                    'saveCache', saveCache, 'storeInTable', false);
                             end
                         end
 
@@ -450,6 +500,8 @@ classdef DatabaseAnalysis < handle & DataSource
                 resultTable = resultTable.apply();
                 resultTable = resultTable.setAutoApply(savedAutoApply);
             end
+
+            resultTable.updateInDatabase();
 
             % now fill in all of the info fields of this class with the full table data
             da.successByEntry = resultTable.getValues('success') > 0;                
@@ -470,6 +522,13 @@ classdef DatabaseAnalysis < handle & DataSource
                     da.timeRun = max(timeRunList);
                 end
             else
+                % here we're writing the report
+                % before we do this, we need to load the values of all displayable fields
+                % for all rows that weren't just run (and thus are loaded in the table already)
+                fieldsDisplayable = fieldsAnalysis(fieldsAnalysisIsDisplayable); 
+                da.resultTable = da.resultTable.loadFields('fields', fieldsDisplayable);
+                da.resultTable.updateInDatabase();
+                
                 % make sure analysis path exists
                 mkdirRecursive(da.pathAnalysis);
                 % sym link figures from prior runs to the current analysis folder
@@ -486,12 +545,17 @@ classdef DatabaseAnalysis < handle & DataSource
             end
 
             if saveCache && resultTableChanged
-                % values have been cached as they were generated
-                da.resultTable.cache('cacheValues', false);
+                % this isn't necessary right now as all values in the table are cached
+                % separetely from the table. You must uncomment this if there are field values
+                % saved with the table in the future (as well as the section above where 
+                % the resultTable is loaded from cache)
+                %
+                % Cached field values have been cached as they were generated already
+                % da.resultTable.cache('cacheValues', false);
             end
 
             da.hasRun = true;
-            da.isRunning = true;
+            da.isRunning = false;
         end
 
         function saveFigure(da, figh, figName, figCaption)

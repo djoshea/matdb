@@ -110,7 +110,7 @@ classdef CacheManager < handle
             warning(warnStatus);
         end
 
-        function tf = hasCacheNewerThan(cm, cacheName, param, refTimestamp)
+        function [tf timestamp] = hasCacheNewerThan(cm, cacheName, param, refTimestamp)
             timestamp = cm.retrieveTimestamp(cacheName, param);
             tf = ~isempty(timestamp) && timestamp > refTimestamp;
         end

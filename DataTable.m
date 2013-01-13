@@ -1404,10 +1404,10 @@ classdef DataTable < DynamicClass & Cacheable
             db = db.addField(varargin{:}, 'keyField', true);
         end
 
-        function db = removeField(db, field)
+        function db = removeField(db, field, varargin)
             p = inputParser;
             p.addRequired('field', @(x) ischar(x) || iscellstr(x));
-            p.parse(field, values, varargin{:});
+            p.parse(field, varargin{:});
             field = p.Results.field;
 
             if ~iscell(field)
@@ -1749,11 +1749,16 @@ classdef DataTable < DynamicClass & Cacheable
 
             dfd = dt.fieldDescriptorMap(field);
             value = dfd.convertValues(value);
+            
+            if isempty(value)
+                value = dfd.getEmptyValue();
+            end
 
             if ~dfd.matrix && ~isempty(value) && iscell(value)
                 % if it's a matrix, this should be a cell array
                 value = value{1};
             end
+            
             dt = dt.subclassSetFieldValue(idx, field, value);
             dt = dt.updateModifiedTimestamp();
         end
@@ -2079,7 +2084,7 @@ classdef DataTable < DynamicClass & Cacheable
         % update the table stored in the database with this version of it,
         % thereby making any filtering done here also affect database queries
         % from related tables
-        function updateInDatabase(db)
+        function db = updateInDatabase(db)
             db.database.updateTable(db);
         end
     end

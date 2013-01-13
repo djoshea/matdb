@@ -13,6 +13,7 @@ classdef CountStudentsByTeacher < DatabaseAnalysis
         function [fields fieldDescriptorMap] = getFieldsAnalysis(da)
             fieldDescriptorMap = ValueMap('KeyType', 'char', 'ValueType', 'any');
             fieldDescriptorMap('nStudents') = ScalarField();
+            fieldDescriptorMap('nonDisplayableField') = UnspecifiedField();
 
             fields = fieldDescriptorMap.keys;
         end
@@ -29,11 +30,12 @@ classdef CountStudentsByTeacher < DatabaseAnalysis
         % analysis runs on. The DataTable with this entry name will run this analysis
         % once on each entry and map the results via a 1-1 relationship 
         function entryName = getMapsEntryName(da)
-            entryName = 'teachers';
+            entryName = 'teacher';
         end
 
         % run this analysis on the particular 
         function resultStruct = runOnEntry(da, entry, fields)
+            resultStruct.nonDisplayableField = 'this shouldn''t show up in the html report';
             resultStruct.nStudents = entry.classes.students.nEntries;
 
             if rand() < 0.5
