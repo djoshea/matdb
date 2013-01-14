@@ -840,7 +840,8 @@ classdef DatabaseAnalysis < handle & DataSource
 
         % actually load this into the database, assume all dependencies have been loaded
         function loadInDatabase(da, database)
-            da.run(database);
+            da.database = database;
+            da.run('loadCache', true, 'loadCacheOnly', true);
         end
 
         function deleteCache(da)
