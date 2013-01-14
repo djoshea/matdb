@@ -393,8 +393,9 @@ classdef LoadOnDemandMappedTable < StructTable
                             'saveCache', false);
                     end
                     dt.loadedByEntry(iEntry) = loaded;
-                    dt.cacheTimestampsByEntry(iEntry) = cacheTimestamps;
                 end
+                
+                dt.cacheTimestampsByEntry(iEntry) = cacheTimestamps;
 
                 if ~loadCacheTimestampsOnly
                     % build table of loaded values
@@ -472,14 +473,15 @@ classdef LoadOnDemandMappedTable < StructTable
             if storeInTable
                 dt = setFieldValue@StructTable(dt, idx, field, value);
             end
-            if markLoaded && ismember(field, dt.fieldsLoadOnDemand)
+            if storeInTable && markLoaded && ismember(field, dt.fieldsLoadOnDemand)
                 dt.loadedByEntry(idx).(field) = true;
             end
-            if markUnloaded && ismember(field, dt.fieldsLoadOnDemand)
+            if storeInTable && markUnloaded && ismember(field, dt.fieldsLoadOnDemand)
                 dt.loadedByEntry(idx).(field) = false;
             end
-            if saveCache && ismember(field, dt.fieldsCacheable)  
+            if saveCache && ismember(field, dt.fieldsCacheable)
                 dt.cacheFieldValue(idx, field, 'value', value);
+                dt.cacheTimestampsByEntry(idx).field = now;
             end
         end
     end
@@ -525,7 +527,7 @@ classdef LoadOnDemandMappedTable < StructTable
             [validCache timestamp] = cm.hasCacheNewerThan(cacheName, cacheParam, cacheTimestamp);
         end
 
-        function cacheFieldValue(dt, iEntry, field, varargin)
+        function timestamp = cacheFieldValue(dt, iEntry, field, varargin)
             p = inputParser;
             p.addRequired('iEntry', @(x) isscalar(x) && x > 0 && x <= dt.nEntries);
             p.addRequired('field', @(x) ischar(x) && dt.isField(field));

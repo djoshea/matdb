@@ -179,9 +179,9 @@ classdef DatabaseAnalysis < handle & DataSource
             end
         end
 
-        function run(da, db, varargin)
+        function run(da, varargin)
             p = inputParser();
-            p.addParamValue('database', @(db) isempty(db) || isa(db, 'Database'));
+            p.addParamValue('database', [], @(db) isempty(db) || isa(db, 'Database'));
             % optionally select subset of fields for analysis
             p.addParamValue('fields', da.fieldsAnalysis, @iscellstr); 
             % check the cache for existing analysis values
@@ -199,7 +199,7 @@ classdef DatabaseAnalysis < handle & DataSource
             % generate a new report and figures folder even if no new analysis
             % was run, useful if issues encountered with report generation
             p.addParamValue('forceReport', false, @islogical);
-            p.parse(db, varargin{:});
+            p.parse(varargin{:});
 
             fieldsAnalysis = p.Results.fields;
             loadCache = p.Results.loadCache;
@@ -292,6 +292,8 @@ classdef DatabaseAnalysis < handle & DataSource
                 % check the cache timestamps to determine
                 % which entry x field cells are out of date 
                 resultTable = resultTable.loadFields('loadCacheTimestampsOnly', true);
+                % load success so that we can check failed entries later
+                resultTable = resultTable.loadFields('fields', 'success', 'loadCacheOnly', true);
                 resultTable = resultTable.updateInDatabase();
                 cacheTimestamps = resultTable.cacheTimestampsByEntry;
 
@@ -360,7 +362,7 @@ classdef DatabaseAnalysis < handle & DataSource
                     end
                 end
 
-                debug('Valid cached field values found for %d of %d entries\n', ~nnz(maskToAnalyze), length(maskToAnalyze));
+                debug('Valid cached field values found for %d of %d entries\n', nnz(~maskToAnalyze), length(maskToAnalyze));
             end
 
             % NOTE: At this point you cannot assume that resultsTable and table (the mapped table)
@@ -524,9 +526,10 @@ classdef DatabaseAnalysis < handle & DataSource
             else
                 % here we're writing the report
                 % before we do this, we need to load the values of all displayable fields
-                % for all rows that weren't just run (and thus are loaded in the table already)
-                fieldsDisplayable = fieldsAnalysis(fieldsAnalysisIsDisplayable); 
-                da.resultTable = da.resultTable.loadFields('fields', fieldsDisplayable);
+                % and additional fields used in the report
+                fieldsAnalysisDisplayable = intersect(da.resultTable.fieldsAnalysis, da.resultTable.fieldsDisplayable);
+                fieldsToLoad = union(fieldsAnalysisDisplayable,  da.resultTable.fieldsAdditional);
+                da.resultTable = da.resultTable.loadFields('fields', fieldsToLoad, 'loadCacheOnly', true);
                 da.resultTable.updateInDatabase();
                 
                 % make sure analysis path exists

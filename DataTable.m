@@ -45,6 +45,8 @@ classdef DataTable < DynamicClass & Cacheable
 
         fields % list of fields in the data table
         nFields % number of fields
+        
+        fieldsDisplayable % fields filtered by fieldDescriptor.isDisplayable
 
         fieldDescriptorMap % ValueMap fieldName -> DataFieldDescriptor instance 
 
@@ -210,6 +212,16 @@ classdef DataTable < DynamicClass & Cacheable
         function nFields = get.nFields(db)
             db.checkAppliedFields(); 
             nFields = length(db.fieldsCache);
+        end
+        
+        function fieldsDisplayable = get.fieldsDisplayable(db)
+            fields = db.fields;
+            mask = false(size(fields));
+            for iField = 1:length(fields)
+                mask(iField) = db.getFieldDescriptor(fields{iField}).isDisplayable;
+            end
+            
+            fieldsDisplayable = fields(mask);
         end
 
         function tf = isField(db, fld)

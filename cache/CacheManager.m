@@ -158,7 +158,7 @@ classdef CacheManager < handle
             end
         end 
 
-        function saveData(cm, cacheName, param, data, varargin)
+        function timestamp = saveData(cm, cacheName, param, data, varargin)
             p = inputParser;
             p.addRequired('cacheName', @ischar); 
             p.addRequired('param', @(x) true);

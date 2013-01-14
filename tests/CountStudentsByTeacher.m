@@ -1,6 +1,10 @@
 classdef CountStudentsByTeacher < DatabaseAnalysis 
 
     methods
+        function da = CountStudentsByTeacher(varargin)
+            da = da@DatabaseAnalysis(varargin{:});
+        end
+        
         % return a single word descriptor for this analysis, ignoring parameter
         % settings in param. The results will be stored as a DataTable with this
         % as the entryName
