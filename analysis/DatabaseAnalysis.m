@@ -534,6 +534,17 @@ classdef DatabaseAnalysis < handle & DataSource
                 
                 % make sure analysis path exists
                 mkdirRecursive(da.pathAnalysis);
+                chmod(MatdbSettingsStore.settings.permissionsAnalysisFiles, da.pathAnalysis);
+                if exist(da.pathFigures, 'dir')
+                    chmod(MatdbSettingsStore.settings.permissionsAnalysisFiles, da.pathFigures);
+                    for i = 1:length(da.figureExtensions)
+                        path = fullfile(da.pathFigures, da.figureExtensions{i});
+                        if exist(path, 'dir')
+                            chmod(MatdbSettingsStore.settings.permissionsAnalysisFiles, path);
+                        end
+                    end
+                end
+
                 % sym link figures from prior runs to the current analysis folder
                 da.linkOldFigures('saveCache', saveCache);
                 % save the html report (which will copy resources folder over too)
@@ -662,6 +673,7 @@ classdef DatabaseAnalysis < handle & DataSource
                 end
             end
             makeSymLink(htmlFile, indexLink);
+            chmod(MatdbSettingsStore.settings.permissionsAnalysisFiles, indexLink);
         end
 
         % symlink my analysis directory to "current" for ease of navigation
@@ -678,6 +690,7 @@ classdef DatabaseAnalysis < handle & DataSource
                 end
             end
             makeSymLink(thisPath, currentPath);
+            chmod(MatdbSettingsStore.settings.permissionsAnalysisFiles, currentPath);
         end
 
         % symlink all figures loaded from cache that are not saved in the same
@@ -689,7 +702,7 @@ classdef DatabaseAnalysis < handle & DataSource
             saveCache = p.Results.saveCache;
             da.checkHasRun();
 
-            if ~isunix || ~ismac 
+            if ~isunix && ~ismac 
                 % TODO add support for windows nt junctions 
                 return;
             end
@@ -718,6 +731,10 @@ classdef DatabaseAnalysis < handle & DataSource
                                 % change the figure info link location, not the actual file path
                                 info(iFigure).fileLinkList{iExt} = thisRunLocation;
                                 madeChanges = true;
+                                
+                                % expose permissions on the symlink and the
+                                % original file, just in case
+                                chmod(MatdbSettingsStore.settings.permissionsAnalysisFiles, {actualFile, thisRunLocation});
                             end
                         end
                     end
@@ -747,6 +764,8 @@ classdef DatabaseAnalysis < handle & DataSource
             debug('Saving HTML Report to %s\n', fileName);
             html = HTMLDatabaseAnalysisWriter(fileName);
             html.generate(da);
+            chmod(MatdbSettingsStore.settings.permissionsAnalysisFiles, html.fileName);
+            chmod(MatdbSettingsStore.settings.permissionsAnalysisFiles, html.resourcesPathStore, 'recursive', true);
         end
 
         function disp(da)

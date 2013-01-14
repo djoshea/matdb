@@ -18,6 +18,9 @@ classdef MatdbSettingsStore < handle
         % root location for saving figures, analysis html reports, etc. 
         pathListAnalysis
 
+        % unix filesystem permissions to set for files created by analysis
+        permissionsAnalysisFiles
+
         % root location for saving csv files 
         pathListCSVData
     end
