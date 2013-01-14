@@ -38,6 +38,12 @@ classdef DatabaseAnalysisResultsTable < LoadOnDemandMappedTable
             dt.entryNamePlural = dt.entryName;
             dt = initialize@LoadOnDemandMappedTable(dt, 'database', da.database);
         end
+
+        function [dt valuesByEntry] = loadFields(dt, varargin)
+            % enforce that we never generate field values here, we only load from cache
+            dt = loadFields@LoadOnDemandMappedTable(dt, varargin{:}, 'loadCacheOnly', true);
+        end
+
     end
 
     methods
