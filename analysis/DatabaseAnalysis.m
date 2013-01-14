@@ -186,6 +186,12 @@ classdef DatabaseAnalysis < handle & DataSource
             p.addParamValue('fields', da.fieldsAnalysis, @iscellstr); 
             % check the cache for existing analysis values
             p.addParamValue('loadCache', true, @islogical); 
+            % load the cached success value so we know which entries have been run
+            p.addParamValue('loadCacheSuccess', true, @islogical);
+            % look at cached field value timestamps and invalidate them if they
+            % are newer than the most recent modification to any table returned 
+            % by getEntryNamesChangesInvalidateCache()
+            p.addParamValue('checkCacheTimestamps', true, @islogical);
             % save computed analysis values to the cache
             p.addParamValue('saveCache', true, @islogical); 
             % rerun any failed entries from prior runs, true value supersedes
@@ -203,6 +209,8 @@ classdef DatabaseAnalysis < handle & DataSource
 
             fieldsAnalysis = p.Results.fields;
             loadCache = p.Results.loadCache;
+            loadCacheSuccess = p.Results.loadCacheSuccess;
+            checkCacheTimestamps = p.Results.checkCacheTimestamps;
             saveCache = p.Results.saveCache;
             rerunFailed = p.Results.rerunFailed;
             loadCacheOnly = p.Results.loadCacheOnly;
@@ -263,7 +271,14 @@ classdef DatabaseAnalysis < handle & DataSource
 
             % mask by entry of which entries must be run
             maskToAnalyze = true(resultTable.nEntries, 1);
-            
+           
+            if loadCacheSuccess || loadCache
+                debug('Loading cached success field for all entries\n');
+                % load success so that we can check failed entries later
+                resultTable = resultTable.loadFields('fields', 'success', 'loadCacheOnly', true);
+                resultTable = resultTable.updateInDatabase();
+            end
+
             % here we ask resultTable to check cache existence and timestamps
             % for all entries in the table. Timestamps are checked against
             if loadCache
@@ -286,16 +301,6 @@ classdef DatabaseAnalysis < handle & DataSource
                     % resultTable = resultTable.loadFromCache();
                 %end
 
-                % now we search for field values in fieldsAnalysis in the cache
-                debug('Checking cached field timestamps\n');
-
-                % check the cache timestamps to determine
-                % which entry x field cells are out of date 
-                resultTable = resultTable.loadFields('loadCacheTimestampsOnly', true);
-                % load success so that we can check failed entries later
-                resultTable = resultTable.loadFields('fields', 'success', 'loadCacheOnly', true);
-                resultTable = resultTable.updateInDatabase();
-                cacheTimestamps = resultTable.cacheTimestampsByEntry;
 
                 % check for modifications to related tables that should invalidate
                 % the cached results. Entries with cached fields older than the 
@@ -311,7 +316,15 @@ classdef DatabaseAnalysis < handle & DataSource
 
                 maskCacheInvalidates = false(resultTable.nEntries, 1);
                 
-                if ~isempty(tableListCacheWarning) || ~isempty(tableListCacheInvalidate)
+                if checkCacheTimestamps && ~isempty(tableListCacheWarning) || ~isempty(tableListCacheInvalidate)
+                    % now we search for field values in fieldsAnalysis in the cache
+                    debug('Checking cached field timestamps\n');
+
+                    % check the cache timestamps to determine
+                    % which entry x field cells are out of date 
+                    resultTable = resultTable.loadFields('loadCacheTimestampsOnly', true);
+                    resultTable = resultTable.updateInDatabase();
+                    cacheTimestamps = resultTable.cacheTimestampsByEntry;
                     % get the most recent update for each table list
                     cacheWarningReference = db.getLastUpdated(tableListCacheWarning);
                     cacheInvalidateReference = db.getLastUpdated(tableListCacheInvalidate);
@@ -841,7 +854,9 @@ classdef DatabaseAnalysis < handle & DataSource
         % actually load this into the database, assume all dependencies have been loaded
         function loadInDatabase(da, database)
             da.database = database;
-            da.run('loadCache', true, 'loadCacheOnly', true);
+            % do the bare minimum. Don't check cache timestamps or existence,
+            % don't run new entries, don't rerun failed entries
+            da.run('loadCacheSuccess', false, 'loadCache', false, 'loadCacheOnly', true);
         end
 
         function deleteCache(da)
