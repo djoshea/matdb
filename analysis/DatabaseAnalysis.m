@@ -31,7 +31,7 @@ classdef DatabaseAnalysis < handle & DataSource
     end
 
     properties
-        figureExtensions = {'png', 'eps', 'svg'};
+        figureExtensions = {'fig', 'png', 'eps', 'svg'};
     end
     
     properties(Access=protected)
@@ -581,12 +581,13 @@ classdef DatabaseAnalysis < handle & DataSource
             nExts = length(exts);
             success = false(nExts, 1);
             fileList = cell(nExts, 1);
-            %debug('Saving figure %s as %s\n', figName, strjoin(exts, ', '));
+            tcprintf('light cyan', 'Saving figure %s as %s\n', figName, strjoin(exts, ', '));
             for i = 1:nExts
                 ext = exts{i};
                 fileName = da.getFigureName(entryTable, figName, ext);
                 mkdirRecursive(fileparts(fileName));
                 if strcmp(ext, 'svg')
+                    % Save SVG
                     try
                         plot2svg(fileName, figh);
                         success(i) = true;
@@ -594,7 +595,17 @@ classdef DatabaseAnalysis < handle & DataSource
                         tcprintf('light red', 'WARNING: Error saving to svg\n');
                         tcprintf('light red', exc.getReport());
                     end
+                elseif strcmp(ext, 'fig')
+                    % Save FIG
+                    try
+                        saveas(figh, fileName);
+                        success(i) = true;
+                    catch exc
+                        tcprintf('light red', 'WARNING: Error saving to fig\n');
+                        tcprintf('light red', exc.getReport());
+                    end
                 else
+                    % Save PNG, EPS, etc.
                     try
                         exportfig(figh, fileName, 'format', ext, 'resolution', 300);
                         success(i) = true;
