@@ -14,6 +14,8 @@ classdef PValueField < ScalarField
                 str = 'p < 0.01 *';
             elseif p < 0.05 
                 str = 'p < 0.05 *';
+            elseif isnan(p) || isempty(p)
+                str = '';
             else
                 str = sprintf('p > 0.05 (%.2f)', p);
             end
