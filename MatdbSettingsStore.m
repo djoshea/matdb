@@ -27,9 +27,12 @@ classdef MatdbSettingsStore < handle
 
     methods(Static)
         % load on demand
-        function settings = settings()
+        function settings = settings(varargin)
             persistent pSettings;
-            if isempty(pSettings) 
+            if ~isempty(varargin) && isa(varargin{1}, 'MatdbSettingsStore')
+                pSettings = varargin{1};
+            end
+            if isempty(pSettings)
                 pSettings = MatdbSettingsStore.loadSettings();
             end
             settings = pSettings; 
@@ -45,6 +48,9 @@ classdef MatdbSettingsStore < handle
             catch
                 error('ERROR: Could not locate matdbSettings.mat on path. See MatdbSettingsStore');
             end
+
+            % update the persisent cache inside .settings
+            MatdbSettingsStore.settings(instance);
         end
 
         % STATIC ACCESSORS FOR SAVED VALUES
@@ -81,6 +87,9 @@ classdef MatdbSettingsStore < handle
             filename = fullfile(path, 'matdbSettings.mat');
             save(filename, 'matdbSettings');
             debug('MatdbSettings saved to %s\n', filename);
+            
+            % update the persisent cache inside .settings
+            MatdbSettingsStore.settings(matdbSettings);
         end
     end
 end
