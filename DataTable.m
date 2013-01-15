@@ -401,6 +401,7 @@ classdef DataTable < DynamicClass & Cacheable
         
         function db = filterByField(db, field, filterKeyword, varargin)
             db.warnIfNoArgOut(nargout);
+            assert(ischar(filterKeyword), 'Usage: filterByField(field, filterKeyword, [filterArgs])');
             db = db.filterEntries(filterKeyword, field, varargin{:});
         end
 

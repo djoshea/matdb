@@ -71,6 +71,7 @@ classdef DataFilter < handle & matlab.mixin.Heterogeneous
         end
 
         function filt = createFromKeyword(keyword, varargin)
+            assert(ischar(keyword), 'Please provide filter keyword string');
             keywordMap = DataFilter.getKeywordMap();
             assert(keywordMap.isKey(keyword), ...
                 'DataFilter with keyword %s not found', keyword);
