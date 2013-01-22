@@ -272,7 +272,7 @@ classdef DatabaseAnalysis < handle & DataSource
             % mask by entry of which entries must be run
             maskToAnalyze = true(resultTable.nEntries, 1);
            
-            if loadCacheSuccess || loadCache
+            if loadCacheSuccess && ~loadCache
                 debug('Loading cached success field for all entries\n');
                 % load success so that we can check failed entries later
                 resultTable = resultTable.loadFields('fields', 'success', 'loadCacheOnly', true);
@@ -315,14 +315,19 @@ classdef DatabaseAnalysis < handle & DataSource
                 tableListCacheInvalidate = makecol(da.getEntryNamesChangesInvalidateCache());
 
                 maskCacheInvalidates = false(resultTable.nEntries, 1);
+
+                % check the cache timestamps to determine
+                % which entry x field cells are missing or out of date 
+                debug('Checking cached field existence and success field\n');
+                resultTable = resultTable.loadFields('fields', 'success', 'loadCacheOnly', true);
+                fieldsToLoad = setdiff(resultTable.fieldsCacheable, 'success');
+                resultTable = resultTable.loadFields('fields', fieldsToLoad, 'loadCacheTimestampsOnly', true);
+                resultTable.updateInDatabase();
                 
                 if checkCacheTimestamps && ~isempty(tableListCacheWarning) || ~isempty(tableListCacheInvalidate)
                     % now we search for field values in fieldsAnalysis in the cache
-                    debug('Checking cached field timestamps\n');
+                    debug('Checking cached field timestamps against dependencies\n');
 
-                    % check the cache timestamps to determine
-                    % which entry x field cells are out of date 
-                    resultTable = resultTable.loadFields('loadCacheTimestampsOnly', true);
                     resultTable = resultTable.updateInDatabase();
                     cacheTimestamps = resultTable.cacheTimestampsByEntry;
                     % get the most recent update for each table list
@@ -355,8 +360,19 @@ classdef DatabaseAnalysis < handle & DataSource
                 % now we determine which entries have fully cached field values
                 % and thus need not be rerun
                 timestampsByEntry = resultTable.cacheTimestampsByEntry;
+                successFlag = resultTable.success;
+                failedMask = false(resultTable.nEntries,1);
                 for iEntry = 1:resultTable.nEntries
                     allLoaded = true; 
+                    if ~isempty(timestampsByEntry(iEntry).success) && ~successFlag(iEntry)
+                        % if it has a success field and it's marked as
+                        % failed, consider it loaded. We'll rerunFailed
+                        % below if requested
+                        failedMask(iEntry) = true;
+                        continue;
+                    end
+                    
+                    % otherwise check the existence of all fields
                     for iField = 1:length(fieldsAnalysis)
                         field = fieldsAnalysis{iField};
                         if isempty(timestampsByEntry(iEntry).(field))
@@ -376,6 +392,7 @@ classdef DatabaseAnalysis < handle & DataSource
                 end
 
                 debug('Valid cached field values found for %d of %d entries\n', nnz(~maskToAnalyze), length(maskToAnalyze));
+                debug('Run was successful for %d of %d entries\n', nnz(failedMask), nnz(~maskToAnalyze));
             end
 
             % NOTE: At this point you cannot assume that resultsTable and table (the mapped table)
