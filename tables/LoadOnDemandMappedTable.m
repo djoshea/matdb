@@ -39,7 +39,6 @@ classdef LoadOnDemandMappedTable < StructTable
         % rather than cached as part of the table and thereby loaded in aggregate.
         [fields fieldDescriptorMap] = getFieldsLoadOnDemand(dt)
 
-
         % from the fields above, return a list of fields that you would like
         % to be cached automatically, using independent mat files for each entry
         % For these fields, the cache will be loaded if present, otherwise

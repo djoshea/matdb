@@ -8,6 +8,79 @@ classdef (HandleCompatible) Cacheable
         param = getCacheParam(obj) 
     end
 
+    % COPY THE FOLLOWING INTO YOUR SUBCLASS
+    % { 
+    
+    methods
+        function s = saveobj(obj)
+            % here we essentially store the fields of obj to a struct
+            % which stores the classname of the leaf class in a field that hopefully
+            % won't overlap with any class properties. This leaf class field allows
+            % us to call the appropriate class constructor inside loadobj.
+
+            classContext = classNameCurrentMethod();
+            if ~strcmp(classContext, class(obj))
+                error('Method saveobj must be implemented in class %s directly, not run by class %s', class(obj), classContext);
+            end
+
+            meta = metaclass(obj);
+            propInfo = meta.PropertyList;
+            s = struct();
+            for iProp = 1:length(propInfo)
+                info = propInfo(iProp);
+                name = info.Name;
+                if info.Dependent && isempty(info.SetMethod)
+                    continue;
+                end
+                if info.Transient || info.Constant
+                    continue;
+                end
+                s.(name) = obj.(name);
+            end
+        end
+    end
+
+    methods(Static)
+        % implement loadobj so that Cacheable classes are compatible
+        % with fast serialize/deserialize for faster saving to disk 
+        function obj = loadobj(s)
+            classContext = classNameCurrentMethod();
+            if isobject(s)
+                %warning('Cacheable loadobj should generally be passed a struct');
+                assert(isa(s, classContext), 'Method loadobj called on %s but passed a %s instance. Check that %s implements loadobj directly.', ...
+                    classContext, class(s), class(s));
+
+                obj = s;
+            elseif isstruct(s)
+                leafClassField = Cacheable.leafClassForCacheableField;
+                leafClass = s.(leafClassField);
+
+                assert(strcmp(leafClass, classContext), 'Method loadobj called on %s but instance is a serialized %s. Check that %s implements loadobj directly.', ...
+                    classContext, leafClass, leafClass);
+
+                meta = metaclass(classContext);
+                propInfo = meta.PropertyList;
+                for iProp = 1:length(propInfo)
+                    info = propInfo(iProp);
+                    name = info.Name;
+                    if info.Dependent && isempty(info.SetMethod)
+                        continue;
+                    end
+                    if info.Transient || info.Constant
+                        continue;
+                    end
+                    obj.(name) = s.(name);
+                end
+            end
+        end
+    end
+
+    % }
+
+    properties(Constant, Hidden, Access=protected)
+        leafClassForCacheableField = 'LEAF_CLASS_FOR_CACHEABLE';
+    end
+
     methods % Methods which subclasses may wish to override 
 
         % return a cache manager instance
@@ -43,7 +116,11 @@ classdef (HandleCompatible) Cacheable
             timestamp = -Inf;
         end
 
-        function transferToHandle(src, dest)
+        function dest = transferToHandle(src, dest)
+            % when calling .loadCache() on a Cacheable handle object, we need 
+            % a way to make the handle that you are holding into the cached object
+            % This function turns src (what you are holding) into dest
+            % by copying all transferrable properties over
             assert(isa(dest, class(src)), 'Class names must match exactly');
 
             meta = metaclass(src);
@@ -60,7 +137,29 @@ classdef (HandleCompatible) Cacheable
                 dest.(name) = src.(name);
             end
         end
+
+        function obj = transferStructToObject(obj, s)
+            % when loadobj(s) receives a struct argument, you can call this method
+            % to simply transfer properties over from the struct to the class
+            assert(isstruct(s), 'Argument must be a struct');
+
+            meta = metaclass(obj);
+            propInfo = meta.PropertyList;
+            for iProp = 1:length(propInfo)
+                info = propInfo(iProp);
+                name = info.Name;
+                if info.Dependent && isempty(info.SetMethod)
+                    continue;
+                end
+                if info.Transient || info.Constant
+                    continue;
+                end
+                obj.(name) = s.(name);
+            end
+        end
+
     end
+
 
     methods
         function name = getFullCacheName(obj)
