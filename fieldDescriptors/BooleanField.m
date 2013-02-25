@@ -58,7 +58,8 @@ classdef BooleanField < DataFieldDescriptor
                 convValues = false;
             elseif iscell(values)
                 [valid convValues] = isScalarCell(values);
-                convValues = convValues ~= 0;
+                % NaN and 0 --> false.
+                convValues = ~isnan(convValues) & convValues ~= 0;
                 assert(valid, 'Cannot convert values into boolean array');
             elseif isnumeric(values) || islogical(values) 
                 convValues = values ~= 0;

@@ -93,7 +93,7 @@ classdef Database < DynamicClass & handle
             debug('Adding table with entryName %s (%s)\n', entryName, entryNamePlural)
 
             if db.hasTable(entryName)
-                warning('Database already has table with entryName %s, overwriting', entryName);
+                debug('WARNING: Database already has table with entryName %s, overwriting\n', entryName);
                 % remove old keys
                 oldPlural = db.singularToPluralMap(entryName);
                 db.pluralToSingularMap = db.pluralToSingularMap.remove(oldPlural);

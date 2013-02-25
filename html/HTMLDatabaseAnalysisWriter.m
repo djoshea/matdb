@@ -2,7 +2,7 @@ classdef HTMLDatabaseAnalysisWriter < HTMLDataTableWriter
 
     properties
         da
-        useImageExtensionList = {'svg', 'png', 'jpg'};
+        useImageExtensionList = {'png', 'svg', 'jpg'};
     end
 
     methods

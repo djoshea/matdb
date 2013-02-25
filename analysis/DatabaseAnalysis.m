@@ -5,7 +5,7 @@ classdef DatabaseAnalysis < handle & DataSource
         timeRun
 
         % has this analysis run already?
-        hasRun
+        hasRun = false;
 
         % is the analysis currently running? used by internal functions
         % to allow error-free calling of runOnEntry outside of .run()
@@ -31,7 +31,7 @@ classdef DatabaseAnalysis < handle & DataSource
     end
 
     properties
-        figureExtensions = {'fig', 'png', 'eps', 'svg'};
+        figureExtensions = {'fig', 'png', 'svg', 'pdf'};
     end
     
     properties(Access=protected)
@@ -77,7 +77,6 @@ classdef DatabaseAnalysis < handle & DataSource
     end
 
     methods % not necessary to override if the defaults are okay
-
         % determine if this DatabaseAnalysis instance is equivalent to other,
         % an instance which has already been loaded in the Database.
         function tf = isequal(da, other)
@@ -173,11 +172,25 @@ classdef DatabaseAnalysis < handle & DataSource
     end
 
     methods
+        
+        function setDatabase(da, db)
+            assert(~da.hasRun, 'Database cannot be changed after analysis has run');
+            assert(isa(db, 'Database'), 'Must be a Database instance');
+            da.database = db;
+        end
+        
         function checkHasRun(da)
             if ~da.hasRun
-                error('Analysis has not yet been run. Please call .run(database) first.');
+                error('Analysis has not yet been run. Please call .run() first.');
             end
         end
+        
+        function checkIsRunning(da)
+            if ~da.isRunning && ~da.hasRun
+                error('Analysis is not currently running. Please call .run() first.');
+            end
+        end
+
 
         function run(da, varargin)
             p = inputParser();
@@ -364,7 +377,7 @@ classdef DatabaseAnalysis < handle & DataSource
                 failedMask = false(resultTable.nEntries,1);
                 for iEntry = 1:resultTable.nEntries
                     allLoaded = true; 
-                    if ~isempty(timestampsByEntry(iEntry).success) && ~successFlag(iEntry)
+                    if isempty(timestampsByEntry(iEntry).success) || ~successFlag(iEntry)
                         % if it has a success field and it's marked as
                         % failed, consider it loaded. We'll rerunFailed
                         % below if requested
@@ -391,8 +404,8 @@ classdef DatabaseAnalysis < handle & DataSource
                     end
                 end
 
+                debug('Previous run was successful on %d of %d entries\n', nnz(failedMask), length(maskToAnalyze));
                 debug('Valid cached field values found for %d of %d entries\n', nnz(~maskToAnalyze), length(maskToAnalyze));
-                debug('Run was successful for %d of %d entries\n', nnz(failedMask), nnz(~maskToAnalyze));
             end
 
             % NOTE: At this point you cannot assume that resultsTable and table (the mapped table)
@@ -444,11 +457,12 @@ classdef DatabaseAnalysis < handle & DataSource
 
                         description = entry.getKeyFieldValueDescriptors();
                         description = description{1};
-                        progressStr = sprintf('[%4.1f %%]', iAnalyze/nAnalyze*100);
+                        progressStr = sprintf('[%5.1f %%]', (iAnalyze-1)/nAnalyze*100);
                         fprintf('\n');
-                        tcprintf('bright yellow', '____________________________________________________\n');
+                        line = [repmat('_', 1, 79) '\n'];
+                        tcprintf('bright yellow', line);
                         tcprintf('bright yellow', '%s Running analysis on %s\n', progressStr, description);
-                        tcprintf('bright yellow', '____________________________________________________\n');
+                        tcprintf('bright yellow', line);
                         fprintf('\n');
                         
                         % for saveFigure to look at 
@@ -504,7 +518,7 @@ classdef DatabaseAnalysis < handle & DataSource
                         end
 
                         if success
-                            tcprintf('light green', 'Analysis ran successfully on this entry\n');
+                            tcprintf('bright green', '\nAnalysis ran successfully on this entry\n');
                             % Copy only fieldsAnalysis that were returned.
                             % Fields in dt.fieldsAnalysis but not fieldsAnalysis are okay
                             [fieldsCopy fieldsReturnedMask] = intersect(da.fieldsAnalysis, fieldnames(resultStruct));
@@ -526,6 +540,8 @@ classdef DatabaseAnalysis < handle & DataSource
                         resultTable = resultTable.setFieldValue(iResult, 'runTimestamp', da.timeRun, 'saveCache', saveCache);
                         resultTable = resultTable.setFieldValue(iResult, 'exception', exc, 'saveCache', saveCache);
                         resultTable = resultTable.setFieldValue(iResult, 'figureInfo', da.figureInfoCurrentEntry, 'saveCache', saveCache);
+                        
+                        close all;
                     end
                 end
 
@@ -533,6 +549,9 @@ classdef DatabaseAnalysis < handle & DataSource
                 resultTable = resultTable.setAutoApply(savedAutoApply);
             end
 
+            fprintf('\n');
+            debug('Finishing analysis run\n');
+            
             resultTable.updateInDatabase();
 
             % now fill in all of the info fields of this class with the full table data
@@ -574,6 +593,8 @@ classdef DatabaseAnalysis < handle & DataSource
                         end
                     end
                 end
+                
+                da.hasRun = true;
 
                 % sym link figures from prior runs to the current analysis folder
                 da.linkOldFigures('saveCache', saveCache);
@@ -598,7 +619,6 @@ classdef DatabaseAnalysis < handle & DataSource
                 % da.resultTable.cache('cacheValues', false);
             end
 
-            da.hasRun = true;
             da.isRunning = false;
         end
 
@@ -622,42 +642,18 @@ classdef DatabaseAnalysis < handle & DataSource
             nExts = length(exts);
             success = false(nExts, 1);
             fileList = cell(nExts, 1);
-            tcprintf('light cyan', 'Saving figure %s as %s\n', figName, strjoin(exts, ', '));
+            tcprintf('bright cyan', 'Saving figure %s as %s\n', figName, strjoin(exts, ', '));
             for i = 1:nExts
                 ext = exts{i};
                 fileName = da.getFigureName(entryTable, figName, ext);
-                mkdirRecursive(fileparts(fileName));
-                if strcmp(ext, 'svg')
-                    % Save SVG
-                    try
-                        plot2svg(fileName, figh);
-                        success(i) = true;
-                    catch exc
-                        tcprintf('light red', 'WARNING: Error saving to svg\n');
-                        tcprintf('light red', exc.getReport());
-                    end
-                elseif strcmp(ext, 'fig')
-                    % Save FIG
-                    try
-                        saveas(figh, fileName);
-                        success(i) = true;
-                    catch exc
-                        tcprintf('light red', 'WARNING: Error saving to fig\n');
-                        tcprintf('light red', exc.getReport());
-                    end
-                else
-                    % Save PNG, EPS, etc.
-                    try
-                        exportfig(figh, fileName, 'format', ext, 'resolution', 300);
-                        success(i) = true;
-                    catch exc
-                        tcprintf('light red', 'WARNING: Error saving to %s', ext);
-                        tcprintf('light red', exc.getReport());
-                        fprintf('\n');
-                    end
-                end
-                fileList{i} = GetFullPath(fileName);
+                fileList{i} = resolveSymLink(GetFullPath(fileName));
+                mkdirRecursive(fileparts(fileList{i}));
             end
+
+            % let saveFigure do all of the work!
+            saveFigure(figh, fileList, exts);
+            
+            chmod(MatdbSettingsStore.settings.permissionsAnalysisFiles, fileList);
 
             % log figure infomration
             figInfo.name = figName;
@@ -749,13 +745,13 @@ classdef DatabaseAnalysis < handle & DataSource
                 for iFigure = 1:length(info)
                     figInfo = info(iFigure);
                     for iExt = 1:length(figInfo.extensions)
-                        mostRecentLink = figInfo.fileLinkList{iExt};
-                        thisRunLocation = da.getFigureName(entry, figInfo.name, figInfo.extensions{iExt}); 
+                        mostRecentLink = resolveSymLink(figInfo.fileLinkList{iExt});
+                        thisRunLocation = resolveSymLink(da.getFigureName(entry, figInfo.name, figInfo.extensions{iExt}));
 
                         if ~strcmp(mostRecentLink, thisRunLocation)
                             % point the symlink at the original file, not at the most recent link
                             % to avoid cascading symlinks
-                            actualFile = figInfo.fileList{iExt};
+                            actualFile = resolveSymLink(figInfo.fileList{iExt});
                             success = makeSymLink(actualFile, thisRunLocation);
                             if success
                                 % change the figure info link location, not the actual file path
@@ -829,7 +825,7 @@ classdef DatabaseAnalysis < handle & DataSource
 
     methods % Dependent properties
         function path = get.pathAnalysis(da)
-            da.checkHasRun();
+            da.checkIsRunning();
             if isempty(da.timeRun)
                 path = '';
             else

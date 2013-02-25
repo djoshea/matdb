@@ -29,6 +29,8 @@ classdef DatabaseAnalysisResultsTable < LoadOnDemandMappedTable
 
             p.parse(da, varargin{:});
             
+            assert(~isempty(da.database), 'Associate the DatabaseAnalysis with a Database first using .setDatabase(db)');
+            
             [dt.fieldsAnalysis dt.fieldsAnalysisDescriptorMap] = da.getFieldsAnalysis();
             [dt.fieldsAdditional dt.fieldsAdditionalDescriptorMap] = da.getFieldsAdditional();
             dt.mapsEntryName = da.getMapsEntryName();
@@ -36,6 +38,7 @@ classdef DatabaseAnalysisResultsTable < LoadOnDemandMappedTable
             dt.analysisName = da.getName();
             dt.entryName = da.getName();
             dt.entryNamePlural = dt.entryName;
+            
             dt = initialize@LoadOnDemandMappedTable(dt, 'database', da.database);
         end
 

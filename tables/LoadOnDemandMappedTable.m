@@ -306,7 +306,7 @@ classdef LoadOnDemandMappedTable < StructTable
 
             % loop through entries, load fields and overwrite table values
             for iEntry = 1:dt.nEntries
-                progressStr = sprintf('[%4.1f %%]', 100 * iEntry / dt.nEntries);
+                progressStr = sprintf('[%5.1f %%]', 100 * iEntry / dt.nEntries);
 
                 % loaded.field is true if field is loaded already for this entry
                 loaded = dt.loadedByEntry(iEntry);
@@ -322,7 +322,7 @@ classdef LoadOnDemandMappedTable < StructTable
                 % first, look up cacheable fields in cache
                 if loadCache
                     % load cache values and timestamps, store in table later
-                    debug('%s Retrieving cached fields for %s                \r', ...
+                    fprintf('%s Retrieving cached fields for %s                \r', ...
                         progressStr, entryDescriptions{iEntry});
 
                     for iField = 1:length(fieldsCacheable)
@@ -342,7 +342,7 @@ classdef LoadOnDemandMappedTable < StructTable
 
                 elseif loadCacheTimestampsOnly
                     % only load timestamps into cacheTimestamps, not the actual values
-                    debug('%s Retrieving cache timestamps for %s              \r', ...
+                    fprintf('%s Retrieving cache timestamps for %s              \r', ...
                         progressStr, entryDescriptions{iEntry});
 
                     for iField = 1:length(fieldsCacheable)
@@ -362,7 +362,7 @@ classdef LoadOnDemandMappedTable < StructTable
                     fieldsToRetrieve = fields(~loadedMask);
 
                     if ~isempty(fieldsToRetrieve)
-                        debug('%s Requesting value for entry %d fields %s            \r', ...
+                        fprintf('%s Requesting value for entry %d fields %s            \r', ...
                             progressStr, iEntry, strjoin(fieldsToRetrieve, ', '));
                         thisEntry = dt.select(iEntry).apply();
                         mapEntryName = dt.getMapsEntryName();
