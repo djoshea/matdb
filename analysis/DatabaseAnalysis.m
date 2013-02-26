@@ -407,7 +407,7 @@ classdef DatabaseAnalysis < handle & DataSource
                 debug('Previous run was successful on %d of %d entries\n', nnz(failedMask), length(maskToAnalyze));
 
                 % don't load the valid cached values on failed entries if we're not rerunning it.
-                if rerunFailed
+                if ~rerunFailed
                     maskToAnalyze = maskToAnalyze & ~failedMask;
                 end
                 debug('Valid cached field values found for %d of %d entries\n', nnz(~maskToAnalyze), length(maskToAnalyze));
@@ -420,11 +420,14 @@ classdef DatabaseAnalysis < handle & DataSource
             % here we analyze entries that haven't been loaded from cache
             if ~loadCacheOnly
                 % do we re-run failed runs from last time
+                maskFailed = makecol(~resultTable.success);
                 if rerunFailed
-                    maskFailed = makecol(~resultTable.success);
                     debug('Rerunning on %d entries which failed last time\n', nnz(maskFailed));
                     % also reanalyze any rows which were listed as unsuccessful
                     maskToAnalyze = maskToAnalyze | maskFailed;
+                else
+                    debug('Not rerunning on %d entries which failed last time\n', nnz(maskFailed));
+                    maskToAnalyze = maskToAnalyze & ~maskFailed;
                 end
 
                 savedAutoApply = resultTable.autoApply;
@@ -556,6 +559,7 @@ classdef DatabaseAnalysis < handle & DataSource
 
             fprintf('\n');
             debug('Finishing analysis run\n');
+            debug('Call tbl = da.resultTable.loadFields() to load analysis results\n');
             
             resultTable.updateInDatabase();
 
