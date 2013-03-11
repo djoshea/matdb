@@ -200,7 +200,7 @@ classdef DatabaseAnalysis < handle & DataSource
             % check the cache for existing analysis values
             p.addParamValue('loadCache', true, @islogical); 
             % load the cached success value so we know which entries have been run
-            p.addParamValue('loadCacheSuccess', true, @islogical);
+            p.addParamValue('loadCacheSuccessOnly', false, @islogical);
             % look at cached field value timestamps and invalidate them if they
             % are newer than the most recent modification to any table returned 
             % by getEntryNamesChangesInvalidateCache()
@@ -222,7 +222,7 @@ classdef DatabaseAnalysis < handle & DataSource
 
             fieldsAnalysis = p.Results.fields;
             loadCache = p.Results.loadCache;
-            loadCacheSuccess = p.Results.loadCacheSuccess;
+            loadCacheSuccessOnly = p.Results.loadCacheSuccessOnly;
             checkCacheTimestamps = p.Results.checkCacheTimestamps;
             saveCache = p.Results.saveCache;
             rerunFailed = p.Results.rerunFailed;
@@ -283,13 +283,54 @@ classdef DatabaseAnalysis < handle & DataSource
             da.database.addRelationshipOneToOne(resultTable.entryName, entryName); 
 
             % mask by entry of which entries must be run
+            maskAlreadyRun = false(resultTable.nEntries, 1);
+            maskFailed = false(resultTable.nEntries, 1);
             maskToAnalyze = true(resultTable.nEntries, 1);
+            maskCacheInvalidates = false(resultTable.nEntries, 1);
            
-            if loadCacheSuccess && ~loadCache
+            tableListCacheWarning = makecol(da.getReferencesRelatedEntryNames());
+            tableListCacheInvalidate = makecol(da.getEntryNamesChangesInvalidateCache());
+            
+            if loadCacheSuccessOnly
+                % only loading the success field, not running any new
+                % entries, used primarly by DataSource.loadSource
+                
                 debug('Loading cached success field for all entries\n');
                 % load success so that we can check failed entries later
                 resultTable = resultTable.loadFields('fields', 'success', 'loadCacheOnly', true);
                 resultTable = resultTable.updateInDatabase();
+                loadCache = false;
+                loadCacheOnly = true;
+                timestampsByEntry = resultTable.cacheTimestampsByEntry;
+                
+                if checkCacheTimestamps && (~isempty(tableListCacheWarning) || ~isempty(tableListCacheInvalidate))
+                    % warn about checking cache timestamps
+                    debug('Warning: not checking cache timestamps for validity against relevant tables returned by getReferencesRelatedEntryNames (%s) or getEntryNamesChangesInvalidate (%s)\n', ...
+                        strjoin(tableListCacheWarning, ','), strjoin(tableListCacheInvalidate, ','));
+                end
+                
+                successFlag = resultTable.success;
+                for iEntry = 1:resultTable.nEntries
+                    if isempty(timestampsByEntry(iEntry).success)
+                        maskAlreadyRun(iEntry) = false;
+                        
+                    else
+                        maskAlreadyRun(iEntry) = true;
+                        if ~successFlag(iEntry)
+                            % success field found, but failed last time
+
+                            % if it has a success field and it's marked as
+                            % failed, consider it loaded. We'll rerunFailed
+                            % below if requested
+                            maskFailed(iEntry) = true;
+                        else
+                            maskFailed(iEntry) = false;
+                        end
+                    end
+                end
+                            
+                debug('Valid cached success field found for %d of %d entries\n', nnz(maskAlreadyRun), length(maskAlreadyRun));
+                debug('Previous run failed on %d of these %d cached entries\n', nnz(maskFailed), nnz(maskAlreadyRun));
             end
 
             % here we ask resultTable to check cache existence and timestamps
@@ -324,10 +365,6 @@ classdef DatabaseAnalysis < handle & DataSource
                 % Also for the list of referenced entry names  returned by 
                 % da.getReferencesRelatedEntryNames(), generate a warning 
                 % if the cache is older than this value, but don't re run it
-                tableListCacheWarning = makecol(da.getReferencesRelatedEntryNames());
-                tableListCacheInvalidate = makecol(da.getEntryNamesChangesInvalidateCache());
-
-                maskCacheInvalidates = false(resultTable.nEntries, 1);
 
                 % check the cache timestamps to determine
                 % which entry x field cells are missing or out of date 
@@ -374,60 +411,63 @@ classdef DatabaseAnalysis < handle & DataSource
                 % and thus need not be rerun
                 timestampsByEntry = resultTable.cacheTimestampsByEntry;
                 successFlag = resultTable.success;
-                failedMask = false(resultTable.nEntries,1);
                 for iEntry = 1:resultTable.nEntries
-                    allLoaded = true; 
-                    if isempty(timestampsByEntry(iEntry).success) || ~successFlag(iEntry)
-                        % if it has a success field and it's marked as
-                        % failed, consider it loaded. We'll rerunFailed
-                        % below if requested
-                        failedMask(iEntry) = true;
-                        continue;
-                    end
+                    if isempty(timestampsByEntry(iEntry).success)
+                        % no success field found cached, not yet run
+                        maskAlreadyRun(iEntry) = false;
+                        
+                    else
+                        if ~successFlag(iEntry)
+                            % success field found, but failed last time
+
+                            % if it has a success field and it's marked as
+                            % failed, consider it loaded. We'll rerunFailed
+                            % below if requested
+                            maskFailed(iEntry) = true;
+                            maskAlreadyRun(iEntry) = true;
                     
-                    % otherwise check the existence of all fields
-                    for iField = 1:length(fieldsAnalysis)
-                        field = fieldsAnalysis{iField};
-                        if isempty(timestampsByEntry(iEntry).(field))
-                            allLoaded = false;
-                            break;
+                        else
+                            % successful last time, check the existence of all fields
+                            allLoaded = true;
+                            for iField = 1:length(fieldsAnalysis)
+                                field = fieldsAnalysis{iField};
+                                if isempty(timestampsByEntry(iEntry).(field))
+                                    allLoaded = false;
+                                    break;
+                                end
+                            end
+
+                            maskFailed(iEntry) = false;
+                            maskAlreadyRun(iEntry) = allLoaded;
                         end
-                    end
-
-                    % reanalyze if any fields are missing, or if the cache is invalid
-                    maskToAnalyze(iEntry) = ~allLoaded || maskCacheInvalidates(iEntry);
-
-                    % check whether this row has ever been run in the cache
-                    % which is useful when the analysis does not use fields
-                    if isempty(resultTable{iEntry}.runTimestamp)
-                        maskToAnalyze(iEntry) = true;
-                    end
+                    end    
                 end
+        
+                debug('Valid cached field values found for %d of %d entries\n', nnz(maskAlreadyRun), length(maskAlreadyRun));
+                debug('Previous run failed on %d of %d cached entries\n', nnz(maskFailed), nnz(maskAlreadyRun));
+           end
 
-                debug('Previous run was successful on %d of %d entries\n', nnz(failedMask), length(maskToAnalyze));
-
-                % don't load the valid cached values on failed entries if we're not rerunning it.
-                if ~rerunFailed
-                    maskToAnalyze = maskToAnalyze & ~failedMask;
-                end
-                debug('Valid cached field values found for %d of %d entries\n', nnz(~maskToAnalyze), length(maskToAnalyze));
-            end
-
+           % reanalyze if any fields are missing, or if the cache is invalid
+           maskToAnalyze = ~maskAlreadyRun | maskCacheInvalidates;
+           
+           if rerunFailed
+               % rerun if failed last time
+              maskToAnalyze = maskToAnalyze | maskFailed;
+           end
+         
             % NOTE: At this point you cannot assume that resultsTable and table (the mapped table)
             % are in the same order. They simply have the same number of rows mapped via
             % key field equivalence (1:1 relationship)
 
             % here we analyze entries that haven't been loaded from cache
             if ~loadCacheOnly
-                % do we re-run failed runs from last time
-                maskFailed = makecol(~resultTable.success);
-                if rerunFailed
-                    debug('Rerunning on %d entries which failed last time\n', nnz(maskFailed));
-                    % also reanalyze any rows which were listed as unsuccessful
-                    maskToAnalyze = maskToAnalyze | maskFailed;
-                else
-                    debug('Not rerunning on %d entries which failed last time\n', nnz(maskFailed));
-                    maskToAnalyze = maskToAnalyze & ~maskFailed;
+                nFailed = nnz(maskFailed);
+                if nFailed > 0
+                    if rerunFailed
+                        debug('Rerunning on %d entries which failed last time\n', nFailed);
+                    else
+                        debug('Not rerunning on %d entries which failed last time\n', nFailed);
+                    end
                 end
 
                 savedAutoApply = resultTable.autoApply;
@@ -555,15 +595,17 @@ classdef DatabaseAnalysis < handle & DataSource
 
                 resultTable = resultTable.apply();
                 resultTable = resultTable.setAutoApply(savedAutoApply);
+                
+                fprintf('\n');
+                debug('Finishing analysis run\n');
             end
 
-            fprintf('\n');
-            debug('Finishing analysis run\n');
             debug('Call tbl = da.resultTable.loadFields() to load analysis results\n');
             
             resultTable.updateInDatabase();
 
             % now fill in all of the info fields of this class with the full table data
+            % these are mainly used by the DatabaseAnalysisHTMLWriter class
             da.successByEntry = resultTable.getValues('success') > 0;                
             da.exceptionByEntry = resultTable.getValues('exception');
             da.figureInfoByEntry = resultTable.getValues('figureInfo');
@@ -572,6 +614,7 @@ classdef DatabaseAnalysis < handle & DataSource
 
             % mark loaded in database
             da.database.markSourceLoaded(da);
+            da.hasRun = true;
 
             if ~resultTableChanged && ~forceReport
                 % if we haven't run new analysis, no need to build a report
@@ -602,8 +645,6 @@ classdef DatabaseAnalysis < handle & DataSource
                         end
                     end
                 end
-                
-                da.hasRun = true;
 
                 % sym link figures from prior runs to the current analysis folder
                 da.linkOldFigures('saveCache', saveCache);
@@ -615,7 +656,6 @@ classdef DatabaseAnalysis < handle & DataSource
 
                 % link this timestamped directory to current for easy browsing
                 da.linkAsCurrent();
-
             end
 
             if saveCache && resultTableChanged
@@ -878,7 +918,10 @@ classdef DatabaseAnalysis < handle & DataSource
             da.database = database;
             % do the bare minimum. Don't check cache timestamps or existence,
             % don't run new entries, don't rerun failed entries
-            da.run('loadCacheSuccess', false, 'loadCache', false, 'loadCacheOnly', true);
+            %da.run('loadCacheSuccess', false, 'loadCache', false, 'loadCacheOnly', true);
+            
+            % Load success field
+            da.run('loadCacheSuccessOnly', true);
         end
 
         function deleteCache(da)
