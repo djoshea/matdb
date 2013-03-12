@@ -19,6 +19,8 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
         entryNamesPlural = cell(2,1);
 
         referenceNames = cell(2, 1);
+
+        isHalfOfJunction = false;
     end
 
     properties 
@@ -160,14 +162,15 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             p.addParamValue('tableLeft', [], @(t) isa(t, 'DataTable'));
             p.addParamValue('tableRight', [], @(t) isa(t, 'DataTable'));
             p.addParamValue('tableJunction', [], @(t) isa(t, 'DataTable'));
-            p.addParamValue('referenceLeftForRight', [], @iscellstr); 
-            p.addParamValue('referenceRightForLeft', [], @iscellstr); 
+            p.addParamValue('referenceLeftForRight', [], @ischar); 
+            p.addParamValue('referenceRightForLeft', [], @ischar); 
             p.addParamValue('keyFieldsLeft', [], @iscellstr); 
             p.addParamValue('keyFieldsLeftInRight', [], @iscellstr); 
             p.addParamValue('keyFieldsRight', [], @iscellstr); 
             p.addParamValue('keyFieldsRightInLeft', [], @iscellstr); 
             p.addParamValue('isManyLeft', false, @(t) islogical(t) && isscalar(t));
             p.addParamValue('isManyRight', false, @(t) islogical(t) && isscalar(t));
+            p.addParamValue('isHalfOfJunction', false, @islogical);
             p.parse(varargin{:});
 
             tableLeft = p.Results.tableLeft;
@@ -188,10 +191,11 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             rel.isManyLeft = p.Results.isManyLeft; 
             rel.isManyRight = p.Results.isManyRight;
 
-            % defaults (table.keyFields) already handled by setTable
+            % defaults (tableLeft.keyFields) already handled by setTable
             if ~ismember('keyFieldsLeft', p.UsingDefaults)
                 rel.keyFieldsLeft = p.Results.keyFieldsLeft;
             end
+                          
             if ~ismember('keyFieldsRight', p.UsingDefaults)
                 rel.keyFieldsRight = p.Results.keyFieldsRight;
             end
@@ -222,16 +226,36 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                     % generate default field names based on the fields that exist
                     % in the left table
                     if rel.isJunction
-                        rel.keyFieldsLeftInRight = DataRelationship.defaultFieldReference(...
+                        [rel.keyFieldsLeftInRight foundReferenceLeftInRight] = DataRelationship.defaultFieldReference(...
                             tableJunction, tableLeft);
+                        % all references must be found for a junction table
+                        % reference
+                        if ~any(foundReferenceLeftInRight)
+                            error('Could not locate any keyFieldsLeft in junction table. Provide keyFieldsLeftInRight to manually specify the mapping.');
+                        end
                     else
-                        rel.keyFieldsLeftInRight = DataRelationship.defaultFieldReference(...
-                            tableRight, tableLeft);
+                        [rel.keyFieldsLeftInRight foundReferenceLeftInRight] = DataRelationship.defaultFieldReference(...
+                            tableRight, tableLeft, 'fields', rel.keyFieldsLeft);
+                        if ~any(foundReferenceLeftInRight)
+                            rel.keyFieldsLeftInRight = {};
+                            % for 1:1 relationships this might be okay if
+                            % foundReferenceLeftInRight is true, we'll check this later
+                            if ~rel.isOneToOne
+                                error('Could not locate any keyFieldsLeft in right table. Provide keyFieldsLeftInRight to manually specify the mapping.');
+                            end
+                        end  
                     end
+                    
+                    rel.keyFieldsLeftInRight = rel.keyFieldsLeftInRight(foundReferenceLeftInRight);
+                    
+                    % filter default key fields based on which ones exist in the right table?
+                    rel.keyFieldsLeft = rel.keyFieldsLeft(foundReferenceLeftInRight);
                 end
             else
                 % explicitly specified
                 rel.keyFieldsLeftInRight = p.Results.keyFieldsLeftInRight;
+                assert(length(rel.keyFieldsLeftInRight) == length(rel.keyFieldsLeft), ...
+                    'keyFieldsLeftInRight must have same length as keyFieldsLeft');
             end
 
             if ismember('keyFieldsRightInLeft', p.UsingDefaults)
@@ -239,37 +263,63 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                 if ~rel.isManyLeft && rel.isManyRight
                     % one side of one to many relationship, leave it blank
                     rel.keyFieldsRightInLeft = {};
+                    foundReferenceRightInLeft = false;
                 else
                     % generate default field names based on the fields that exist
                     % in the left table
                     if rel.isJunction
-                        rel.keyFieldsRightInLeft = DataRelationship.defaultFieldReference(...
+                        [rel.keyFieldsRightInLeft foundReferenceRightInLeft] = DataRelationship.defaultFieldReference(...
                             tableJunction, tableRight);
+                        if ~any(foundReferenceRightInLeft)
+                            error('Could not locate any keyFieldsRight in junction table. Provide keyFieldsRightInLeft to manually specify the mapping.');
+                        end
                     else
-                        rel.keyFieldsRightInLeft = DataRelationship.defaultFieldReference(...
-                            tableLeft, tableRight);
+                        [rel.keyFieldsRightInLeft, foundReferenceRightInLeft]= DataRelationship.defaultFieldReference(...
+                            tableLeft, tableRight, 'fields', rel.keyFieldsRight);
+                        if ~any(foundReferenceRightInLeft)
+                            rel.keyFieldsRightInLeft = {};
+                            % for 1:1 relationships this might be okay if
+                            % foundReferenceLeftInRight is true, we'll check this later
+                            if ~rel.isOneToOne
+                                error('Could not locate any keyFieldsRight in left table. Provide keyFieldsRightInLeft to manually specify the mapping.');
+                            end
+                        end       
                     end
+                    
+                    rel.keyFieldsRightInLeft = rel.keyFieldsRightInLeft(foundReferenceRightInLeft);
+                    
+                    % filter default key fields based on which ones exist in the left table?
+                    rel.keyFieldsRight = rel.keyFieldsRight(foundReferenceRightInLeft);
                 end
             else
                 % explicitly specified
                 rel.keyFieldsRightInLeft = p.Results.keyFieldsRightInLeft;
+                assert(length(rel.keyFieldsRightInLeft) == length(rel.keyFieldsRight), ...
+                    'keyFieldsRightInLeft must have same length as keyFieldsRight');
             end
+            
+            if rel.isOneToOne
+                if ~any(foundReferenceRightInLeft) && ~any(foundReferenceRightInLeft)
+                    error('Could not locate any keyFieldsLeft in right table or any keyFieldsRight in left table for this one:one relationship. Provide either keyFieldsLeftInRight or keyFieldsRightInLeft to manually specify the mapping.');
+                end
+            end
+            
             % however, check that these fields exist in the corresponding table
             % and if not remove them
             % this also automatically handles 1-1 relationships, for which
             % only one table may have a pointer to the other
-            if ~isempty(rel.keyFieldsRightInLeft)
-                if rel.isJunction && ~isempty(tableJunction)
-                    if ~all(tableJunction.isField(rel.keyFieldsRightInLeft))
-                        rel.keyFieldsRightInLeft = {};
-                    end
-                elseif ~rel.isJunction && ~isempty(tableLeft)
-                    if ~all(tableLeft.isField(rel.keyFieldsRightInLeft))
-                        rel.keyFieldsRightInLeft = {};
-                    end
-                end
-            end
-            
+%             if ~isempty(rel.keyFieldsRightInLeft)
+%                 if rel.isJunction && ~isempty(tableJunction)
+%                     if ~all(tableJunction.isField(rel.keyFieldsRightInLeft))
+%                         rel.keyFieldsRightInLeft = {};
+%                     end
+%                 elseif ~rel.isJunction && ~isempty(tableLeft)
+%                     if ~all(tableLeft.isField(rel.keyFieldsRightInLeft))
+%                         rel.keyFieldsRightInLeft = {};
+%                     end
+%                 end
+%             end
+%             
             % Reference names are the name by which we refer to a particular
             % relationship from the originating class
             %
@@ -295,6 +345,8 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                     rel.referenceRightForLeft = tableLeft.entryName;
                 end
             end
+
+            rel.isHalfOfJunction = p.Results.isHalfOfJunction;
         end
 
         function str = describeLink(rel)
@@ -340,8 +392,16 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                 nameRight = rel.entryNameRight;
             end
 
-            str = sprintf('%s %s %s %s %s', numLeft, nameLeft, connector, ...
-                numRight, nameRight); 
+            if rel.isHalfOfJunction
+                prefix = '    (';
+                postfix = ')';
+            else
+                prefix = '';
+                postfix = '';
+            end
+
+            str = sprintf('%s%s %s %s %s %s%s', prefix, numLeft, nameLeft, connector, ...
+                numRight, nameRight, postfix); 
         end
 
         function str = describeKeyFields(rel)
@@ -526,10 +586,15 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             % check that all fields referenced by this relationship actually exist
             
             % check key Fields
-            assert(~isempty(rel.keyFieldsLeft), 'No left key fields specified');
-            tableLeft.assertIsField(rel.keyFieldsLeft);
-            assert(~isempty(rel.keyFieldsRight), 'No right key fields specified');
-            tableRight.assertIsField(rel.keyFieldsRight);
+            if rel.isOneToOne
+                assert(~isempty(rel.keyFieldsLeft) || ~isempty(rel.keyFieldsRight), ...
+                    'KeyFields for left or right table must be specified for 1:1 relationships');
+            else
+                assert(~isempty(rel.keyFieldsLeft), 'No left key fields specified');
+                tableLeft.assertIsField(rel.keyFieldsLeft);
+                assert(~isempty(rel.keyFieldsRight), 'No right key fields specified');
+                tableRight.assertIsField(rel.keyFieldsRight);
+            end
             
             % check that sufficient key field references exist
             if rel.isManyLeft 
@@ -755,26 +820,22 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             name = strcat(entryName, upper(field(1)), field(2:end));
         end
 
-        function names = defaultFieldReference(tableWithFields, tableReferenced, varargin)
+        function [namesReference foundReference] = defaultFieldReference(tableWithFields, tableReferenced, varargin)
             % return the names of fields within tableWithFields that would be used to 
             % reference the keyFields of tableReferenced from within tableWithFields
-            if isempty(tableWithFields)
-                names = {};
-                return;
-            end
-            if isempty(tableReferenced)
-                names = {};
-                return;
-            end
-            
             p = inputParser;
-            p.addRequired('tableWithFields', @(x) isa(x, 'DataTable'));
-            p.addRequired('tableReferenced', @(x) isa(x, 'DataTable'));
+            p.addRequired('tableWithFields', @(x) isempty(x) || isa(x, 'DataTable'));
+            p.addRequired('tableReferenced', @(x) isempty(x) || isa(x, 'DataTable'));
             p.addParamValue('fields', tableReferenced.keyFields, @(x) ischar(x) || iscellstr(x));
             p.parse(tableWithFields, tableReferenced, varargin{:});
-
             fieldsInOther = p.Results.fields;
-            entryName = tableReferenced.entryName;
+            
+            foundReference = false(length(fieldsInOther), 1);
+            namesReference = cell(length(fieldsInOther), 1);
+           
+            if isempty(tableWithFields) || isempty(tableReferenced)
+                return;
+            end
             
             % first try camel-casing the table entry name on to the field names
             catFn = @(field) DataRelationship.combinedTableFieldName(tableReferenced, field); 
@@ -783,20 +844,26 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             else
                 names = cellfun(catFn, fieldsInOther, 'UniformOutput', false);
             end
+            
+            foundCamelCased = tableWithFields.isField(names);
+            foundReference = foundReference | foundCamelCased;
+            namesReference(foundCamelCased) = names(foundCamelCased);
 
-            if all(tableWithFields.isField(names))
-                % all of these fields exist, we're good
+            if all(foundReference)
+                % all of these camel cased fields exist, we're good
                 return;
             end
             
             % then try just using the fields exactly as is
-            if all(tableWithFields.isField(fieldsInOther))
-                names = fieldsInOther;
+            foundExact = tableWithFields.isField(fieldsInOther);
+            replaceMask = foundExact & ~foundReference;
+            namesReference(replaceMask) = fieldsInOther(replaceMask);
+            foundReference = foundReference | foundExact;
+            
+            if all(foundReference)
+                % found all of them either camel cased or exact
                 return;
             end
-
-            % not sure otherwise
-            names = {};
         end
 
         function oddList = fillCellOddEntries(list) 
