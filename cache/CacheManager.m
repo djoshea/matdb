@@ -189,12 +189,12 @@ classdef CacheManager < handle
             if separateFields
                 assert(isstruct(data) && isscalar(data), 'Data must be a scalar struct in order to save fields');
                 % save each field separately and include a variable
-                saveLarge(fileData, '-struct', 'data');
+                %saveLarge(fileData, '-struct', 'data');
+                save(fileData, '-struct', 'data');
             else
-                saveLarge(fileData, 'data');
-            end
-
-            
+                %saveLarge(fileData, 'data');
+                save(fileData, 'data');
+            end 
         end
     end
     

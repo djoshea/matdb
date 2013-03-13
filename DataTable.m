@@ -1760,7 +1760,7 @@ classdef DataTable < DynamicClass & Cacheable
                 'Index invalid or out of range [0 nEntries]');
             dt.assertIsField(field);
 
-            dfd = dt.fieldDescriptorMap(field);
+            dfd = dt.fieldDescriptorMap.get(field);
             value = dfd.convertValues(value);
             
             if isempty(value)

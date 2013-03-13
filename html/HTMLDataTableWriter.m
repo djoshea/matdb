@@ -159,7 +159,7 @@ classdef HTMLDataTableWriter < HTMLReportWriter
             html.openFile();
             html.writeHeader();
 
-            html.writeDataTable(table);
+            html.writeDataTable();
 
             html.writeFooter();
             html.closeFile();
