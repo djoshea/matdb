@@ -371,7 +371,10 @@ classdef DatabaseAnalysis < handle & DataSource
                 debug('Checking cached field existence and success field\n');
                 resultTable = resultTable.loadFields('fields', 'success', 'loadCacheOnly', true);
                 fieldsToLoad = setdiff(resultTable.fieldsCacheable, 'success');
-                resultTable = resultTable.loadFields('fields', fieldsToLoad, 'loadCacheTimestampsOnly', true);
+                % load the cache timestamps (and thereby determine whether
+                % they exist) for all fields for successful entries
+                resultTable = resultTable.loadFields('fields', fieldsToLoad, 'loadCacheTimestampsOnly', true, ...
+                    'entryMask', resultTable.success);
                 resultTable.updateInDatabase();
                 
                 if checkCacheTimestamps && ~isempty(tableListCacheWarning) || ~isempty(tableListCacheInvalidate)

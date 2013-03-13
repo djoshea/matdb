@@ -276,6 +276,9 @@ classdef LoadOnDemandMappedTable < StructTable
 
             % if true, don't load cache values, just populate cacheTimestamps with timestamps 
             p.addParamValue('loadCacheTimestampsOnly', false, @islogical);
+            
+            % only load for selected entries
+            p.addParamValue('entryMask', true(dt.nEntries, 1), @(x) true);
 
             % if false, don't save newly loaded values in the cache
             p.addParamValue('saveCache', true, @islogical);
@@ -295,6 +298,7 @@ classdef LoadOnDemandMappedTable < StructTable
             loadCacheTimestampsOnly = p.Results.loadCacheTimestampsOnly;
             saveCache = p.Results.saveCache;
             storeInTable = p.Results.storeInTable;
+            entryMask = p.Results.entryMask;
 
             if loadCacheTimestampsOnly
                 % this flag overwrites other options so that we only grab the timestamps
@@ -322,8 +326,14 @@ classdef LoadOnDemandMappedTable < StructTable
             entryDescriptions = dt.getKeyFieldValueDescriptors();
 
             % loop through entries, load fields and overwrite table values
+            loadedCount = 0;
             for iEntry = 1:dt.nEntries
-                progressStr = sprintf('[%5.1f %%]', 100 * iEntry / dt.nEntries);
+                if ~entryMask(iEntry)
+                    continue;
+                end
+                
+                progressStr = sprintf('[%5.1f %%]', 100 * loadedCount / nnz(entryMask));
+                loadedCount = loadedCount + 1;
 
                 % loaded.field is true if field is loaded already for this entry
                 loaded = dt.loadedByEntry(iEntry);
