@@ -491,14 +491,18 @@ classdef DatabaseAnalysis < handle & DataSource
 
                         % find the corresponding entry in the mapped table via the database
                         if maskToAnalyze(iResult)
-                            resultEntry = resultTable(iResult).apply();
-                            entry = resultEntry.getRelated(entryName);
+                            % NOTE: ASSUMING THAT THE TABLES ARE ALIGNED AT
+                            % THIS POINT!!!
+                            %resultEntry = resultTable(iResult).apply();
+                            %entry = resultEntry.getRelated(entryName);
+                            entry = table.select(iResult);
+                            
                             if entry.nEntries > 1
                                 debug('WARNING: Multiple matches for analysis row, check uniqueness of keyField tuples in table %s. Choosing first.\n', entryName);
                                 entry = entry.select(1);
                             elseif entry.nEntries == 0
                                 % this likely indicates a bug in building / loading resultTable from cache
-                                debug('WARNNG: Could not find match for resultTable row in order to do analysis');
+                                debug('WARNING: Could not find match for resultTable row in order to do analysis');
                                 success = false;
                             end
                         end

@@ -136,10 +136,20 @@ classdef ValueMap < DynamicClass
         end
 
         function keyHash = hashKey(map, key)
-            map.assertKeyValid(key);  
-            opts.hash = 'SHA-1';
-            opts.format = 'hex';
-            keyHash = ['s' DataHash(key, opts)];
+            if ischar(key)
+                if isvarname(key)
+                    keyHash = key;
+                else
+                    keyHash = genvarname(key);
+                end 
+            elseif isnumeric(key)
+                keyHash = genvarname(num2str(key));
+            else
+                %map.assertKeyValid(key);  
+                %opts.Method = 'MD5';
+                opts.format = 'hex';
+                keyHash = ['s' DataHash(key, opts)];
+            end
         end
 
         function map = set(map, key, value)

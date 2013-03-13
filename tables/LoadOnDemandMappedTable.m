@@ -20,7 +20,18 @@ classdef LoadOnDemandMappedTable < StructTable
 
     properties(Dependent)
         fieldsLoadOnDemand
-        fieldsCacheable
+        fieldsLoadOnDemandDescriptorMap
+        fieldsCacheable % subset of fieldsLoadOnDemand
+        fieldsCacheableDescriptorMap
+    end
+    
+    properties(Transient, Access=protected)
+        cachedFieldsLoadOnDemand
+        cachedFieldsLoadOnDemandDescriptorMap
+        cachedFieldsNotLoadOnDemand
+        cachedFieldsNotLoadOnDemandDescriptorMap
+        cachedFieldsCacheable
+        cachedFieldsCacheableDescriptorMap
     end
 
     methods(Abstract)
@@ -38,7 +49,6 @@ classdef LoadOnDemandMappedTable < StructTable
         % contain large amounts of data and are typically loaded only when needed
         % rather than cached as part of the table and thereby loaded in aggregate.
         [fields fieldDescriptorMap] = getFieldsLoadOnDemand(dt)
-
 
         % from the fields above, return a list of fields that you would like
         % to be cached automatically, using independent mat files for each entry
@@ -139,6 +149,8 @@ classdef LoadOnDemandMappedTable < StructTable
                 
                 % add additional fields
                 [fields dfdMap] = dt.getFieldsNotLoadOnDemand();
+                dt.cachedFieldsNotLoadOnDemand = fields;
+                dt.cachedFieldsNotLoadOnDemandDescriptorMap = dfdMap;
                 for iField = 1:length(fields)
                     field = fields{iField};
                     table = table.addField(field, [], 'fieldDescriptor', dfdMap(field));
@@ -147,6 +159,8 @@ classdef LoadOnDemandMappedTable < StructTable
 
                 % add load on demand fields
                 [fields dfdMap] = dt.getFieldsLoadOnDemand();
+                dt.cachedFieldsLoadOnDemand = fields;
+                dt.cachedFieldsLoadOnDemandDescriptorMap = dfdMap;
                 for iField = 1:length(fields)
                     field = fields{iField};
                     table = table.addField(field, [], 'fieldDescriptor', dfdMap(field));
@@ -158,6 +172,8 @@ classdef LoadOnDemandMappedTable < StructTable
                 db = table.database;
                 assert(~isempty(db), 'Table must be linked to a database');
             end
+            
+            dt.cachedFieldsCacheable = dt.getFieldsCacheable();
 
             % initialize in StructTable 
             dt = initialize@StructTable(dt, table, p.Unmatched); 
@@ -197,14 +213,15 @@ classdef LoadOnDemandMappedTable < StructTable
 
     methods % Dependent properties
         function fields = get.fieldsLoadOnDemand(dt)
-            fields = dt.getFieldsLoadOnDemand();
+            fields = dt.cachedFieldsLoadOnDemand;
+        end
+        
+        function map = get.fieldsLoadOnDemandDescriptorMap(dt)
+            map = dt.cachedFieldsLoadOnDemandDescriptorMap;
         end
 
         function fields = get.fieldsCacheable(dt)
-            fields = dt.getFieldsCacheable();
-            if ~iscell(fields)
-                fields = {fields};
-            end
+            fields = dt.cachedFieldsCacheable;
         end
     end
 
@@ -496,8 +513,16 @@ classdef LoadOnDemandMappedTable < StructTable
         % this includes the manually specified params as well as the keyFields
         % of entry idx
         function param = getCacheParamForFieldValue(dt, idx, field)
-            vals = dt.select(idx).apply().getFullEntriesAsStruct();
-            param.keyFields = rmfield(vals, setdiff(fieldnames(vals), dt.keyFields));
+            %vals = dt.select(idx).apply().getFullEntriesAsStruct();
+            %param.keyFields = rmfield(vals, setdiff(fieldnames(vals), dt.keyFields));
+            
+            % replacing above with this for speed:
+            kf = dt.keyFields;
+            row = dt.table(idx);
+            for f = kf
+                param.keyFields.(f{1}) = row.(f{1});
+            end
+            
             param.additional = dt.getCacheParamForField(field);
         end
 
@@ -529,8 +554,8 @@ classdef LoadOnDemandMappedTable < StructTable
 
         function timestamp = cacheFieldValue(dt, iEntry, field, varargin)
             p = inputParser;
-            p.addRequired('iEntry', @(x) isscalar(x) && x > 0 && x <= dt.nEntries);
-            p.addRequired('field', @(x) ischar(x) && dt.isField(field));
+            p.addRequired('iEntry', @(x) true); % @(x) isscalar(x) && x > 0 && x <= dt.nEntries);
+            p.addRequired('field', @(x) true); % @(x) ischar(x) && dt.isField(field));
             p.addOptional('value', []); 
             p.parse(iEntry, field, varargin{:});
             if ismember('value', p.UsingDefaults)
