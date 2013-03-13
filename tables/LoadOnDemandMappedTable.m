@@ -527,10 +527,11 @@ classdef LoadOnDemandMappedTable < StructTable
             %param.keyFields = rmfield(vals, setdiff(fieldnames(vals), dt.keyFields));
             
             % replacing above with this for speed:
-            kf = dt.keyFields;
+            keyFields = dt.keyFields;
             row = dt.table(idx);
-            for f = kf
-                param.keyFields.(f{1}) = row.(f{1});
+            for i = 1:length(keyFields)
+                field = keyFields{i};
+                param.keyFields.(field) = row.(field);
             end
             
             param.additional = dt.getCacheParamForField(field);
