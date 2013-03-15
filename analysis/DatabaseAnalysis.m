@@ -28,6 +28,11 @@ classdef DatabaseAnalysis < handle & DataSource
         %   .width
         %   .height
         figureInfoByEntry = {};
+        
+        % there are two modes in which the results of this analysis can persist.
+        % if cacheResultsIndividually is false, the results will be saved with
+        % the table, ,,j
+        %cacheResultsIndividually = false;
     end
 
     properties

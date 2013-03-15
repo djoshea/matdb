@@ -16,6 +16,13 @@ classdef LoadOnDemandMappedTable < StructTable
     properties
         % ignore cached field values earlier than this date
         fieldValueCacheValidAfterTimestamp = -Inf;
+
+        % fields in this table may be returned by getFieldsCacheable meaning that their values
+        % are stored in individual cache entries. When cacheing the entire table as a whole, 
+        % it makes sense to unload these values automatically before saving the table down
+        % so that the file size doesn't include the values of these fields which are duplicated
+        % elsewhere
+        unloadCacheableFieldsOnCacheTable = true;
     end
 
     properties(Dependent)
@@ -348,9 +355,7 @@ classdef LoadOnDemandMappedTable < StructTable
 
                 % first, look up cacheable fields in cache
                 if loadCache
-                    % load cache values and timestamps, store in table later
-                    fprintf('%s Retrieving cached fields for %s                \r', ...
-                        progressStr, entryDescriptions{iEntry});
+                    hasPrintedMessage = false;
 
                     for iField = 1:length(fieldsCacheable)
                         field = fieldsCacheable{iField};
@@ -358,6 +363,13 @@ classdef LoadOnDemandMappedTable < StructTable
                             % already loaded
                             continue;
                         end
+                        if ~hasPrintedMessage 
+                            % load cache values and timestamps, store in table later
+                            fprintf('%s Retrieving cached fields for %s                \r', ...
+                                progressStr, entryDescriptions{iEntry});
+                            hasPrintedMessage = true;
+                        end
+                        
                         [validCache value timestamp] = dt.retrieveCachedFieldValue(iEntry, field);
                         if validCache
                             % found cached value
@@ -368,15 +380,20 @@ classdef LoadOnDemandMappedTable < StructTable
                     end
 
                 elseif loadCacheTimestampsOnly
-                    % only load timestamps into cacheTimestamps, not the actual values
-                    fprintf('%s Retrieving cache timestamps for %s              \r', ...
-                        progressStr, entryDescriptions{iEntry});
+                    hasPrintedMessage = false;
+                    
 
                     for iField = 1:length(fieldsCacheable)
                         field = fieldsCacheable{iField};
                         if loaded.(field)
                             % already loaded, don't bother with timestamp
                             continue;
+                        end
+                        if ~hasPrintedMessage
+                            % only load timestamps into cacheTimestamps, not the actual values
+                            fprintf('%s Retrieving cache timestamps for %s              \r', ...
+                                progressStr, entryDescriptions{iEntry});
+                            hasPrintedMessage = true;
                         end
                         [validCache timestamp] = dt.retrieveCachedFieldTimestamp(iEntry, field);
                         cacheTimestamps.(field) = timestamp;
@@ -627,8 +644,11 @@ classdef LoadOnDemandMappedTable < StructTable
         function dt = prepareForCache(dt)
             % replace all loaded value with empty values to make cache loading very quick
             dt.warnIfNoArgOut(nargout);
-            debug('Unloading all loadOnDemand field values pre-caching\n');
-            dt = dt.unloadFields();
+            
+            if dt.unloadCacheableFieldsPreCacheTable
+                debug('Unloading all loadOnDemand field values pre-caching\n');
+                dt = dt.unloadFields();
+            end
         end
 
         % obj is the object newly loaded from cache, preLoadObj is the object 
