@@ -200,7 +200,7 @@ classdef CacheManager < handle
     
     methods 
         function deleteCache(cm, cacheName, param)
-            % delete cache files everywhere they exist
+            % delete cache files everywhere they exist for a specific entry
             fileListData = cm.getFileListDataForRead(cacheName, param);
             fileListMeta = cm.getFileListMetaForRead(cacheName, param);
             fileList = [fileListData; fileListMeta];
@@ -274,6 +274,55 @@ classdef CacheManager < handle
         function list = filterExisting(cm, list)
             existing = cellfun(@(file) exist(file, 'file') == 2, list);
             list = list(existing);
+        end
+    end
+    
+    methods % Cache operations operating on all entries: indexing, delete all, etc. 
+        function [names info] = getListMetaFiles(cm, cacheName)
+            rootList = cm.cacheRootList;
+            filePattern = ['cache_*.meta.mat'];
+            fileList = fullfileMulti(rootList, cacheName, filePattern);
+            
+            info = multiDir(fileList);
+            names = {info.name};
+        end
+        
+        function [param timestamp] = loadFromMetaFile(cm, fileName)
+            meta = load(fileName, 'param', 'timestamp');
+            param = meta.param;
+            timestamp = meta.timestamp;
+        end
+        
+        function [names info] = getListDataFiles(cm, cacheName)
+            rootList = cm.cacheRootList;
+            filePattern = ['cache_*.data.mat'];
+            fileList = fullfileMulti(rootList, cacheName, filePattern);
+            
+            info = multiDir(fileList);
+            names = {info.name};
+        end
+        
+        function [paramList timestampList] = getListEntries(cm, cacheName)
+            % load the params stored in every entry in the cache by loading
+            % every meta file
+            names = cm.getListMetaFiles(cacheName);
+            N = length(names);
+            [paramList timestampList] = deal(cell(N, 1));
+            validMask = true(N, 1);
+            for i = 1:N
+                try
+                    meta = load(names{i}, 'param', 'timestamp');
+                catch exc
+                    debug('WARNING: Error loading from %s\n');
+                    fprintf(exc.message);
+                    validMask(i) = false;
+                end
+                paramList{i} = meta.param;
+                timestampList{i} = meta.timestamp;
+            end
+            
+            paramList = paramList(validMask);
+            timestampList = timestampList(validMask);
         end
     end
 
