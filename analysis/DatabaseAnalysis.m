@@ -95,6 +95,10 @@ classdef DatabaseAnalysis < handle & DataSource
                 return;
             end
         end
+        
+        function tf = getCacheFieldsIndividually(da)
+            tf = true;
+        end
 
         function tf = getRerunCachedUnsuccessful(da)
             tf = false;
@@ -296,6 +300,8 @@ classdef DatabaseAnalysis < handle & DataSource
             tableListCacheWarning = makecol(da.getReferencesRelatedEntryNames());
             tableListCacheInvalidate = makecol(da.getEntryNamesChangesInvalidateCache());
             
+            cacheFieldsIndividually = da.getCacheFieldsIndividually();
+            
             if loadCacheSuccessOnly
                 % only loading the success field, not running any new
                 % entries, used primarly by DataSource.loadSource
@@ -360,7 +366,6 @@ classdef DatabaseAnalysis < handle & DataSource
                     % resultTable = resultTable.loadFromCache();
                 %end
 
-
                 % check for modifications to related tables that should invalidate
                 % the cached results. Entries with cached fields older than the 
                 % most recent modification to the related entry names will be 
@@ -374,12 +379,17 @@ classdef DatabaseAnalysis < handle & DataSource
                 % check the cache timestamps to determine
                 % which entry x field cells are missing or out of date 
                 debug('Checking cached field existence and success field\n');
-                resultTable = resultTable.loadFields('fields', 'success', 'loadCacheOnly', true);
-                fieldsToLoad = setdiff(resultTable.fieldsCacheable, 'success');
-                % load the cache timestamps (and thereby determine whether
-                % they exist) for all fields for successful entries
-                resultTable = resultTable.loadFields('fields', fieldsToLoad, 'loadCacheTimestampsOnly', true, ...
-                    'entryMask', resultTable.success);
+                if cacheFieldsIndividually
+                    resultTable = resultTable.loadFields('fields', 'success', 'loadCacheOnly', true);
+                    fieldsToLoad = setdiff(resultTable.fieldsCacheable, 'success');
+                    % load the cache timestamps (and thereby determine whether
+                    % they exist) for all fields for successful entries
+                    resultTable = resultTable.loadFields('fields', fieldsToLoad, 'loadCacheTimestampsOnly', true, ...
+                        'entryMask', resultTable.success);
+                else
+                    % load everything, since they're all grouped together anyway
+                    resultTable.loadFields('loadCacheOnly', true);
+                end
                 resultTable.updateInDatabase();
                 
                 if checkCacheTimestamps && ~isempty(tableListCacheWarning) || ~isempty(tableListCacheInvalidate)
@@ -552,6 +562,7 @@ classdef DatabaseAnalysis < handle & DataSource
                             success = true;
                         end
 
+                        if false
                         % warn if not all fields requested were returned
                         % use the requested list fieldsAnalysis, a subset of dt.fieldsAnalysis
                         if success
@@ -582,26 +593,43 @@ classdef DatabaseAnalysis < handle & DataSource
                             % Copy only fieldsAnalysis that were returned.
                             % Fields in dt.fieldsAnalysis but not fieldsAnalysis are okay
                             [fieldsCopy fieldsReturnedMask] = intersect(da.fieldsAnalysis, fieldnames(resultStruct));
-                            fieldsCopyIsDisplayable = fieldsAnalysisIsDisplayable(fieldsReturnedMask); 
-                            for iField = 1:length(fieldsCopy)
-                                field = fieldsCopy{iField};
-                                % don't keep any values in the table, this way we don't run out of memory as the
-                                % analysis drags on
-                                % Displayable field values needed for report generation will be reloaded
-                                % later on in this function
-                                resultTable = resultTable.setFieldValue(iResult, field, resultStruct.(field), ...
-                                    'saveCache', saveCache, 'storeInTable', false);
+                            
+                            if da.cacheFieldsIndividually
+                                fieldsCopyIsDisplayable = fieldsAnalysisIsDisplayable(fieldsReturnedMask); 
+                                for iField = 1:length(fieldsCopy)
+                                    field = fieldsCopy{iField};
+                                    % don't keep any values in the table, this way we don't run out of memory as the
+                                    % analysis drags on
+                                    % Displayable field values needed for report generation will be reloaded
+                                    % later on in this function
+                                    resultTable = resultTable.setFieldValue(iResult, field, resultStruct.(field), ...
+                                        'saveCache', saveCache, 'storeInTable', false);
+                                end
+                            else
+                                resultEntry = rmfield(resultTable, extraFields); 
                             end
+                                
                         end
 
-                        % set all of the additional field values
-                        resultTable = resultTable.setFieldValue(iResult, 'success', success, 'saveCache', saveCache);
-                        resultTable = resultTable.setFieldValue(iResult, 'output', output, 'saveCache', saveCache);
-                        resultTable = resultTable.setFieldValue(iResult, 'runTimestamp', da.timeRun, 'saveCache', saveCache);
-                        resultTable = resultTable.setFieldValue(iResult, 'exception', exc, 'saveCache', saveCache);
-                        resultTable = resultTable.setFieldValue(iResult, 'figureInfo', da.figureInfoCurrentEntry, 'saveCache', saveCache);
-                        
+                        if da.cacheFieldsIndividually
+                            % set all of the additional field values
+                            resultTable = resultTable.setFieldValue(iResult, 'success', success, 'saveCache', saveCache);
+                            resultTable = resultTable.setFieldValue(iResult, 'output', output, 'saveCache', saveCache);
+                            resultTable = resultTable.setFieldValue(iResult, 'runTimestamp', da.timeRun, 'saveCache', saveCache);
+                            resultTable = resultTable.setFieldValue(iResult, 'exception', exc, 'saveCache', saveCache);
+                            resultTable = resultTable.setFieldValue(iResult, 'figureInfo', da.figureInfoCurrentEntry, 'saveCache', saveCache);
+                        else
+                            resultEntry.success = success;
+                            resultEntry.output = output;
+                            resultEntry.runTimestamp = da.timeRun;
+                            resultEntry.exception = exc;
+                            resultEntry.figureInfo = figureInfoCurrentEntry;
+                            
+                            resultTable = resultTable.updateEntry(iResult, entry, 'saveCache', saveCache);
+                        end
+
                         close all;
+                        end
                     end
                 end
 

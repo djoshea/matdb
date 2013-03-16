@@ -9,6 +9,8 @@ classdef DatabaseAnalysisResultsTable < LoadOnDemandMappedTable
         fieldsAdditional
         fieldsAdditionalDescriptorMap
         cacheParam; % copy of DatabaseAnalysis's cache param for Cacheable
+
+        cacheFieldsIndividually
     end
 
     methods
@@ -38,6 +40,7 @@ classdef DatabaseAnalysisResultsTable < LoadOnDemandMappedTable
             dt.analysisName = da.getName();
             dt.entryName = da.getName();
             dt.entryNamePlural = dt.entryName;
+            dt.cacheFieldsIndividually = da.getCacheFieldsIndividually();
             
             dt = initialize@LoadOnDemandMappedTable(dt, 'database', da.database);
         end
@@ -87,6 +90,11 @@ classdef DatabaseAnalysisResultsTable < LoadOnDemandMappedTable
             error('Request for value of field %s unsupported, should have been loaded already or found in cache');
         end
 
+        % if true, cacheable fields are written to the cache individually
+        % if false, all cacheable fields are written to the cache collectively by entry
+        function tf = getCacheFieldsIndividually(dt)
+            tf = dt.analysisCacheFieldsIndividually;
+        end
     end
 
     methods % Cacheable overrides

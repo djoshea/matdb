@@ -243,7 +243,7 @@ classdef (HandleCompatible) Cacheable
             for i = 1:N
                 matches = cm.checkParamMatch(cacheParam, paramList{i});
                 
-                tcprintf('inline', '{bright white}%3d {none}: %s {bright yellow}%s', i, datestr(timestampList{i}), names{i});
+                tcprintf('inline', '{bright white}%3d {none}: %s {bright yellow}%s', i, datestr(timestampList(i)), names{i});
                 if matches
                     tcprintf('inline', '{green} [matches param]\n');
                 else

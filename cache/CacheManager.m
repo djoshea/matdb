@@ -307,7 +307,8 @@ classdef CacheManager < handle
             % every meta file
             names = cm.getListMetaFiles(cacheName);
             N = length(names);
-            [paramList timestampList] = deal(cell(N, 1));
+            paramList = cell(N, 1);
+            timestampList = nan(N, 1);
             validMask = true(N, 1);
             for i = 1:N
                 try
@@ -318,11 +319,15 @@ classdef CacheManager < handle
                     validMask(i) = false;
                 end
                 paramList{i} = meta.param;
-                timestampList{i} = meta.timestamp;
+                timestampList(i) = meta.timestamp;
             end
             
             paramList = paramList(validMask);
             timestampList = timestampList(validMask);
+            
+            % sort by most recent first
+            [timestampList, sortInd] = sort(timestampList, 1, 'descend');
+            paramList = paramList(sortInd);
         end
     end
 

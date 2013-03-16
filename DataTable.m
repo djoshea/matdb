@@ -1775,10 +1775,24 @@ classdef DataTable < DynamicClass & Cacheable
             dt = dt.subclassSetFieldValue(idx, field, value);
             dt = dt.updateModifiedTimestamp();
         end
+        
+        function updateEntry(dt, idx, entry)
+            dt.warnIfNoArgOut(nargout);
+            dt.checkSupportsWrite();
+
+            assert(isscalar(idx) && isnumeric(idx) && idx > 0 && idx <= dt.nEntries, ...
+                'Index invalid or out of range [0 nEntries]');
+            
+            fields = intersect(dt.fields, fieldnames(entry));
+            for field = fields 
+                dt = dt.setFieldValue(idx, field{1}, entry.(fields{1}));
+            end
+        end
     end
 
     methods % Filtering and grouping (OLD)
         function db = groupBy(db, varargin)
+            error('Not Supported');
             db.warnIfNoArgOut(nargout);
 
             % db = groupBy('field1', 'field2', ...)
@@ -1796,6 +1810,7 @@ classdef DataTable < DynamicClass & Cacheable
         end
 
         function groups = get.groups(db, varargin);
+            error('Not Supported');
             if ~isempty(db.cachedGroups)
                 groups = db.cachedGroups;
             else

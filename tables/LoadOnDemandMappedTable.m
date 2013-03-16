@@ -30,6 +30,8 @@ classdef LoadOnDemandMappedTable < StructTable
         fieldsLoadOnDemandDescriptorMap
         fieldsCacheable % subset of fieldsLoadOnDemand
         fieldsCacheableDescriptorMap
+        
+        cacheFieldsIndividually
     end
     
     properties(Transient, Access=protected)
@@ -73,6 +75,7 @@ classdef LoadOnDemandMappedTable < StructTable
         % or load the values of those fields for a specific entry in the mapped table
         % and return a struct containing those field values.
         valueStruct = loadValuesForEntry(dt, entry, fields)
+        
     end
     
     methods % methods a subclass might wish to override
@@ -80,6 +83,12 @@ classdef LoadOnDemandMappedTable < StructTable
         % the values of cacheable fields (i.e. as returned by getFieldsCacheable())
         function cm = getFieldValueCacheManager(dt)
             cm = CacheManager();
+        end
+        
+        % if true, cacheable fields are written to the cache individually
+        % if false, all cacheable fields are written to the cache collectively by entry
+        function tf = getCacheFieldsIndividually(dt)
+            tf = true;
         end
         
         % oldest cache timestamp that will be treated as valid as a ValueMap from
@@ -109,6 +118,10 @@ classdef LoadOnDemandMappedTable < StructTable
                 dt = dt.initialize(varargin{:});
             end
         end
+        
+        function tf = get.cacheFieldsIndividually(dt)
+            tf = dt.getCacheFieldsIndividually();
+        end
 
         function dt = initialize(dt, varargin)
             % Build the table by generating a row via the one-to-one mapping 
@@ -135,7 +148,11 @@ classdef LoadOnDemandMappedTable < StructTable
             entryName = p.Results.entryName;
             entryNamePlural = p.Results.entryNamePlural;
             if isempty(db) && isempty(table)
-                error('Please provide "database" param in order to lookup mapped table or "table" param directly');
+                if isempty(dt.database)
+                    error('Please provide "database" param in order to lookup mapped table or "table" param directly');
+                else
+                    db = dt.database;
+                end
             end
 
             if isempty(entryName)
@@ -357,46 +374,97 @@ classdef LoadOnDemandMappedTable < StructTable
                 if loadCache
                     hasPrintedMessage = false;
 
-                    for iField = 1:length(fieldsCacheable)
-                        field = fieldsCacheable{iField};
-                        if loaded.(field)
-                            % already loaded
-                            continue;
+                    if dt.cacheFieldsIndividually
+                        % load from cache each field for this entry
+                        for iField = 1:length(fieldsCacheable)
+                            field = fieldsCacheable{iField};
+                            if loaded.(field)
+                                % already loaded
+                                continue;
+                            end
+                            if ~hasPrintedMessage 
+                                % load cache values and timestamps, store in table later
+                                fprintf('%s Retrieving cached fields for %s                \r', ...
+                                    progressStr, entryDescriptions{iEntry});
+                                hasPrintedMessage = true;
+                            end
+                            
+                            [validCache value timestamp] = dt.retrieveCachedFieldValue(iEntry, field);
+                            if validCache
+                                % found cached value
+                                loadedValues.(field) = value;
+                                loaded.(field) = true;
+                                cacheTimestamps.(field) = timestamp;
+                            end
                         end
-                        if ~hasPrintedMessage 
-                            % load cache values and timestamps, store in table later
-                            fprintf('%s Retrieving cached fields for %s                \r', ...
-                                progressStr, entryDescriptions{iEntry});
-                            hasPrintedMessage = true;
+                    else
+                        % load cache all fields for entry together
+                        allLoaded = true;
+                        for iField = 1:length(fieldsCacheable)
+                            field = fieldsCacheable{iField};
+                            if ~loaded.(field)
+                                % already loaded
+                                allLoaded = false;
+                                break;
+                            end
                         end
                         
-                        [validCache value timestamp] = dt.retrieveCachedFieldValue(iEntry, field);
+                        fprintf('%s Retrieving cached fields for %s                \r', ...
+                            progressStr, entryDescriptions{iEntry});
+                        [validCache values timestamp] = dt.retrieveCachedValuesForEntry(iEntry);
                         if validCache
-                            % found cached value
-                            loadedValues.(field) = value;
-                            loaded.(field) = true;
-                            cacheTimestamps.(field) = timestamp;
+                            % found cached values, store each field and mark as loaded
+                            for iField = 1:length(fieldsCacheable)
+                                field = fieldsCacheable{iField};
+                                if isfield(values, field)
+                                    loadedValues.(field) = values.(field);
+                                    loaded.(field) = true;
+                                    cacheTimestamps.(field) = timestamp;
+                                end
+                            end
                         end
+                        
                     end
 
                 elseif loadCacheTimestampsOnly
                     hasPrintedMessage = false;
                     
-
-                    for iField = 1:length(fieldsCacheable)
-                        field = fieldsCacheable{iField};
-                        if loaded.(field)
-                            % already loaded, don't bother with timestamp
-                            continue;
+                    if dt.cacheFieldsIndividually
+                        % load from cache each field for this entry
+                        for iField = 1:length(fieldsCacheable)
+                            field = fieldsCacheable{iField};
+                            if loaded.(field)
+                                % already loaded, don't bother with timestamp
+                                continue;
+                            end
+                            if ~hasPrintedMessage
+                                % only load timestamps into cacheTimestamps, not the actual values
+                                fprintf('%s Retrieving cache timestamps for %s              \r', ...
+                                    progressStr, entryDescriptions{iEntry});
+                                hasPrintedMessage = true;
+                            end
+                            [validCache timestamp] = dt.retrieveCachedFieldTimestamp(iEntry, field);
+                            cacheTimestamps.(field) = timestamp;
                         end
-                        if ~hasPrintedMessage
-                            % only load timestamps into cacheTimestamps, not the actual values
-                            fprintf('%s Retrieving cache timestamps for %s              \r', ...
-                                progressStr, entryDescriptions{iEntry});
-                            hasPrintedMessage = true;
+                    else
+                        % load cache timestamp for entire entry's fields
+                        allLoaded = true;
+                        for iField = 1:length(fieldsCacheable)
+                            field = fieldsCacheable{iField};
+                            if ~loaded.(field)
+                                % already loaded
+                                allLoaded = false;
+                                break;
+                            end
                         end
-                        [validCache timestamp] = dt.retrieveCachedFieldTimestamp(iEntry, field);
-                        cacheTimestamps.(field) = timestamp;
+                        fprintf('%s Retrieving cache timestamps for %s              \r', ...
+                            progressStr, entryDescriptions{iEntry});
+                        
+                        [validCache timestamp] = dt.retrieveCachedTimestampForEntry(iEntry);
+                        for iField = 1:length(fieldsCacheable)
+                            field = fieldsCacheable{iField};
+                            cacheTimestamps.(field) = timestamp;
+                        end
                     end
                 end
 
@@ -414,20 +482,28 @@ classdef LoadOnDemandMappedTable < StructTable
                         S = dt.loadValuesForEntry(mapEntry, fieldsToRetrieve);
                     
                         retFields = fieldnames(S);
-                        for iField = 1:length(retFields)
-                            field = retFields{iField};
-                            loadedValues.(field) = S.(field);
-                            loaded.(field) = true;
-                            if saveCache && ismember(field, fieldsCacheable)
-                                % cache the newly loaded value
-                                dt.cacheFieldValue(iEntry, field, 'value', loadedValues.(field));
+                        
+                        if dt.cacheFieldsIndividually
+                            for iField = 1:length(retFields)
+                                field = retFields{iField};
+                                loadedValues.(field) = S.(field);
+                                loaded.(field) = true;
+                                if saveCache && ismember(field, fieldsCacheable)
+                                    % cache the newly loaded value
+                                    dt.cacheFieldValue(iEntry, field, loadedValues.(field));
+                                end
                             end
+                        else
+                            loadedValues = S;
+                            entry = dt.table(iEntry);
+                            entry = structMerge(entry, S);
+                            dt.cacheEntryAllFields(iEntry, entry);
                         end
                     end
                 end
 
                 % store the values in the table's fields
-                loadedFields = fieldnames(loadedValues);
+                loadedFields = intersect(fieldnames(loadedValues), dt.fieldsLoadOnDemand);
 
                 if storeInTable
                     for iField = 1:length(loadedFields)
@@ -525,7 +601,61 @@ classdef LoadOnDemandMappedTable < StructTable
             end
             if saveCache && ismember(field, dt.fieldsCacheable)
                 dt.cacheFieldValue(idx, field, 'value', value);
-                dt.cacheTimestampsByEntry(idx).field = now;
+                dt.cacheTimestampsByEntry(idx).(field) = now;
+            end
+        end
+        
+        function dt = updateEntry(dt, idx, entry, varargin)
+            % set fields for an entire entry at once, with flags that work like
+            % setFieldValue above
+            
+            fields = fieldnames(entry);
+            if da.cacheFieldsIndividually
+                % nothing to be gained here, do it individually by field
+                for i = 1:length(fields)
+                    dt = dt.setFieldValue(dt, idx, fields{i}, entry.(fields{i}), varargin{:});
+                end
+            else
+                % cache the whole row at once
+                p = inputParser;
+                % write-down this value to the cache for this field value
+                p.addParamValue('saveCache', true, @islogical);
+                % if false, doesn't store the result in table, useful in conjuction
+                % with saveCache
+                p.addParamValue('storeInTable', true, @islogical);
+                % mark the entry loaded in .loadedByEntry
+                p.addParamValue('markLoaded', true, @islogical);
+                % mark the entry unloaded in .loadedByEntry
+                p.addParamValue('markUnloaded', false, @islogical);
+                p.parse(varargin{:});
+                saveCache = p.Results.saveCache;
+                storeInTable = p.Results.storeInTable;
+                markLoaded = p.Results.markLoaded;
+                markUnloaded = p.Results.markUnloaded;
+                
+                dt.warnIfNoArgOut(nargout);
+                if storeInTable
+                    dt = updateEntry@StructTable(dt, idx, entry);
+                end
+                fieldsLoadOnDemand = intersect(fields, dt.fieldsLoadOnDemand);
+                if storeInTable && markLoaded  
+                    for i = 1:length(fieldsLoadOnDemand)
+                        dt.loadedByEntry(idx).(fieldsLoadOnDemand{i}) = true;
+                    end
+                end
+                if storeInTable && markUnloaded 
+                    for i = 1:length(fieldsLoadOnDemand)
+                        dt.loadedByEntry(idx).(fieldsLoadOnDemand{i}) = false;
+                    end
+                end
+                fieldsCacheable = intersect(fields, dt.fieldsCacheable);
+                if saveCache 
+                    dt.cacheEntryAllFields(idx);
+                    for i = 1:length(fieldsCacheable)
+                        field = fieldsCacheable{i};
+                        dt.cacheTimestampsByEntry(idx).(field) = now;
+                    end
+                end
             end
         end
     end
@@ -553,51 +683,76 @@ classdef LoadOnDemandMappedTable < StructTable
             
             param.additional = dt.getCacheParamForField(field);
         end
-
+        
         function [validCache value timestamp] = retrieveCachedFieldValue(dt, iEntry, field)
-            cacheName = dt.getCacheNameForFieldValue(field);
-            cacheParam = dt.getCacheParamForFieldValue(iEntry, field);
-            cacheTimestamp = dt.getCacheValidTimestampForField(field);
-
             cm = dt.getFieldValueCacheManager();
-            validCache = cm.hasCacheNewerThan(cacheName, cacheParam, cacheTimestamp);
-
-            if validCache
-                [value timestamp] = cm.loadData(cacheName, cacheParam);
-                %debug('Loading cached value for entry %d field %s\n', iEntry, field);
+            if dt.cacheFieldsIndividually
+                cacheName = dt.getCacheNameForFieldValue(field);
+                cacheParam = dt.getCacheParamForFieldValue(iEntry, field);
+                cacheTimestamp = dt.getCacheValidTimestampForField(field);
+                
+                validCache = cm.hasCacheNewerThan(cacheName, cacheParam, cacheTimestamp);
+                if validCache
+                    [value timestamp] = cm.loadData(cacheName, cacheParam);
+                    %debug('Loading cached value for entry %d field %s\n', iEntry, field);
+                else
+                    value = [];
+                    timestamp = NaN;
+                end
             else
-                value = [];
-                timestamp = NaN;
+                [validCache values timestamp] = dt.retrieveCachedValuesForEntry(iEntry);
+                if validCache && isfield(values, field)
+                    value = values.(field);
+                else
+                    value = [];
+                    timestamp = NaN;
+                end
             end
         end
 
         function [validCache timestamp] = retrieveCachedFieldTimestamp(dt, iEntry, field)
-            cacheName = dt.getCacheNameForFieldValue(field);
-            cacheParam = dt.getCacheParamForFieldValue(iEntry, field);
-            cacheTimestamp = dt.getCacheValidTimestampForField(field);
+            if dt.cacheFieldsIndividually
+                cacheName = dt.getCacheNameForFieldValue(field);
+                cacheParam = dt.getCacheParamForFieldValue(iEntry, field);
+                cacheTimestamp = dt.getCacheValidTimestampForField(field);
 
-            cm = dt.getFieldValueCacheManager();
-            [validCache timestamp] = cm.hasCacheNewerThan(cacheName, cacheParam, cacheTimestamp);
+                cm = dt.getFieldValueCacheManager();
+                [validCache timestamp] = cm.hasCacheNewerThan(cacheName, cacheParam, cacheTimestamp);
+            else
+                [validCache timestamp] = dt.retrieveCachedTimestampForEntry(iEntry);
+            end
         end
 
-        function timestamp = cacheFieldValue(dt, iEntry, field, varargin)
+        function cacheFieldValue(dt, iEntry, field, varargin)
             p = inputParser;
             p.addRequired('iEntry', @(x) true); % @(x) isscalar(x) && x > 0 && x <= dt.nEntries);
-            p.addRequired('field', @(x) true); % @(x) ischar(x) && dt.isField(field));
-            p.addOptional('value', []); 
+            p.addRequired('field', @ischar); % @(x) ischar(x) && dt.isField(field));
+            p.addOptional('value', '', @(x) true); 
             p.parse(iEntry, field, varargin{:});
-            if ismember('value', p.UsingDefaults)
-                % use actual field value as default
-                value = dt.select(iEntry).getValue(field);
-            else
-                value = p.Results.value;
-            end
-
-            cacheName = dt.getCacheNameForFieldValue(field);
-            cacheParam = dt.getCacheParamForFieldValue(iEntry, field);
+            
             cm = dt.getFieldValueCacheManager();
-            %debug('Saving cache for entry %d field %s \n', iEntry, field);
-            cm.saveData(cacheName, cacheParam, value);
+            if dt.cacheFieldsIndividually
+                cacheName = dt.getCacheNameForFieldValue(field);
+                cacheParam = dt.getCacheParamForFieldValue(iEntry, field);
+                
+                if ismember('value', p.UsingDefaults)
+                    % use actual field value as default
+                    value = dt.select(iEntry).getValue(field);
+                else
+                    % use passed value
+                    value = p.Results.value;
+                end
+
+                %debug('Saving cache for entry %d field %s \n', iEntry, field);
+                cm.saveData(cacheName, cacheParam, value);
+            else
+                debug('WARNING: Attempting to cache individual field value when fields are cached by entry\n');
+                values = dt.table(iEntry);
+                if ~ismember('value', p.UsingDefaults)
+                    values.(field) = p.Results.value;
+                end 
+                dt.cacheEntryAllFields(iEntry, values);
+            end
         end
 
         function cacheAllValues(dt, fields, varargin)
@@ -608,12 +763,17 @@ classdef LoadOnDemandMappedTable < StructTable
             fields = intersect(p.Results.fields, dt.fieldsCacheable);
 
             for iEntry = 1:dt.nEntries
-                for iField = 1:length(fields)
-                    field = fields{iField};
-                    % only cache if the value is loaded
-                    if dt.loadedByEntry(iEntry).(field)
-                        dt.cacheFieldValue(iEntry, field);
+                if dt.cacheFieldsIndividually
+                    for iField = 1:length(fields)
+                        field = fields{iField};
+                        % only cache if the value is loaded
+                        if dt.loadedByEntry(iEntry).(field)
+                            dt.cacheFieldValue(iEntry, field);
+                        end
                     end
+                else
+                    % cache all fields at once
+                    dt.cacheEntryAllFields(iEntry);
                 end
             end
         end
@@ -629,14 +789,92 @@ classdef LoadOnDemandMappedTable < StructTable
 
             cm = dt.getFieldValueCacheManager();
             for iEntry = 1:dt.nEntries
-                for iField = 1:length(fields)
-                    field = fields{iField};
-                    cacheName = dt.getCacheNameForFieldValue(field);
-                    cacheParam = dt.getCacheParamForFieldValue(iEntry, field);
-                    debug('Deleting cache for entry %d field %s\n', iEntry, field);
+                if dt.cacheFieldsIndividually
+                    for iField = 1:length(fields)
+                        field = fields{iField};
+                        cacheName = dt.getCacheNameForFieldValue(field);
+                        cacheParam = dt.getCacheParamForFieldValue(iEntry, field);
+                        debug('Deleting cache for entry %d field %s\n', iEntry, field);
+                        cm.deleteCache(cacheName, cacheParam);
+                    end
+                else
+                    cacheName = dt.getCacheNameForEntryAllFields();
+                    cacheParam = dt.getCacheParamForEntryAllFields(iEntry);
+                    debug('Deleting cache for entry %d all cacheable fields\n', iEntry);
                     cm.deleteCache(cacheName, cacheParam);
                 end
             end
+        end
+    end
+
+    methods % Caching cacheable fields for entire entries (when cacheFieldsIndividually == false)
+        function name = getCacheNameForEntryAllFields(dt)
+            name = sprintf('%s_entries', dt.getCacheName());
+        end
+
+        % build the cache param to be used for field field on entry idx
+        % this includes the manually specified params as well as the keyFields
+        % of entry idx
+        function param = getCacheParamForEntryAllFields(dt, idx)
+            keyFields = dt.keyFields;
+            % direct table access for speed, ideally would use get key fields table
+            row = dt.table(idx);
+            for i = 1:length(keyFields)
+                field = keyFields{i};
+                param.keyFields.(field) = row.(field);
+            end
+            
+            param.table = dt.getCacheParam();
+        end
+
+        function timestamp = getCacheValidTimestampForEntryAllFields(dt)
+            fieldsCacheable = dt.fieldsCacheable;
+            timestamps = cellfun(@(field) dt.getCacheValidTimestampForField(field), fieldsCacheable);
+            timestamp = max(timestamps);    
+        end
+
+        function [validCache values timestamp] = retrieveCachedValuesForEntry(dt, iEntry)
+            cacheName = dt.getCacheNameForEntryAllFields();
+            cacheParam = dt.getCacheParamForEntryAllFields(iEntry);
+            cacheTimestamp = dt.getCacheValidTimestampForEntryAllFields();
+
+            cm = dt.getFieldValueCacheManager();
+            validCache = cm.hasCacheNewerThan(cacheName, cacheParam, cacheTimestamp);
+
+            if validCache
+                [values timestamp] = cm.loadData(cacheName, cacheParam);
+                %debug('Loading cached value for entry %d field %s\n', iEntry, field);
+            else
+                values = struct();
+                timestamp = NaN;
+            end
+        end
+        
+        function [validCache timestamp] = retrieveCachedTimestampForEntry(dt, iEntry)
+            cacheName = dt.getCacheNameForEntryAllFields();
+            cacheParam = dt.getCacheParamForEntryAllFields(iEntry);
+            cacheTimestamp = dt.getCacheValidTimestampForEntryAllFields(field);
+
+            cm = dt.getFieldValueCacheManager();
+            [validCache timestamp] = cm.hasCacheNewerThan(cacheName, cacheParam, cacheTimestamp);
+        end
+        
+        function cacheEntryAllFields(dt, iEntry, row)
+            if nargin < 3
+                row = dt.table(iEntry); 
+            end 
+            
+            cacheName = dt.getCacheNameForEntryAllFields();
+            cacheParam = dt.getCacheParamForEntryAllFields(iEntry);
+            
+            
+            fieldsCacheable = dt.fieldsCacheable;
+            nonCacheable = setdiff(dt.fields, dt.fieldsCacheable);
+            row = rmfield(row, nonCacheable);
+
+            %debug('Saving cache for entry %d all cacheable fields\n', iEntry);
+            cm = dt.getFieldValueCacheManager();
+            cm.saveData(cacheName, cacheParam, row);
         end
     end
 
