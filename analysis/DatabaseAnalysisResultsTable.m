@@ -10,7 +10,7 @@ classdef DatabaseAnalysisResultsTable < LoadOnDemandMappedTable
         fieldsAdditionalDescriptorMap
         cacheParam; % copy of DatabaseAnalysis's cache param for Cacheable
 
-        cacheFieldsIndividually
+        analysisCacheFieldsIndividually
     end
 
     methods
@@ -40,7 +40,7 @@ classdef DatabaseAnalysisResultsTable < LoadOnDemandMappedTable
             dt.analysisName = da.getName();
             dt.entryName = da.getName();
             dt.entryNamePlural = dt.entryName;
-            dt.cacheFieldsIndividually = da.getCacheFieldsIndividually();
+            dt.analysisCacheFieldsIndividually = da.getCacheFieldsIndividually();
             
             dt = initialize@LoadOnDemandMappedTable(dt, 'database', da.database);
         end
