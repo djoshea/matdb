@@ -314,9 +314,11 @@ classdef CacheManager < handle
                 try
                     meta = load(names{i}, 'param', 'timestamp');
                 catch exc
-                    debug('WARNING: Error loading from %s\n');
+                    debug('WARNING: Error loading from meta file %s\n', names{i});
                     fprintf(exc.message);
+                    fprintf('\n');
                     validMask(i) = false;
+                    continue;
                 end
                 paramList{i} = meta.param;
                 timestampList(i) = meta.timestamp;

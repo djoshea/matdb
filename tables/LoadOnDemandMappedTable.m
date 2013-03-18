@@ -36,7 +36,7 @@ classdef LoadOnDemandMappedTable < StructTable
     
     properties(Transient, Access=protected)
         cachedFieldsLoadOnDemand
-        cachedFieldsLoadOnDemandDescriptorMap
+        cachedFieldsLoadOnDemandDescriptorMap 
         cachedFieldsNotLoadOnDemand
         cachedFieldsNotLoadOnDemandDescriptorMap
         cachedFieldsCacheable
@@ -173,8 +173,6 @@ classdef LoadOnDemandMappedTable < StructTable
                 
                 % add additional fields
                 [fields dfdMap] = dt.getFieldsNotLoadOnDemand();
-                dt.cachedFieldsNotLoadOnDemand = fields;
-                dt.cachedFieldsNotLoadOnDemandDescriptorMap = dfdMap;
                 for iField = 1:length(fields)
                     field = fields{iField};
                     table = table.addField(field, [], 'fieldDescriptor', dfdMap(field));
@@ -183,8 +181,6 @@ classdef LoadOnDemandMappedTable < StructTable
 
                 % add load on demand fields
                 [fields dfdMap] = dt.getFieldsLoadOnDemand();
-                dt.cachedFieldsLoadOnDemand = fields;
-                dt.cachedFieldsLoadOnDemandDescriptorMap = dfdMap;
                 for iField = 1:length(fields)
                     field = fields{iField};
                     table = table.addField(field, [], 'fieldDescriptor', dfdMap(field));
@@ -198,6 +194,19 @@ classdef LoadOnDemandMappedTable < StructTable
             end
             
             dt.cachedFieldsCacheable = dt.getFieldsCacheable();
+            [fields, dfdMap] = dt.getFieldsLoadOnDemand();
+            if isempty(fields)
+                fields = {};
+            end
+            dt.cachedFieldsLoadOnDemand = fields;
+            dt.cachedFieldsLoadOnDemandDescriptorMap = dfdMap;
+            
+            [fields, dfdMap] = dt.getFieldsNotLoadOnDemand();
+            if isempty(fields)
+                fields = {};
+            end
+            dt.cachedFieldsNotLoadOnDemand = fields;
+            dt.cachedFieldsNotLoadOnDemandDescriptorMap = dfdMap;
 
             % initialize in StructTable 
             dt = initialize@StructTable(dt, table, p.Unmatched); 
@@ -600,7 +609,7 @@ classdef LoadOnDemandMappedTable < StructTable
                 dt.loadedByEntry(idx).(field) = false;
             end
             if saveCache && ismember(field, dt.fieldsCacheable)
-                dt.cacheFieldValue(idx, field, 'value', value);
+                dt.cacheFieldValue(idx, field, value);
                 dt.cacheTimestampsByEntry(idx).(field) = now;
             end
         end

@@ -66,6 +66,10 @@ classdef DatabaseAnalysis < handle & DataSource
         % return the param to be used when caching
         param = getCacheParam(da);
         
+        % return a string used to describe the params used for this analysis
+        % should encompass whatever is returned by getCacheParam()
+        str = getDescriptionParam(da);
+
         % return the entryName corresponding to the table in the database which this
         % analysis runs on. The DataTable with this entry name will run this analysis
         % once on each entry and map the results via a 1-1 relationship 
@@ -562,7 +566,6 @@ classdef DatabaseAnalysis < handle & DataSource
                             success = true;
                         end
 
-                        if false
                         % warn if not all fields requested were returned
                         % use the requested list fieldsAnalysis, a subset of dt.fieldsAnalysis
                         if success
@@ -594,7 +597,7 @@ classdef DatabaseAnalysis < handle & DataSource
                             % Fields in dt.fieldsAnalysis but not fieldsAnalysis are okay
                             [fieldsCopy fieldsReturnedMask] = intersect(da.fieldsAnalysis, fieldnames(resultStruct));
                             
-                            if da.cacheFieldsIndividually
+                            if cacheFieldsIndividually
                                 fieldsCopyIsDisplayable = fieldsAnalysisIsDisplayable(fieldsReturnedMask); 
                                 for iField = 1:length(fieldsCopy)
                                     field = fieldsCopy{iField};
@@ -611,7 +614,7 @@ classdef DatabaseAnalysis < handle & DataSource
                                 
                         end
 
-                        if da.cacheFieldsIndividually
+                        if cacheFieldsIndividually
                             % set all of the additional field values
                             resultTable = resultTable.setFieldValue(iResult, 'success', success, 'saveCache', saveCache);
                             resultTable = resultTable.setFieldValue(iResult, 'output', output, 'saveCache', saveCache);
@@ -629,7 +632,6 @@ classdef DatabaseAnalysis < handle & DataSource
                         end
 
                         close all;
-                        end
                     end
                 end
 
@@ -962,6 +964,38 @@ classdef DatabaseAnalysis < handle & DataSource
             
             % Load success field
             da.run('loadCacheSuccessOnly', true);
+        end
+
+        function useAsResultTable(da, resultTable)
+            % utilize DataTable resultTable as .resultTable, and mark this analysis thereby loaded 
+            % into the database. This allows other analyses / sources which require 
+            % this analysis to be loaded in the database to proceed while acting on a 
+            % specific results table as provided.
+            %
+            % TODO refactor this to avoid duplication in .run()
+            
+            % load all data sources
+            db = da.database;
+            if isempty(db)
+                error('Please call .setDatabase(db)');
+            end
+            db.loadSource(da.getRequiredSources());
+            
+            % load all data views 
+            db.applyView(da.getRequiredViews());
+
+            % get the appropriate table to map
+            entryName = da.getMapsEntryName();
+            table = db.getTable(entryName);
+            % enforce singular for 1:1 relationship to work
+            entryName = table.entryName;
+
+            resultTable = db.addTable(resultTable);
+            db.addRelationshipOneToOne(resultTable.entryName, entryName); 
+            da.resultTable = resultTable;
+            da.hasRun = true;
+
+            db.markSourceLoaded(da);
         end
 
         function deleteCache(da)

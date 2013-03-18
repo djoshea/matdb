@@ -344,6 +344,7 @@ classdef HTMLDatabaseAnalysisWriter < HTMLDataTableWriter
 
         function generate(html, da)
             html.da = da;
+            desc = da.getDescriptionParam();
             html.table = da.resultTable;
 
             % generate report options
@@ -351,8 +352,8 @@ classdef HTMLDatabaseAnalysisWriter < HTMLDataTableWriter
             entryName = da.getMapsEntryName();
             html.pageTitle = name;
             html.mainHeader = html.table.entryNamePlural; 
-            html.subHeader = sprintf('DatabaseAnalysis run on %s with %d entries.', ...
-                entryName, html.table.nEntries);
+            html.subHeader = sprintf('DatabaseAnalysis run on %s with %d entries.<br/>Parameters : %s <br/>', ...
+                entryName, html.table.nEntries, desc);
             html.navTitle = 'Database Analysis';
             html.navSubTitle = name;
 

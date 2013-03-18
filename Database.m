@@ -527,11 +527,28 @@ classdef Database < DynamicClass & handle
                 db.sourcesLoaded{end+1} = src;
             end
         end
-
-        function tf = hasSourceLoaded(db, src)
+        
+        function [tf srcLoaded] = hasSourceLoaded(db, src)
             matches = cellfun(@(s) isequal(src, s), db.sourcesLoaded);
             tf = any(matches);
+            if tf
+                ind = find(matches, 1, 'first');
+                srcLoaded = db.sourcesLoaded{ind};
+            else
+                srcLoaded = [];
+            end
         end
+        
+        function srcCell = findSourcesByClassName(db, className)
+            % return a cell array of all loaded sources src satisfying
+            % isa(src, className)
+            if ~ischar(className)
+                className = class(className);
+            end
+            
+            matches = cellfun(@(s) isa(s, className), db.sourcesLoaded);
+            srcCell = db.sourcesLoaded(matches);
+        end 
 
         function str = get.sourcesLoadedDescription(db)
             names = cellfun(@(src) src.describe(), db.sourcesLoaded, ...
