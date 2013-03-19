@@ -271,6 +271,10 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             % was run, useful if issues encountered with report generation
             p.addParamValue('forceReport', false, @islogical);
             
+            % will drop the current results table before loading new values
+            % if true, otherwise will merge it in
+            p.addParamValue('keepCurrentValues', false, @islogical);
+            
             % for new entries that run, they will be unloaded from the table immediately
             % if this is false so as to prevent memory overflows for large analyses
             % if true, new analysis results will be kept in the table, 
@@ -288,6 +292,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             catchErrors = p.Results.catchErrors;
             forceReport = p.Results.forceReport;
             storeInTable = p.Results.storeInTable;
+            keepCurrentValues = p.Results.keepCurrentValues;
             db = p.Results.database;
 
             if ~isempty(db)
@@ -296,6 +301,9 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             db = da.database;
             
             % load required source/views, map the result table, etc.
+            if ~keepCurrentValues
+                da.resultTable = [];
+            end
             da.initialize();
             resultTable = da.resultTable;
             

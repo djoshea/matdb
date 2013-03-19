@@ -24,7 +24,7 @@ classdef CacheManager < handle
         function tf = checkParamMatch(cm, paramInFile, paramRef)
             cm.assertParamValid(paramInFile);
             cm.assertParamValid(paramRef);
-            tf = isequal(paramInFile, paramRef);
+            tf = isequaln(paramInFile, paramRef);
         end
 
         function str = hashParam(cm, cacheName, param)
@@ -197,9 +197,15 @@ classdef CacheManager < handle
             fileData = cm.getFileDataForWrite(cacheName, param);
             mkdirRecursive(fileparts(fileMeta));
 
+            if separateFields
+                fields = fieldnames(data);
+            else
+                fields = {};
+            end
+            
             % Save cache meta file
             %debug('Saving cache meta %s\n', fileMeta);
-            save(fileMeta, 'param', 'timestamp', 'separateFields');
+            save(fileMeta, 'param', 'timestamp', 'separateFields', 'fields');
 
             % save cache data file
             %debug('Saving cache data %s\n', fileData);

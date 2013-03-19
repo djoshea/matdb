@@ -33,7 +33,7 @@ classdef LoadOnDemandMappedTable < StructTable
         cacheFieldsIndividually
     end
     
-    properties(Transient, Access=protected)
+    properties(Access=protected)
         cachedFieldsLoadOnDemand
         cachedFieldsLoadOnDemandDescriptorMap 
 
