@@ -146,11 +146,8 @@ classdef (HandleCompatible) Cacheable
             param = obj.getCacheParamSnapshot(snapshotName);
             
             timestamp = obj.getCacheTimestamp();
-            if nargin(obj.prepareForCache) > 1 
-                obj = obj.prepareForCache('snapshot', true);
-            else
-                obj = obj.prepareForCache();
-            end
+            obj = obj.prepareForCache('snapshot', true);
+            
             debug('Taking snapshot %s : %s\n', name, snapshotName);
             cm.saveData(name, param, obj, 'timestamp', timestamp);
         end
@@ -249,7 +246,7 @@ classdef (HandleCompatible) Cacheable
             for i = 1:N
                 matches = cm.checkParamMatch(cacheParam, paramList{i});
                 
-                tcprintf('inline', '{bright white}%3d {none}: %s {bright yellow}%s', i, datestr(timestampList(i)), names{i});
+                tcprintf('inline', '{bright yellow}%3d {none}: %s {bright white}%s', i, datestr(timestampList(i)), names{i});
                 if matches
                     tcprintf('inline', '{green} [matches param]\n');
                 else
@@ -280,7 +277,7 @@ classdef (HandleCompatible) Cacheable
 
             % call postLoadOnCache function in case subclass has overridden it 
             % we pass along the pre-cache version of obj in case useful.
-            objCached = objCached.postLoadFromCache(param, timestamp, obj);
+            objCached = objCached.postLoadFromCache(param, timestamp, obj, 'snapshot', true);
 
             % when loading a handle class, we must manually transfer
             % all properties to current class (objCached -> obj) because

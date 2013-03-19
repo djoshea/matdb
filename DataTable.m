@@ -104,10 +104,15 @@ classdef DataTable < DynamicClass & Cacheable
         % values (which you may assume have already been appropriately converted)
         db = subclassRemoveField(db, field)
 
-        % add one or more new entries. valueMap is a ValueMap fieldName ->
-        % values. Values have already been converted according to the field 
+        % add one or more new entries. valueMap is a struct array that looks like
+        %   struct(i).field = value
+        % Values have already been converted according to the field 
         % descriptor.
-        db = subclassAddEntry(db, valueMap)
+        db = subclassAddEntry(db, valueStruct)
+
+        % replace the entry in position iEntry with valueStruct
+        % in the same format as subclassAddEntry
+        db = subclassReplaceEntry(db, valueStruct, entryMask)
 
         % set the value of entry(idx).field = value
         % assume that value has already been converted by the 
@@ -987,6 +992,9 @@ classdef DataTable < DynamicClass & Cacheable
             % use utf depending on OS, but never in data tip
             useUTF32 = isunix && ~ismac && ~inDataTip;
             useUTF8 = ~useUTF32 && isunix && ~inDataTip;
+            if ismac % temporary hack because newer iTerm is messing up double width characters
+                useUTF8 = false;
+            end
 
             % determine utf bytecodes for + - | characters
             if grid
@@ -1602,13 +1610,15 @@ classdef DataTable < DynamicClass & Cacheable
                     S = assignIntoStructArray(S, field, values);
                 end
             end
-            
-            keptIndsOrig = 1:db.nEntries;
-            keptIndsNew = 1:length(S);
-            
+
+            % build up list of ind correspondence
+            [indInOrigTable, indInAddedTable] = deal(nan(db.nEntries+length(S), 1));
+            indInOrigTable(1:db.nEntries) = 1:db.nEntries;
+            Sinds = 1:length(S);
+
             if overwriteKeyFieldsMatch || keyFieldMatchesOnly
                 % delete any rows from this table that have key field matches in
-                % other that will be overwriting them
+                % other that will be overwriting thetu
                 overwriteMask = false(db.nEntries, 1);
                 hasMatchMask = false(nNewEntries, 1);
                 nonKeyFields = setdiff(db.fields, db.keyFields);
@@ -1621,28 +1631,29 @@ classdef DataTable < DynamicClass & Cacheable
                     overwriteMask(idx) = true;
                 end
 
-                % remove the entries to be overwritten, so that we can just add 
-                % the new ones at the end
-                db = db.exclude(overwriteMask);
-                
-                keptIndsOrig = keptIndsOrig(~overwriteMask);
-            end
+                % replace the matched entries 
+                db = db.subclassReplaceEntry(S(hasMatchMask), overwriteMask);
 
-            if keyFieldMatchesOnly
-                % keyFieldMatchesOnly means we're not adding any unmatched rows
-                % from the new table
-                S = S(hasMatchMask);
-                keptIndsNew = keptIndsNew(hasMatchMask);
+                if keyFieldMatchesOnly
+                    % keyFieldMatchesOnly means we're not adding any unmatched rows
+                    % from the new table, so throw the non-matches away
+                    S = [];
+                    Sinds = [];
+                else
+                    % add the non-matching ones
+                    S = S(~hasMatchMask);
+                    Sinds = Sinds(~hasMatchMask);
+                end
+
+                % update the correspondence list accordingly
+                indInOrigTable(overwriteMask) = NaN;
+                indInAddedTable(overwriteMask) = find(hasMatchMask);
             end
 
             if ~isempty(S)
+                indInAddedTable(db.nEntries+ (1:length(S))) = Sinds;
                 db = db.subclassAddEntry(S);
             end
-
-            % build up list of ind correspondence
-            [indInOrigTable indInAddedTable] = nan(db.nEntries, 1);
-            indInOrigTable(1:length(keptIndsOrig)) = keptIndsOrig;
-            indInAddedTable(length(keptIndsOrig) + (1:length(keptIndsNew))) = keptIndsNew;
 
             db = db.updateModifiedTimestamp();
             db.pendingApplyEntryMask = true;
@@ -1777,7 +1788,7 @@ classdef DataTable < DynamicClass & Cacheable
 
             dfd = dt.fieldDescriptorMap.get(field);
             value = dfd.convertValues(value);
-            
+
             if isempty(value)
                 value = dfd.getEmptyValue();
             end
@@ -1786,18 +1797,18 @@ classdef DataTable < DynamicClass & Cacheable
                 % if it's a matrix, this should be a cell array
                 value = value{1};
             end
-            
+
             dt = dt.subclassSetFieldValue(idx, field, value);
             dt = dt.updateModifiedTimestamp();
         end
-        
+
         function updateEntry(dt, idx, entry)
             dt.warnIfNoArgOut(nargout);
             dt.checkSupportsWrite();
 
             assert(isscalar(idx) && isnumeric(idx) && idx > 0 && idx <= dt.nEntries, ...
                 'Index invalid or out of range [0 nEntries]');
-            
+
             fields = intersect(dt.fields, fieldnames(entry));
             for field = fields 
                 dt = dt.setFieldValue(idx, field{1}, entry.(fields{1}));

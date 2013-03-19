@@ -7,12 +7,6 @@ classdef LoadOnDemandMappedTable < StructTable
 % specific fields which will be loaded, and a function which returns the
 % loaded values of these fields for a specific entry, i.e. loads the values.
 
-    properties(SetAccess=protected)
-        loadedByEntry % loadedByEntry(iEntry).field = true/false
-        cacheTimestampsByEntry % cacheTimestampsByEntry(iEntry).field = timestamp for which
-                               % cache was loaded
-    end
-
     properties
         % ignore cached field values earlier than this date
         fieldValueCacheValidAfterTimestamp = -Inf;
@@ -24,6 +18,8 @@ classdef LoadOnDemandMappedTable < StructTable
         % elsewhere
         unloadCacheableFieldsPreCacheTable = true;
         
+        % set to true after initialize is run, which happens automatically in the 
+        % constructor if a database argument is provided
         initialized = false;
     end
 
@@ -32,6 +28,7 @@ classdef LoadOnDemandMappedTable < StructTable
         fieldsLoadOnDemandDescriptorMap
         fieldsCacheable % subset of fieldsLoadOnDemand
         fieldsCacheableDescriptorMap
+        fieldsRequestable
         
         cacheFieldsIndividually
     end
@@ -39,10 +36,16 @@ classdef LoadOnDemandMappedTable < StructTable
     properties(Transient, Access=protected)
         cachedFieldsLoadOnDemand
         cachedFieldsLoadOnDemandDescriptorMap 
+
+        % these must be subsets of fieldsLoadOnDemand
+        cachedFieldsCacheable 
+        cachedFieldsRequestable
+
+        % these are typical fields that are cached with the table 
         cachedFieldsNotLoadOnDemand
         cachedFieldsNotLoadOnDemandDescriptorMap
-        cachedFieldsCacheable
-        cachedFieldsCacheableDescriptorMap
+
+        cachedCacheManager
     end
 
     methods(Abstract)
@@ -77,20 +80,27 @@ classdef LoadOnDemandMappedTable < StructTable
         % or load the values of those fields for a specific entry in the mapped table
         % and return a struct containing those field values.
         valueStruct = loadValuesForEntry(dt, entry, fields)
-        
     end
     
     methods % methods a subclass might wish to override
         % indicate the CacheManager you would like to use to cache and load
         % the values of cacheable fields (i.e. as returned by getFieldsCacheable())
         function cm = getFieldValueCacheManager(dt)
-            cm = CacheManager();
+            cm = dt.cachedCacheManager;
         end
         
         % if true, cacheable fields are written to the cache individually
         % if false, all cacheable fields are written to the cache collectively by entry
         function tf = getCacheFieldsIndividually(dt)
             tf = true;
+        end
+
+        % return a list of fields that we can call loadValuesForEntry for
+        % if a field is not listed here, it is presumably cacheable, and we won't try
+        % to request the value if a cached value does not exist. That is, the cached value
+        % must come from somewhere else and be set using setFieldValue().
+        function fields = getFieldsRequestable(dt)
+            fields = dt.getFieldsLoadOnDemand();
         end
         
         % oldest cache timestamp that will be treated as valid as a ValueMap from
@@ -129,7 +139,7 @@ classdef LoadOnDemandMappedTable < StructTable
             % Build the table by generating a row via the one-to-one mapping 
             % to the database table. All entries will initially be empty for fields
             % that are loaded on demand.
-            
+
             p = inputParser;
             p.KeepUnmatched = true;
             
@@ -204,11 +214,8 @@ classdef LoadOnDemandMappedTable < StructTable
                 assert(~isempty(db), 'Table must be linked to a database');
             end
             
-            loadedByEntry = num2cell(dt.generateLoadedByEntry('fieldsLoaded', fieldsLoaded));
-            table = table.addField('loadedByEntry', loadedByEntry, 'fieldDescriptor', UnspecifiedField); 
-            cacheTimestampsByEntry = num2cell(dt.generateCacheTimestampsByEntry());
-            table = table.addField('cacheTimestampsByEntry', cacheTimestampsByEntry, 'fieldDescriptor', UnspecifiedField); 
-            
+            % pre-cache all of the cachedFields* category lists so that 
+            % the dependent properties all work    
             dt.cachedFieldsCacheable = dt.getFieldsCacheable();
             [fields, dfdMap] = dt.getFieldsLoadOnDemand();
             if isempty(fields)
@@ -224,24 +231,56 @@ classdef LoadOnDemandMappedTable < StructTable
             dt.cachedFieldsNotLoadOnDemand = fields;
             dt.cachedFieldsNotLoadOnDemandDescriptorMap = dfdMap;
 
+            fields = dt.getFieldsRequestable();
+            dt.cachedFieldsRequestable = fields;
+
             % initialize in StructTable 
+            dt.table = [];
             dt = initialize@StructTable(dt, table, p.Unmatched); 
 
+            % TODO replace this with default cache manager?
+            dt.cachedCacheManager = MatdbSettingsStore.getDefaultCacheManager();
+            
+             % populate loadedByEntry and cacheTimestampsByEntry fields
+            loadedByEntry = num2cell(dt.generateLoadedByEntry('fieldsLoaded', fieldsLoaded));
+            dt = dt.addField('loadedByEntry', loadedByEntry, 'fieldDescriptor', UnspecifiedField); 
+            cacheTimestampsByEntry = num2cell(dt.generateCacheTimestampsByEntry());
+            dt = dt.addField('cacheTimestampsByEntry', cacheTimestampsByEntry, 'fieldDescriptor', UnspecifiedField); 
+          
             %dt.loadedByEntry = dt.generateLoadedByEntry('fieldsLoaded', fieldsLoaded);
             %dt.cacheTimestampsByEntry = dt.generateCacheTimestampsByEntry();
 
-            dt = db.addTable(dt);
-            db.addRelationshipOneToOne(entryNameMap, entryName);
-            
             if keepCurrentValues
                 % now dt has been mapped off of the table correctly, and dtOriginal holds certain
                 % values that we'd like to hold onto, but only for specific entries that still 
                 % exist within dt. Since the order of entries won't change, we don't need
                 % to worry about loadedByEntry or cacheTimestampsByEntry changing
-                obj = dt.mergeEntriesWith(dtOriginal, 'keyFieldMatchesOnly', true);
+                dt = dt.mergeEntriesWith(dtOriginal, 'keyFieldMatchesOnly', true);
             end
             
+            dt = db.addTable(dt);
+            db.addRelationshipOneToOne(entryNameMap, entryName);
             dt.initialized = true;
+            
+            dt.updateInDatabase();
+        end
+
+        function dt = reinitialize(dt, varargin)
+            dt.warnIfNoArgOut(nargout);
+            dt = dt.initialize('keepCurrentValues', true);
+        end
+
+        % override to also call .initialize afterwards
+        function dt = setDatabase(dt, database)
+            dt.warnIfNoArgOut(nargout);
+
+            oldDatabase = dt.database;
+            dt = setDatabase@StructTable(dt, database);
+
+            % initialize if not initialized yet or database is changing
+            %if ~dt.initialized || ~isequal(oldDatabase, database)
+            % dt = dt.initialize('keepCurrentValues', true);
+            % end
         end
     end
 
@@ -258,31 +297,28 @@ classdef LoadOnDemandMappedTable < StructTable
         %end
 
         % need to extend this in order to add new rows to loadedByEntry appropriately
-        %function dt = subclassAddEntry(dt, S)
-        %    % we can only assume that any entries which are added are not loaded
-        %    newLoadedByEntry = emptyStructArray([length(S) 1], dt.fieldsLoadOnDemand, 'val', false);
-        %    dt.loadedByEntry = [dt.loadedByEntry; newLoadedByEntry];
-%
-%            % and assume not loaded from cache
-%            newCacheTimestampsByEntry = emptyStructArray([length(S) 1], dt.fieldsCacheable);
-%            dt.cacheTimestampsByEntry = [dt.cacheTimestampsByEntry; newCacheTimestampsByEntry];
-%            dt = subclassAddEntry@StructTable(dt, S); 
-%        end
+        function dt = subclassAddEntry(dt, S)
+            if isempty(S(1).loadedByEntry)
+                % assume that this doesn't come from a LoadOnDemandMappedTable
+                % and therefore all of the values are "loaded" already
+                loadedByEntry = dt.generateLoadedByEntry('fieldsLoaded', fieldnames(S), 'nEntries', length(S));
+                S = structMerge(S, loadedByEntry);
+            end
+            if isempty(S(1).cacheTimestampsByEntry)
+                cacheTimestampsByEntry = dt.generateCacheTimestampsByEntry('nEntries', length(S));
+                S = structMerge(S, cacheTimestampsByEntry);
+            end
+            dt = subclassAddEntry@StructTable(dt, S);
+        end
     end
     
-    methods
-        % override this to set loadedByEntry and cachedByEntry appropriately
-%        function [db indInOrigTable indInAddedTable] = addEntriesFrom(db, table, varargin)
-%            if isa(table, 'LoadOnDemandMappedTable') 
-%                % we can 
-%
-%            
-%        end
-    end
-
     methods % Dependent properties
         function fields = get.fieldsLoadOnDemand(dt)
             fields = dt.cachedFieldsLoadOnDemand;
+        end
+
+        function fields = get.fieldsRequestable(dt)
+            fields = dt.cachedFieldsRequestable;
         end
         
         function map = get.fieldsLoadOnDemandDescriptorMap(dt)
@@ -301,22 +337,43 @@ classdef LoadOnDemandMappedTable < StructTable
             % unless field is a member of param fieldsLoaded 
             p = inputParser;
             p.addParamValue('fieldsLoaded', {}, @iscellstr);
+            p.addParamValue('nEntries', dt.nEntries, @isscalar);
             p.parse(varargin{:});
             fieldsLoaded = p.Results.fieldsLoaded;
+            nEntries = p.Results.nEntries;
             dt.assertIsField(fieldsLoaded);
 
             fieldsNotLoaded = setdiff(dt.fieldsLoadOnDemand, fieldsLoaded);
-            loadedByEntry = emptyStructArray([dt.nEntries 1], dt.fieldsLoadOnDemand);
+            loadedByEntry = emptyStructArray([nEntries 1], dt.fieldsLoadOnDemand);
             loadedByEntry = assignIntoStructArray(loadedByEntry, fieldsNotLoaded, false);
             loadedByEntry = assignIntoStructArray(loadedByEntry, fieldsLoaded, true); 
         end
 
-        function cacheTimestampsByEntry = generateCacheTimestampsByEntry(dt)
+        function cacheTimestampsByEntry = generateCacheTimestampsByEntry(dt, varargin)
             % build an initial value for the loadedByEntry struct array
             % for which loadedByEntry(iEntry).field is .NotLoaded for all fields
             % unless field is a member of param fieldsLoaded 
-            
-            cacheTimestampsByEntry = emptyStructArray([dt.nEntries 1], dt.fieldsCacheable);
+            p = inputParser;
+            p.addParamValue('fieldsLoaded', {}, @iscellstr);
+            p.addParamValue('nEntries', dt.nEntries, @isscalar);
+            p.parse(varargin{:});
+            fieldsLoaded = p.Results.fieldsLoaded;
+            nEntries = p.Results.nEntries;
+            dt.assertIsField(fieldsLoaded);
+            cacheTimestampsByEntry = emptyStructArray([nEntries 1], dt.fieldsCacheable, 'value', NaN);
+        end
+
+        function allLoadedByEntry = getAllLoadedByEntry(dt, entryInd, varargin)
+            % looks at entries(entryInd) and returns a logical array indicating 
+            % whether all fieldsLoadOnDemand for that entry are currently loaded in the
+            % database. entryInd defaults to all entries
+
+            if nargin < 2
+                entryInd = true(dt.nEntries, 1);
+            end
+
+            allLoadedFn = @(entry) all(structfun(@(x) x, entry.loadedByEntry));
+            allLoadedByEntry = arrayfun(allLoadedFn, dt.table(entryInd));
         end
 
         function dt = loadField(dt, field, varargin)
@@ -396,17 +453,17 @@ classdef LoadOnDemandMappedTable < StructTable
 
             % loop through entries, load fields and overwrite table values
             loadedCount = 0;
-            for iEntry = 1:dt.nEntries
-                if ~entryMask(iEntry)
-                    continue;
-                end
+            entryList = 1:dt.nEntries;
+            entryList = entryList(entryMask);
+            for iEntryCell = num2cell(entryList)
+                iEntry = iEntryCell{1};
                 
                 progressStr = sprintf('[%5.1f %%]', 100 * loadedCount / nnz(entryMask));
                 loadedCount = loadedCount + 1;
 
                 % loaded.field is true if field is loaded already for this entry
-                loaded = dt(iEntry).loadedByEntry;
-                cacheTimestamps = dt(iEntry).cacheTimestampsByEntry;
+                loaded = dt.table(iEntry).loadedByEntry;
+                cacheTimestamps = dt.table(iEntry).cacheTimestampsByEntry;
                 % to store loaded values for this entry
                 loadedValues = struct();
 
@@ -439,32 +496,33 @@ classdef LoadOnDemandMappedTable < StructTable
                                 % found cached value
                                 loadedValues.(field) = value;
                                 loaded.(field) = true;
-                                cacheTimestamps.(field) = timestamp;
+                                dt.table(iEntry).cacheTimestampsByEntry.(field) = timestamp;
                             end
                         end
                     else
                         % load cache all fields for entry together
                         allLoaded = true;
-                        for iField = 1:length(fieldsCacheable)
-                            field = fieldsCacheable{iField};
-                            if ~loaded.(field)
+                        for field = fieldsCacheable
+                            if ~loaded.(field{1})
                                 % already loaded
                                 allLoaded = false;
                                 break;
                             end
                         end
                         
-                        fprintf('%s Retrieving cached fields for %s                \r', ...
-                            progressStr, entryDescriptions{iEntry});
-                        [validCache values timestamp] = dt.retrieveCachedValuesForEntry(iEntry);
-                        if validCache
-                            % found cached values, store each field and mark as loaded
-                            for iField = 1:length(fieldsCacheable)
-                                field = fieldsCacheable{iField};
-                                if isfield(values, field)
-                                    loadedValues.(field) = values.(field);
-                                    loaded.(field) = true;
-                                    cacheTimestamps.(field) = timestamp;
+                        if ~allLoaded
+                            fprintf('%s Retrieving cached fields for %s                \r', ...
+                                progressStr, entryDescriptions{iEntry});
+                            [validCache values timestamp] = dt.retrieveCachedValuesForEntry(iEntry, fieldsCacheable);
+                            if validCache
+                                % found cached values, store each field and mark as loaded
+                                for iField = 1:length(fieldsCacheable)
+                                    field = fieldsCacheable{iField};
+                                    if isfield(values, field)
+                                        loadedValues.(field) = values.(field);
+                                        loaded.(field) = true;
+                                        dt.table(iEntry).cacheTimestampsByEntry.(field) = timestamp;
+                                    end
                                 end
                             end
                         end
@@ -489,7 +547,7 @@ classdef LoadOnDemandMappedTable < StructTable
                                 hasPrintedMessage = true;
                             end
                             [validCache timestamp] = dt.retrieveCachedFieldTimestamp(iEntry, field);
-                            cacheTimestamps.(field) = timestamp;
+                            dt.table(iEntry).cacheTimestampsByEntry.(field) = timestamp;
                         end
                     else
                         % load cache timestamp for entire entry's fields
@@ -508,7 +566,7 @@ classdef LoadOnDemandMappedTable < StructTable
                         [validCache timestamp] = dt.retrieveCachedTimestampForEntry(iEntry);
                         for iField = 1:length(fieldsCacheable)
                             field = fieldsCacheable{iField};
-                            cacheTimestamps.(field) = timestamp;
+                            dt.table(iEntry).cacheTimestampsByEntry.(field) = timestamp;
                         end
                     end
                 end
@@ -516,15 +574,16 @@ classdef LoadOnDemandMappedTable < StructTable
                 % manually request the values of any remaining fields
                 if ~loadCacheOnly
                     loadedMask = cellfun(@(field) loaded.(field), fields);
-                    fieldsToRetrieve = fields(~loadedMask);
+                    fieldsToRequest = fields(~loadedMask);
+                    fieldsToRequest = intersect(fieldsToRequest, dt.fieldsRequestable);
 
-                    if ~isempty(fieldsToRetrieve)
+                    if ~isempty(fieldsToRequest)
                         fprintf('%s Requesting value for entry %d fields %s            \r', ...
-                            progressStr, iEntry, strjoin(fieldsToRetrieve, ', '));
+                            progressStr, iEntry, strjoin(fieldsToRequest, ', '));
                         thisEntry = dt.select(iEntry).apply();
                         mapEntryName = dt.getMapsEntryName();
                         mapEntry = thisEntry.getRelated(mapEntryName);
-                        S = dt.loadValuesForEntry(mapEntry, fieldsToRetrieve);
+                        S = dt.loadValuesForEntry(mapEntry, fieldsToRequest);
                     
                         retFields = fieldnames(S);
                         
@@ -535,14 +594,14 @@ classdef LoadOnDemandMappedTable < StructTable
                                 loaded.(field) = true;
                                 if saveCache && ismember(field, fieldsCacheable)
                                     % cache the newly loaded value
-                                    dt.cacheFieldValue(iEntry, field, loadedValues.(field));
+                                    dt = dt.cacheFieldValue(iEntry, field, loadedValues.(field));
                                 end
                             end
                         else
                             loadedValues = S;
                             entry = dt.table(iEntry);
                             entry = structMerge(entry, S);
-                            dt.cacheEntryAllFields(iEntry, entry);
+                            dt = dt.cacheEntryAllFields(iEntry, entry);
                         end
                     end
                 end
@@ -557,10 +616,7 @@ classdef LoadOnDemandMappedTable < StructTable
                         dt = dt.setFieldValue(iEntry, field, loadedValues.(field), ...
                             'saveCache', false);
                     end
-                    dt.loadedByEntry(iEntry) = loaded;
                 end
-                
-                dt.cacheTimestampsByEntry(iEntry) = cacheTimestamps;
 
                 if ~loadCacheTimestampsOnly
                     % build table of loaded values
@@ -610,7 +666,7 @@ classdef LoadOnDemandMappedTable < StructTable
                     % it's crucial here that when setting this value it is not cached
                     dt = dt.setFieldValue(iEntry, field, [], 'saveCache', false, ...
                         'markUnloaded', true);
-                    dt.loadedByEntry(iEntry).(field) = false;
+                    dt.table(iEntry).loadedByEntry.(field) = false;
                 end
             end
         end
@@ -618,6 +674,7 @@ classdef LoadOnDemandMappedTable < StructTable
         % augment the set field value method with one that automatically caches
         % the new value to disk
         function dt = setFieldValue(dt, idx, field, value, varargin)
+            dt.warnIfNoArgOut(nargout);
             p = inputParser;
             % write-down this value to the cache for this field value
             p.addParamValue('saveCache', true, @islogical);
@@ -639,14 +696,14 @@ classdef LoadOnDemandMappedTable < StructTable
                 dt = setFieldValue@StructTable(dt, idx, field, value);
             end
             if storeInTable && markLoaded && ismember(field, dt.fieldsLoadOnDemand)
-                dt.loadedByEntry(idx).(field) = true;
+                dt.table(idx).loadedByEntry.(field) = true;
             end
             if storeInTable && markUnloaded && ismember(field, dt.fieldsLoadOnDemand)
-                dt.loadedByEntry(idx).(field) = false;
+                dt.table(idx).loadedByEntry.(field) = false;
             end
             if saveCache && ismember(field, dt.fieldsCacheable)
                 dt.cacheFieldValue(idx, field, value);
-                dt.cacheTimestampsByEntry(idx).(field) = now;
+                dt.table(idx).cacheTimestampsByEntry.(field) = now;
             end
         end
         
@@ -685,12 +742,12 @@ classdef LoadOnDemandMappedTable < StructTable
                 fieldsLoadOnDemand = intersect(fields, dt.fieldsLoadOnDemand);
                 if storeInTable && markLoaded  
                     for i = 1:length(fieldsLoadOnDemand)
-                        dt.loadedByEntry(idx).(fieldsLoadOnDemand{i}) = true;
+                        dt.table(idx).loadedByEntry.(fieldsLoadOnDemand{i}) = true;
                     end
                 end
                 if storeInTable && markUnloaded 
                     for i = 1:length(fieldsLoadOnDemand)
-                        dt.loadedByEntry(idx).(fieldsLoadOnDemand{i}) = false;
+                        dt.table(idx).loadedByEntry.(fieldsLoadOnDemand{i}) = false;
                     end
                 end
                 fieldsCacheable = intersect(fields, dt.fieldsCacheable);
@@ -698,7 +755,7 @@ classdef LoadOnDemandMappedTable < StructTable
                     dt.cacheEntryAllFields(idx);
                     for i = 1:length(fieldsCacheable)
                         field = fieldsCacheable{i};
-                        dt.cacheTimestampsByEntry(idx).(field) = now;
+                        dt.table(idx).cacheTimestampsByEntry.(field) = now;
                     end
                 end
             end
@@ -768,7 +825,9 @@ classdef LoadOnDemandMappedTable < StructTable
             end
         end
 
-        function cacheFieldValue(dt, iEntry, field, varargin)
+        function dt = cacheFieldValue(dt, iEntry, field, varargin)
+            dt.warnIfNoArgOut(nargout);
+            
             p = inputParser;
             p.addRequired('iEntry', @(x) true); % @(x) isscalar(x) && x > 0 && x <= dt.nEntries);
             p.addRequired('field', @ischar); % @(x) ischar(x) && dt.isField(field));
@@ -789,18 +848,21 @@ classdef LoadOnDemandMappedTable < StructTable
                 end
 
                 %debug('Saving cache for entry %d field %s \n', iEntry, field);
-                cm.saveData(cacheName, cacheParam, value);
+                timestamp = cm.saveData(cacheName, cacheParam, value);
+                dt.table(iEntry).cacheTimestampsByEntry.(field) = timestamp;
             else
                 debug('WARNING: Attempting to cache individual field value when fields are cached by entry\n');
                 values = dt.table(iEntry);
                 if ~ismember('value', p.UsingDefaults)
                     values.(field) = p.Results.value;
                 end 
-                dt.cacheEntryAllFields(iEntry, values);
+                dt = dt.cacheEntryAllFields(iEntry, values);
             end
         end
 
-        function cacheAllValues(dt, fields, varargin)
+        function dt = cacheAllValues(dt, fields, varargin)
+            dt.warnIfNoArgOut(nargout);
+            
             debug('Caching all loaded field values\n');
             p = inputParser;
             p.addOptional('fields', dt.fieldsCacheable, @iscellstr);
@@ -812,18 +874,20 @@ classdef LoadOnDemandMappedTable < StructTable
                     for iField = 1:length(fields)
                         field = fields{iField};
                         % only cache if the value is loaded
-                        if dt.loadedByEntry(iEntry).(field)
-                            dt.cacheFieldValue(iEntry, field);
+                        if dt.table(iEntry).loadedByEntry.(field)
+                            dt = dt.cacheFieldValue(iEntry, field);
                         end
                     end
                 else
                     % cache all fields at once
-                    dt.cacheEntryAllFields(iEntry);
+                    dt = dt.cacheEntryAllFields(iEntry);
                 end
             end
         end
 
-        function deleteCachedFieldValues(dt, varargin)
+        function dt = deleteCachedFieldValues(dt, varargin)
+            dt.warnIfNoArgOut(nargout);
+            
             p = inputParser;
             p.addOptional('fields', dt.fieldsCacheable, @iscellstr);
             p.parse(varargin{:});
@@ -839,14 +903,20 @@ classdef LoadOnDemandMappedTable < StructTable
                         field = fields{iField};
                         cacheName = dt.getCacheNameForFieldValue(field);
                         cacheParam = dt.getCacheParamForFieldValue(iEntry, field);
-                        debug('Deleting cache for entry %d field %s\n', iEntry, field);
+                        %debug('Deleting cache for entry %d field %s\n', iEntry, field);
                         cm.deleteCache(cacheName, cacheParam);
+                        
+                        dt.table(iEntry).cacheTimestampsByEntry.(field) = NaN;
                     end
                 else
                     cacheName = dt.getCacheNameForEntryAllFields();
                     cacheParam = dt.getCacheParamForEntryAllFields(iEntry);
-                    debug('Deleting cache for entry %d all cacheable fields\n', iEntry);
+                    %debug('Deleting cache for entry %d all cacheable fields\n', iEntry);
                     cm.deleteCache(cacheName, cacheParam);
+                    
+                    for iField = 1:length(fields)
+                        dt.table(iEntry).cacheTimestampsByEntry.(fields{iField}) = NaN;
+                    end
                 end
             end
         end
@@ -894,7 +964,7 @@ classdef LoadOnDemandMappedTable < StructTable
             validCache = cm.hasCacheNewerThan(cacheName, cacheParam, cacheTimestamp);
 
             if validCache
-                [values timestamp] = cm.loadData(cacheName, cacheParam);
+                [values timestamp] = cm.loadData(cacheName, cacheParam, 'fields', fields);
                 %debug('Loading cached value for entry %d field %s\n', iEntry, field);
             else
                 values = struct();
@@ -911,24 +981,47 @@ classdef LoadOnDemandMappedTable < StructTable
             [validCache timestamp] = cm.hasCacheNewerThan(cacheName, cacheParam, cacheTimestamp);
         end
         
-        function cacheEntryAllFields(dt, iEntry, row)
-            if nargin < 3
-                row = dt.table(iEntry); 
-            end 
-            
-            cacheName = dt.getCacheNameForEntryAllFields();
-            cacheParam = dt.getCacheParamForEntryAllFields(iEntry);
-            
+        function dt = cacheEntryAllFields(dt, iEntry, row)
+            dt.warnIfNoArgOut(nargout);
             
             fieldsCacheable = dt.fieldsCacheable;
             nonCacheable = setdiff(dt.fields, dt.fieldsCacheable);
+
+            if nargin < 3
+                row = dt.table(iEntry); 
+
+                % determine whether this row is entirely loaded
+                loaded = dt.table(iEntry).loadedByEntry;
+                maskLoaded = structfun(@(x) x, loaded);
+                if ~any(maskLoaded)
+                    return;
+                end
+                
+                 if ~all(maskLoaded)
+                    fields = fieldnames(loaded);
+                    fieldsNotLoaded = fieldsLoaded(~maskLoaded);
+
+                    debug('WARNING: Caching entry with fields %s not loaded. Loading now', ...
+                        strjoin(fieldsNotLoaded, ','));
+                    dt = dt.loadFields('entryMask', iEntry, 'fields', fieldsNotLoaded); 
+                 end
+            end
+
             row = rmfield(row, nonCacheable);
 
             %debug('Saving cache for entry %d all cacheable fields\n', iEntry);
             cm = dt.getFieldValueCacheManager();
+            cacheName = dt.getCacheNameForEntryAllFields();
+            cacheParam = dt.getCacheParamForEntryAllFields(iEntry);
+            
             % save the values as separate fields in the .mat file, to facilitate
             % easy partial loading of specific fields
-            cm.saveData(cacheName, cacheParam, row, 'separateFields', true);
+            timestamp = cm.saveData(cacheName, cacheParam, row, 'separateFields', true);
+            
+            % update cache timestamps
+            for iField = 1:length(fieldsCacheable)
+                dt.table(iEntry).cacheTimestampsByEntry.(fieldsCacheable{iField}) = timestamp;
+            end    
         end
     end
 
@@ -974,23 +1067,27 @@ classdef LoadOnDemandMappedTable < StructTable
             else
                 % if we haven't been initialized, then just use the snapshot directly
                 % as merging won't accomplish anything
-                obj = proLoadObj;
+                obj = preLoadObj;
             end
         end
 
-        function deleteCache(dt)
+        function dt = deleteCache(dt)
+            dt.warnIfNoArgOut(nargout);
+            
             % delete caches for individual fields as well
-            dt.deleteCachedFieldValues();
+            dt = dt.deleteCachedFieldValues();
             deleteCache@StructTable(dt);
         end
 
-        function cache(dt, varargin)
+        function dt = cache(dt, varargin)
+            dt.warnIfNoArgOut(nargout);
+      
             p = inputParser;
             p.addOptional('cacheValues', true, @islogical);
             p.parse(varargin{:});
             cacheValues = p.Results.cacheValues;
             if cacheValues
-                dt.cacheAllValues(dt);
+                dt = dt.cacheAllValues(dt);
             end
             cache@StructTable(dt);
         end

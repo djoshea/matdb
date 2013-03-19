@@ -170,6 +170,17 @@ classdef StructTable < DataTable
             
             db.table = [db.table; S]; 
         end
+        
+        % S will be a struct or struct array with the same fields as this table and already
+        % converted values
+        function db = subclassReplaceEntry(db, S, entryMask)
+            db.warnIfNoArgOut(nargout);
+
+            S = orderfields(S, db.table);
+            S = makecol(S);
+            
+            db.table(entryMask) = S;
+        end
 
         function db = subclassSetFieldValue(db, idx, field, value)
             db.table(idx).(field) = value;
