@@ -22,7 +22,9 @@ classdef LoadOnDemandMappedTable < StructTable
         % it makes sense to unload these values automatically before saving the table down
         % so that the file size doesn't include the values of these fields which are duplicated
         % elsewhere
-        unloadCacheableFieldsOnCacheTable = true;
+        unloadCacheableFieldsPreCacheTable = true;
+        
+        initialized = false;
     end
 
     properties(Dependent)
@@ -140,6 +142,9 @@ classdef LoadOnDemandMappedTable < StructTable
             p.addParamValue('fieldsLoaded', {}, @iscellstr);
             p.addParamValue('entryName', '', @ischar);
             p.addParamValue('entryNamePlural', '', @ischar);
+            
+            % if true, keep any field values that are currently loaded in the database
+            p.addParamValue('keepCurrentValues', false, @islogical);
             p.parse(varargin{:});
             
             db = p.Results.database;
@@ -147,6 +152,8 @@ classdef LoadOnDemandMappedTable < StructTable
             fieldsLoaded = p.Results.fieldsLoaded;
             entryName = p.Results.entryName;
             entryNamePlural = p.Results.entryNamePlural;
+            keepCurrentValues = p.Results.keepCurrentValues;
+            
             if isempty(db) && isempty(table)
                 if isempty(dt.database)
                     error('Please provide "database" param in order to lookup mapped table or "table" param directly');
@@ -162,6 +169,9 @@ classdef LoadOnDemandMappedTable < StructTable
                     entryNamePlural = [entryName 's'];
                 end
             end
+            
+            % keep a copy of the original table in case we need to merge entries with it later
+            dtOriginal = dt;
 
             if isempty(table)
                 % no table specified, build it via mapping one-to-one off database table
@@ -186,12 +196,18 @@ classdef LoadOnDemandMappedTable < StructTable
                     table = table.addField(field, [], 'fieldDescriptor', dfdMap(field));
                     table = table.applyFields();
                 end
-
+                
                 fieldsLoaded = {};
             else
+                error('When does this happen?');
                 db = table.database;
                 assert(~isempty(db), 'Table must be linked to a database');
             end
+            
+            loadedByEntry = num2cell(dt.generateLoadedByEntry('fieldsLoaded', fieldsLoaded));
+            table = table.addField('loadedByEntry', loadedByEntry, 'fieldDescriptor', UnspecifiedField); 
+            cacheTimestampsByEntry = num2cell(dt.generateCacheTimestampsByEntry());
+            table = table.addField('cacheTimestampsByEntry', cacheTimestampsByEntry, 'fieldDescriptor', UnspecifiedField); 
             
             dt.cachedFieldsCacheable = dt.getFieldsCacheable();
             [fields, dfdMap] = dt.getFieldsLoadOnDemand();
@@ -211,37 +227,57 @@ classdef LoadOnDemandMappedTable < StructTable
             % initialize in StructTable 
             dt = initialize@StructTable(dt, table, p.Unmatched); 
 
-            dt.loadedByEntry = dt.generateLoadedByEntry('fieldsLoaded', fieldsLoaded);
-            dt.cacheTimestampsByEntry = dt.generateCacheTimestampsByEntry();
+            %dt.loadedByEntry = dt.generateLoadedByEntry('fieldsLoaded', fieldsLoaded);
+            %dt.cacheTimestampsByEntry = dt.generateCacheTimestampsByEntry();
 
             dt = db.addTable(dt);
             db.addRelationshipOneToOne(entryNameMap, entryName);
+            
+            if keepCurrentValues
+                % now dt has been mapped off of the table correctly, and dtOriginal holds certain
+                % values that we'd like to hold onto, but only for specific entries that still 
+                % exist within dt. Since the order of entries won't change, we don't need
+                % to worry about loadedByEntry or cacheTimestampsByEntry changing
+                obj = dt.mergeEntriesWith(dtOriginal, 'keyFieldMatchesOnly', true);
+            end
+            
+            dt.initialized = true;
         end
     end
 
     methods(Access=protected) % StructTable overrides
         % need to extend this in order to filter loadedByEntry appropriately
-        function dt = selectSortEntries(dt, indsInSortOrder)
-            dt = selectSortEntries@StructTable(dt, indsInSortOrder);
-            if ~isempty(dt.loadedByEntry) && isstruct(dt.loadedByEntry)
-                dt.loadedByEntry = dt.loadedByEntry(indsInSortOrder, 1);
-            end
-            if ~isempty(dt.cacheTimestampsByEntry) && isstruct(dt.cacheTimestampsByEntry)
-                dt.cacheTimestampsByEntry = dt.cacheTimestampsByEntry(indsInSortOrder, 1);
-            end
-        end
+        %function dt = selectSortEntries(dt, indsInSortOrder)
+        %    dt = selectSortEntries@StructTable(dt, indsInSortOrder);
+        %    if ~isempty(dt.loadedByEntry) && isstruct(dt.loadedByEntry)
+        %        dt.loadedByEntry = dt.loadedByEntry(indsInSortOrder, 1);
+        %    end
+        %    if ~isempty(dt.cacheTimestampsByEntry) && isstruct(dt.cacheTimestampsByEntry)
+        %        dt.cacheTimestampsByEntry = dt.cacheTimestampsByEntry(indsInSortOrder, 1);
+        %    end
+        %end
 
         % need to extend this in order to add new rows to loadedByEntry appropriately
-        function dt = subclassAddEntry(dt, S)
-            % we can only assume that any entries which are added are not loaded
-            newLoadedByEntry = emptyStructArray([length(S) 1], dt.fieldsLoadOnDemand, 'val', false);
-            dt.loadedByEntry = [dt.loadedByEntry; newLoadedByEntry];
-
-            % and assume not loaded from cache
-            newCacheTimestampsByEntry = emptyStructArray([length(S) 1], dt.fieldsCacheable);
-            dt.cacheTimestampsByEntry = [dt.cacheTimestampsByEntry; newCacheTimestampsByEntry];
-            dt = subclassAddEntry@StructTable(dt, S); 
-        end
+        %function dt = subclassAddEntry(dt, S)
+        %    % we can only assume that any entries which are added are not loaded
+        %    newLoadedByEntry = emptyStructArray([length(S) 1], dt.fieldsLoadOnDemand, 'val', false);
+        %    dt.loadedByEntry = [dt.loadedByEntry; newLoadedByEntry];
+%
+%            % and assume not loaded from cache
+%            newCacheTimestampsByEntry = emptyStructArray([length(S) 1], dt.fieldsCacheable);
+%            dt.cacheTimestampsByEntry = [dt.cacheTimestampsByEntry; newCacheTimestampsByEntry];
+%            dt = subclassAddEntry@StructTable(dt, S); 
+%        end
+    end
+    
+    methods
+        % override this to set loadedByEntry and cachedByEntry appropriately
+%        function [db indInOrigTable indInAddedTable] = addEntriesFrom(db, table, varargin)
+%            if isa(table, 'LoadOnDemandMappedTable') 
+%                % we can 
+%
+%            
+%        end
     end
 
     methods % Dependent properties
@@ -369,8 +405,8 @@ classdef LoadOnDemandMappedTable < StructTable
                 loadedCount = loadedCount + 1;
 
                 % loaded.field is true if field is loaded already for this entry
-                loaded = dt.loadedByEntry(iEntry);
-                cacheTimestamps = dt.cacheTimestampsByEntry(iEntry);
+                loaded = dt(iEntry).loadedByEntry;
+                cacheTimestamps = dt(iEntry).cacheTimestampsByEntry;
                 % to store loaded values for this entry
                 loadedValues = struct();
 
@@ -709,7 +745,7 @@ classdef LoadOnDemandMappedTable < StructTable
                     timestamp = NaN;
                 end
             else
-                [validCache values timestamp] = dt.retrieveCachedValuesForEntry(iEntry);
+                [validCache values timestamp] = dt.retrieveCachedValuesForEntry(iEntry, {field});
                 if validCache && isfield(values, field)
                     value = values.(field);
                 else
@@ -842,7 +878,14 @@ classdef LoadOnDemandMappedTable < StructTable
             timestamp = max(timestamps);    
         end
 
-        function [validCache values timestamp] = retrieveCachedValuesForEntry(dt, iEntry)
+        function [validCache values timestamp] = retrieveCachedValuesForEntry(dt, iEntry, fields)
+            if nargin < 3
+                % default to grabbing all fields at once
+                fields = {};
+            end
+            if ~iscell(fields)
+                fields = {fields};
+            end
             cacheName = dt.getCacheNameForEntryAllFields();
             cacheParam = dt.getCacheParamForEntryAllFields(iEntry);
             cacheTimestamp = dt.getCacheValidTimestampForEntryAllFields();
@@ -883,16 +926,23 @@ classdef LoadOnDemandMappedTable < StructTable
 
             %debug('Saving cache for entry %d all cacheable fields\n', iEntry);
             cm = dt.getFieldValueCacheManager();
-            cm.saveData(cacheName, cacheParam, row);
+            % save the values as separate fields in the .mat file, to facilitate
+            % easy partial loading of specific fields
+            cm.saveData(cacheName, cacheParam, row, 'separateFields', true);
         end
     end
 
     methods % Cacheable overrides
-        function dt = prepareForCache(dt)
+        function dt = prepareForCache(dt, varargin)
+            p = inputParser;
+            p.addParamValue('snapshot', false, @islogical);  
+            p.parse(varargin{:});
+            snapshot = p.Results.snapshot;
+            
             % replace all loaded value with empty values to make cache loading very quick
             dt.warnIfNoArgOut(nargout);
             
-            if dt.unloadCacheableFieldsPreCacheTable
+            if ~snapshot && dt.unloadCacheableFieldsPreCacheTable
                 debug('Unloading all loadOnDemand field values pre-caching\n');
                 dt = dt.unloadFields();
             end
@@ -904,13 +954,28 @@ classdef LoadOnDemandMappedTable < StructTable
         % function is called. preLoadObj is provided only if there is information
         % in the object before calling loadFromCache that you would like to copy
         % to the cache-loaded object obj.
-        function obj = postLoadFromCache(obj, param, timestamp, preLoadObj)
+        function obj = postLoadFromCache(obj, param, timestamp, preLoadObj, varargin)
             % here we've loaded obj from the cache, but preLoadObj was the table that we
             % built in initialize by mapping the one-to-one table in the database.
             % Therefore we need to make sure that any entries which are present 
             % in preLoadObj but missing in obj are added to obj. We do this via
             % mergeEntriesWith
-            obj = preLoadObj.mergeEntriesWith(obj, 'keyFieldMatchesOnly', true);
+            
+            p = inputParser;
+            p.addParamValue('snapshot', false, @islogical);  
+            p.parse(varargin{:});
+            snapshot = p.Results.snapshot;
+
+            if preLoadObj.initialized
+                % if the table we're loading into is already initialized (and thus mapped to the
+                % database), then we want to merge in entries from the snapshot into this table
+                % so that the mapping aspect is preserved but the values are from the snapshot.
+                obj = preLoadObj.mergeEntriesWith(obj, 'keyFieldMatchesOnly', true);
+            else
+                % if we haven't been initialized, then just use the snapshot directly
+                % as merging won't accomplish anything
+                obj = proLoadObj;
+            end
         end
 
         function deleteCache(dt)

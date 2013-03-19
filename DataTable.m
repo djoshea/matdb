@@ -1452,6 +1452,7 @@ classdef DataTable < DynamicClass & Cacheable
             db.pendingApplyFields = true;
             db = db.doAutoApply();
         end
+        
         function db = splitEntriesWithMultipleValues(db, varargin)
             error('not yet implemented');
             % db = splitEntriesWithMultipleValues(db, fieldNames ...)
@@ -1528,11 +1529,15 @@ classdef DataTable < DynamicClass & Cacheable
             db = db.invalidateCaches();
         end
 
-        function db = addEntry(db, entryTable, varargin)
+        function [db indInOrigTable indInAddedTable] = addEntry(db, entryTable, varargin)
             % adds a new entryTable or entries to the , varargindata store.
             % entryTable must be either a:
             %   struct (array) with each field containing the value for that field
             %   ValueMap : field name -> field values for all added entries
+            %
+            % for each entry i in the table after the add, if the field values
+            % came from table original entry j, then indInOrigTable(i) == j and indInAddedTable(i) == NaN.
+            % if the values came from the added table, then indInAddedTable(i) == j and indInOrigTable(j) == NaN
 
             db.warnIfNoArgOut(nargout);
             db.checkSupportsWrite();
@@ -1597,7 +1602,10 @@ classdef DataTable < DynamicClass & Cacheable
                     S = assignIntoStructArray(S, field, values);
                 end
             end
-
+            
+            keptIndsOrig = 1:db.nEntries;
+            keptIndsNew = 1:length(S);
+            
             if overwriteKeyFieldsMatch || keyFieldMatchesOnly
                 % delete any rows from this table that have key field matches in
                 % other that will be overwriting them
@@ -1611,23 +1619,30 @@ classdef DataTable < DynamicClass & Cacheable
                         hasMatchMask(iEntry) = true;
                     end
                     overwriteMask(idx) = true;
-
                 end
 
                 % remove the entries to be overwritten, so that we can just add 
                 % the new ones at the end
                 db = db.exclude(overwriteMask);
+                
+                keptIndsOrig = keptIndsOrig(~overwriteMask);
             end
 
             if keyFieldMatchesOnly
                 % keyFieldMatchesOnly means we're not adding any unmatched rows
                 % from the new table
                 S = S(hasMatchMask);
+                keptIndsNew = keptIndsNew(hasMatchMask);
             end
 
             if ~isempty(S)
                 db = db.subclassAddEntry(S);
             end
+
+            % build up list of ind correspondence
+            [indInOrigTable indInAddedTable] = nan(db.nEntries, 1);
+            indInOrigTable(1:length(keptIndsOrig)) = keptIndsOrig;
+            indInAddedTable(length(keptIndsOrig) + (1:length(keptIndsNew))) = keptIndsNew;
 
             db = db.updateModifiedTimestamp();
             db.pendingApplyEntryMask = true;
@@ -1635,7 +1650,7 @@ classdef DataTable < DynamicClass & Cacheable
             db = db.doAutoApply();
         end
 
-        function db = addEntriesFrom(db, table, varargin)
+        function [db indInOrigTable indInAddedTable] = addEntriesFrom(db, table, varargin)
             % adds all entries from a second table to this one. This function requires
             % that the field set and fieldDescriptors match exactly. If they do
             % not match, see .mergeEntriesWith
@@ -1658,11 +1673,11 @@ classdef DataTable < DynamicClass & Cacheable
             end
 
             entries = table.getFullEntriesAsStruct();        
-            db = db.addEntry(entries, p.Unmatched);
+            [db indInOrigTable indInAddedTable] = db.addEntry(entries, p.Unmatched);
             db = db.updateModifiedTimestamp();
         end
 
-        function db = mergeEntriesWith(db, other, varargin)
+        function [db indInOrigTable indInAddedTable] = mergeEntriesWith(db, other, varargin)
             % adds all entries from a second table to this one. This function
             % does not require that the field set and fieldDescriptors match exactly. 
             %
@@ -1749,7 +1764,7 @@ classdef DataTable < DynamicClass & Cacheable
             end
 
             % and defer to addEntriesFrom to do the heavy lifting
-            db = db.addEntriesFrom(other, p.Unmatched);
+            [db indInOrigTable indInAddedTable] = db.addEntriesFrom(other, p.Unmatched);
         end
 
         function dt = setFieldValue(dt, idx, field, value)
