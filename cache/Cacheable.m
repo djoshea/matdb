@@ -15,7 +15,8 @@ classdef (HandleCompatible) Cacheable
             cm = MatdbSettingsStore.getDefaultCacheManager();
         end
 
-        function obj = prepareForCache(obj)
+        function obj = prepareForCache(obj, varargin)
+            % may optionally accept arguments 'snapshot', true or 'snapshot', false
             obj = obj;
         end
 
@@ -25,7 +26,8 @@ classdef (HandleCompatible) Cacheable
         % function is called. preLoadObj is provided only if there is information
         % in the object before calling loadFromCache that you would like to copy
         % to the cache-loaded object obj.
-        function obj = postLoadFromCache(obj, param, timestamp, preLoadObj)
+        function obj = postLoadFromCache(obj, param, timestamp, preLoadObj, varargin)
+            % may optionally accept arguments 'snapshot', true or 'snapshot', false
             obj = obj;
         end
 
@@ -144,7 +146,11 @@ classdef (HandleCompatible) Cacheable
             param = obj.getCacheParamSnapshot(snapshotName);
             
             timestamp = obj.getCacheTimestamp();
-            obj = obj.prepareForCache();
+            if nargin(obj.prepareForCache) > 1 
+                obj = obj.prepareForCache('snapshot', true);
+            else
+                obj = obj.prepareForCache();
+            end
             debug('Taking snapshot %s : %s\n', name, snapshotName);
             cm.saveData(name, param, obj, 'timestamp', timestamp);
         end
