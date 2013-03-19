@@ -2,6 +2,7 @@ if ~exist('db', 'var')
     testDatabase;
 end
 
-da = CountStudentsByTeacher(db);
+da = CountStudentsByTeacher();
+da.setDatabase(db);
 da.run();
 

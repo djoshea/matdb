@@ -1,5 +1,5 @@
 classdef CountStudentsByTeacher < DatabaseAnalysis 
-
+        
     methods
         function da = CountStudentsByTeacher(varargin)
             da = da@DatabaseAnalysis(varargin{:});
@@ -25,7 +25,17 @@ classdef CountStudentsByTeacher < DatabaseAnalysis
         function param = getCacheParam(da)
             param = [];
         end
+        
+        function tf = getCacheFieldsIndividually(da)
+            tf = false;
+        end
 
+        % return a string used to describe the params used for this analysis
+        % should encompass whatever is returned by getCacheParam()
+        function str = getDescriptionParam(da)
+            str = '';
+        end
+        
         function views = getRequiredViews(da)
             views = { };
         end
@@ -42,17 +52,24 @@ classdef CountStudentsByTeacher < DatabaseAnalysis
             resultStruct.nonDisplayableField = 'this shouldn''t show up in the html report';
             resultStruct.nStudents = entry.classes.students.nEntries;
 
-            if rand() < 0.5
+            if rand() < 0.2
                 error('Something messed up!');
             end
 
-            close all;
-            figure(1);
+            fprintf('Output pre fig 1\n');
+
+            figure(1); clf;
             plot(rand(20,10));
+            box off
             da.saveFigure(gcf, 'Figure 1', 'Figure 1 Caption');
-            figure(2);
+
+            fprintf('Output pre fig 2\n');
+            
+            figure(2); clf;
             plot(rand(20,10), 'kx', 'MarkerSize', 20);
+            box off
             da.saveFigure(gcf, 'Figure 2', 'Figure 2 Caption');
+            fprintf('Output post fig2\n');
         end
     end
 

@@ -1802,10 +1802,15 @@ classdef DataTable < DynamicClass & Cacheable
             dt = dt.updateModifiedTimestamp();
         end
 
-        function updateEntry(dt, idx, entry)
+        function dt = updateEntry(dt, idx, entry)
             dt.warnIfNoArgOut(nargout);
             dt.checkSupportsWrite();
 
+            if isa(entry, 'DataTable')
+                entry = entry.getFullEntriesAsStruct();
+            end
+            
+            assert(length(entry) == 1, 'Currently only supported for single entries');
             assert(isscalar(idx) && isnumeric(idx) && idx > 0 && idx <= dt.nEntries, ...
                 'Index invalid or out of range [0 nEntries]');
 

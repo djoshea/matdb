@@ -1,4 +1,12 @@
 classdef (HandleCompatible) Cacheable  
+    % METHODS CLIENT WOULD CALL:
+    % cache()
+    % loadFromCache()
+    % snapshot(nameOrIndex)
+    % loadFromSnapshot(nameOrIndex)
+    % loadFromSnapshotMostRecent()
+    % loadFromSnapshotMostRecentMatchingParam()
+    % printListSnapshots()
 
     methods(Abstract)
         % return the cacheName to be used when instance 
@@ -146,10 +154,24 @@ classdef (HandleCompatible) Cacheable
             param = obj.getCacheParamSnapshot(snapshotName);
             
             timestamp = obj.getCacheTimestamp();
-            obj = obj.prepareForCache('snapshot', true);
+            obj = obj.prepareForCache('snapshot', true, 'snapshotName', snapshotName);
             
             debug('Taking snapshot %s : %s\n', name, snapshotName);
             cm.saveData(name, param, obj, 'timestamp', timestamp);
+        end
+        
+        function deleteSnapshot(obj, snapshotName)
+            cm = obj.getCacheManager();
+            name = obj.getCacheNameSnapshots();
+            
+            if isnumeric(snapshotName)
+                % lookup as index into snapshots
+                snapshotNames = obj.getListSnapshots();
+                snapshotName = snapshotNames{snapshotName};
+            end
+            
+            param = obj.getCacheParamSnapshot(snapshotName);
+            cm.deleteCache(name, param);
         end
         
         function [names paramList timestampList] = getListSnapshots(obj)
@@ -258,7 +280,7 @@ classdef (HandleCompatible) Cacheable
         function [obj timestamp] = loadFromSnapshot(obj, snapshotName)
             cm = obj.getCacheManager();
             name = obj.getCacheNameSnapshots();
-
+            
             if isnumeric(snapshotName)
                 % lookup as index into snapshots
                 snapshotNames = obj.getListSnapshots();
@@ -277,7 +299,8 @@ classdef (HandleCompatible) Cacheable
 
             % call postLoadOnCache function in case subclass has overridden it 
             % we pass along the pre-cache version of obj in case useful.
-            objCached = objCached.postLoadFromCache(param, timestamp, obj, 'snapshot', true);
+            objCached = objCached.postLoadFromCache(param, timestamp, obj, ...
+                'snapshot', true, 'snapshotName', snapshotName);
 
             % when loading a handle class, we must manually transfer
             % all properties to current class (objCached -> obj) because

@@ -28,12 +28,22 @@ classdef CacheManager < handle
         end
 
         function str = hashParam(cm, cacheName, param)
-            opts.Method = 'SHA-1';
-            opts.Format = 'hex'; 
+            % run param through DataHash to get a hexadecimal hash key
+            % cache the last param and result to avoid calling DataHash
+            % twice when saving/loading (once for meta, once for data)
+            persistent pLastParam;
+            persistent pLastHash;
+            
+            if ~isempty(pLastHash) && cm.checkParamMatch(pLastParam, param)
+                str = pLastHash;
+            else
+                opts.Method = 'SHA-1';
+                opts.Format = 'hex'; 
 
-            hashData.param = param;
-            hashData.cacheName = cacheName;
-            str = DataHash(hashData, opts);
+                hashData.param = param;
+                hashData.cacheName = cacheName;
+                str = DataHash(hashData, opts);
+            end
         end
     end
 
@@ -132,6 +142,10 @@ classdef CacheManager < handle
             [indexNewest, timestamp, separateFields] = cm.retrieveMeta(cacheName, param);
             file = fileList{indexNewest};
 
+            % turn off value not found warnings
+            warnId = 'MATLAB:load:variableNotFound';
+            warnStatus = warning('off', warnId);
+            
             if separateFields
                 % struct stored as separate fields
                 if ~isempty(fields)
@@ -156,6 +170,9 @@ classdef CacheManager < handle
 
                 data = contents.data;
             end
+            
+            % restore warning
+            warning(warnStatus);
         end 
 
         function timestamp = saveData(cm, cacheName, param, data, varargin)

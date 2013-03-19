@@ -1,6 +1,6 @@
-classdef DatabaseAnalysis < handle & DataSource
+classdef DatabaseAnalysis < handle & DataSource & Cacheable
 
-    properties(SetAccess=protected)
+    properties(SetAccess=?Cacheable)
         % time which the analysis started running
         timeRun
 
@@ -15,9 +15,9 @@ classdef DatabaseAnalysis < handle & DataSource
         resultTable
 
         % will be populated post analysis. All of this info is in .resultTable as well
-        successByEntry
-        exceptionByEntry
-        logByEntry
+%         successByEntry
+%         exceptionByEntry
+%         logByEntry
 
         % each element contains a struct with fields
         %   .pathNoExt
@@ -27,7 +27,7 @@ classdef DatabaseAnalysis < handle & DataSource
         %   .caption
         %   .width
         %   .height
-        figureInfoByEntry = {};
+        %figureInfoByEntry = {};
         
         % there are two modes in which the results of this analysis can persist.
         % if cacheResultsIndividually is false, the results will be saved with
@@ -39,9 +39,12 @@ classdef DatabaseAnalysis < handle & DataSource
         figureExtensions = {'fig', 'png', 'svg', 'pdf'};
     end
     
-    properties(Access=protected)
+    properties(SetAccess=protected, Transient) 
+        % used internally when calling methods on the analysis
+        % from within runOnEntry (e.g. saveFigure)
         figureInfoCurrentEntry
         currentEntry
+        currentDiaryFile
     end
 
     properties(Transient, SetAccess=protected)
@@ -50,14 +53,16 @@ classdef DatabaseAnalysis < handle & DataSource
     end
 
     properties(Dependent)
-        fieldsAnalysis 
+        fieldsAnalysis
+        
+        pathAnalysisRoot
         pathAnalysis 
         pathCurrent
         pathFigures
         htmlFile
     end
 
-    methods(Abstract)
+    methods(Abstract) % METHODS EVERY ANALYSIS MUST IMPLEMENT
         % return a single word descriptor for this analysis, ignoring parameter
         % settings in param. The results will be stored as a DataTable with this
         % as the entryName
@@ -176,19 +181,14 @@ classdef DatabaseAnalysis < handle & DataSource
 
     methods % Constructor
         function da = DatabaseAnalysis(varargin)
-            p = inputParser;
-            p.addOptional('database', [], @(x) isa(x, 'Database'));
-            p.parse(varargin{:});
-
-            da.database = p.Results.database;
+            
         end 
     end
 
     methods
-        
         function setDatabase(da, db)
-            assert(~da.hasRun, 'Database cannot be changed after analysis has run');
-            assert(isa(db, 'Database'), 'Must be a Database instance');
+            %assert(~da.hasRun, 'Database cannot be changed after analysis has run');
+            assert(isempty(db) || isa(db, 'Database'), 'Must be a Database instance');
             da.database = db;
         end
         
@@ -199,11 +199,50 @@ classdef DatabaseAnalysis < handle & DataSource
         end
         
         function checkIsRunning(da)
-            if ~da.isRunning && ~da.hasRun
+            if ~da.getIsRunning()
                 error('Analysis is not currently running. Please call .run() first.');
             end
         end
-
+        
+        function tf = getIsRunning(da)
+            tf = da.isRunning || da.hasRun;
+        end
+        
+        function initialize(da)
+            name = da.getName();
+            assert(isvarname(name), 'getName() must return a valid variable name');
+            debug('Initializing DatabaseAnalysis %s\n', name);
+            
+            % set up in database
+            if isempty(da.database)
+                error('Please call .setDatabase(db) first');
+            end
+            
+            % load all data sources
+            da.database.loadSource(da.getRequiredSources());
+            
+            % load all data views 
+            da.database.applyView(da.getRequiredViews()); 
+           
+            currentResultTable = da.resultTable;
+            
+            % build the resultTable as a LoadOnDemandTable
+            % this will be a skeleton containing all of the fields for the analysis
+            % none of which will be loaded initially
+            resultTable = DatabaseAnalysisResultsTable(da);
+                
+            if ~isempty(currentResultTable)
+                debug('Merging current results table into newly mapped results table, some entries may be dropped\n');
+                resultTable = resultTable.mergeEntriesWith(currentResultTable, 'keyFieldMatchesOnly', true);
+            end
+            
+            da.resultTable = resultTable.setDatabase(da.database).updateInDatabase();
+            entryName = da.getMapsEntryName();
+            
+            da.database.addRelationshipOneToOne(da.resultTable.entryName, entryName); 
+            
+            da.database.markSourceLoaded(da);
+        end
 
         function run(da, varargin)
             p = inputParser();
@@ -231,6 +270,12 @@ classdef DatabaseAnalysis < handle & DataSource
             % generate a new report and figures folder even if no new analysis
             % was run, useful if issues encountered with report generation
             p.addParamValue('forceReport', false, @islogical);
+            
+            % for new entries that run, they will be unloaded from the table immediately
+            % if this is false so as to prevent memory overflows for large analyses
+            % if true, new analysis results will be kept in the table, 
+            % but old results will still need to be loaded using loadFields
+            p.addParamValue('storeInTable', false, @islogical);
             p.parse(varargin{:});
 
             fieldsAnalysis = p.Results.fields;
@@ -242,21 +287,22 @@ classdef DatabaseAnalysis < handle & DataSource
             loadCacheOnly = p.Results.loadCacheOnly;
             catchErrors = p.Results.catchErrors;
             forceReport = p.Results.forceReport;
+            storeInTable = p.Results.storeInTable;
             db = p.Results.database;
 
+            if ~isempty(db)
+                da.setDatabase(db);
+            end
+            db = da.database;
+            
+            % load required source/views, map the result table, etc.
+            da.initialize();
+            resultTable = da.resultTable;
+            
             % get analysis name
             name = da.getName();
-            assert(isvarname(name), 'getName() must return a valid variable name');
             debug('Preparing for analysis : %s\n', name);
-
-            if ~isempty(db)
-                da.database = db;
-            elseif isempty(db) && isempty(da.database)
-                error('Please set .database or provide ''database'' param value');
-            else
-                db = da.database;
-            end
-
+            
             da.isRunning = true;
 
             % mark run timestamp consistently for all entries
@@ -273,12 +319,6 @@ classdef DatabaseAnalysis < handle & DataSource
 
             % keep track of whether we need to re-cache the result table 
             resultTableChanged = false;
-            
-            % load all data sources
-            db.loadSource(da.getRequiredSources());
-            
-            % load all data views 
-            db.applyView(da.getRequiredViews());
 
             % get the appropriate table to map
             entryName = da.getMapsEntryName();
@@ -288,12 +328,6 @@ classdef DatabaseAnalysis < handle & DataSource
 
             % prefilter the table further if requested (database views also do this)
             table = da.preFilterTable(table);
-
-            % build the resultTable as a LoadOnDemandTable
-            % this will be a skeleton containing all of the fields for the analysis
-            % none of which will be loaded initially
-            resultTable = DatabaseAnalysisResultsTable(da);
-            da.database.addRelationshipOneToOne(resultTable.entryName, entryName); 
 
             % mask by entry of which entries must be run
             maskAlreadyRun = false(resultTable.nEntries, 1);
@@ -316,7 +350,7 @@ classdef DatabaseAnalysis < handle & DataSource
                 resultTable = resultTable.updateInDatabase();
                 loadCache = false;
                 loadCacheOnly = true;
-                timestampsByEntry = resultTable.cacheTimestampsByEntry;
+                timestampsByEntry = cell2mat(resultTable.cacheTimestampsByEntry);
                 
                 if checkCacheTimestamps && (~isempty(tableListCacheWarning) || ~isempty(tableListCacheInvalidate))
                     % warn about checking cache timestamps
@@ -383,25 +417,21 @@ classdef DatabaseAnalysis < handle & DataSource
                 % check the cache timestamps to determine
                 % which entry x field cells are missing or out of date 
                 debug('Checking cached field existence and success field\n');
-                if cacheFieldsIndividually
-                    resultTable = resultTable.loadFields('fields', 'success', 'loadCacheOnly', true);
-                    fieldsToLoad = setdiff(resultTable.fieldsCacheable, 'success');
-                    % load the cache timestamps (and thereby determine whether
-                    % they exist) for all fields for successful entries
-                    resultTable = resultTable.loadFields('fields', fieldsToLoad, 'loadCacheTimestampsOnly', true, ...
-                        'entryMask', resultTable.success);
-                else
-                    % load everything, since they're all grouped together anyway
-                    resultTable.loadFields('loadCacheOnly', true);
-                end
+                resultTable = resultTable.loadFields('fields', 'success', 'loadCacheOnly', true);
+                fieldsToLoad = setdiff(resultTable.fieldsCacheable, 'success');
+                % load the cache timestamps (and thereby determine whether
+                % they exist) for all fields for successful entries
+                resultTable = resultTable.loadFields('fields', fieldsToLoad, 'loadCacheTimestampsOnly', true, ...
+                    'entryMask', resultTable.success);
                 resultTable.updateInDatabase();
+
+                timestampsByEntry = cell2mat(resultTable.cacheTimestampsByEntry);
                 
                 if checkCacheTimestamps && ~isempty(tableListCacheWarning) || ~isempty(tableListCacheInvalidate)
                     % now we search for field values in fieldsAnalysis in the cache
                     debug('Checking cached field timestamps against dependencies\n');
 
                     resultTable = resultTable.updateInDatabase();
-                    cacheTimestamps = resultTable.cacheTimestampsByEntry;
                     % get the most recent update for each table list
                     cacheWarningReference = db.getLastUpdated(tableListCacheWarning);
                     cacheInvalidateReference = db.getLastUpdated(tableListCacheInvalidate);
@@ -410,7 +440,7 @@ classdef DatabaseAnalysis < handle & DataSource
                     for iField = 1:length(fieldsAnalysis)
                         field = fieldsAnalysis{iField};
                         for iEntry = 1:resultTable.nEntries
-                            timestamp = cacheTimestamps(iEntry).(field);
+                            timestamp = timestampsByEntry(iEntry).(field);
                             if isempty(timestamp) || timestamp < cacheWarningReference 
                                 cacheWarningEntryCount = cacheWarningEntryCount + 1;
                             end
@@ -431,7 +461,6 @@ classdef DatabaseAnalysis < handle & DataSource
                 
                 % now we determine which entries have fully cached field values
                 % and thus need not be rerun
-                timestampsByEntry = resultTable.cacheTimestampsByEntry;
                 successFlag = resultTable.success;
                 for iEntry = 1:resultTable.nEntries
                     if isempty(timestampsByEntry(iEntry).success)
@@ -546,6 +575,7 @@ classdef DatabaseAnalysis < handle & DataSource
                         diary off;
                         diaryFile = tempname(); 
                         diary(diaryFile);
+                        da.currentDiaryFile = diaryFile;
 
                         % clear the figure info for saveFigure to use
                         da.figureInfoCurrentEntry = [];
@@ -559,6 +589,7 @@ classdef DatabaseAnalysis < handle & DataSource
                             catch exc 
                                 tcprintf('red', 'EXCEPTION: %s\n', exc.getReport);
                                 success = false;
+                                resultStruct = struct();
                             end
                         else
                             resultStruct = da.runOnEntry(entry, fieldsAnalysis); 
@@ -586,6 +617,7 @@ classdef DatabaseAnalysis < handle & DataSource
                         % load the output from the diary file
                         diary('off');
                         output = fileread(diaryFile);
+                        da.currentDiaryFile = '';
                         % don't clutter with temp files
                         if exist(diaryFile, 'file')
                             delete(diaryFile);
@@ -606,30 +638,40 @@ classdef DatabaseAnalysis < handle & DataSource
                                     % Displayable field values needed for report generation will be reloaded
                                     % later on in this function
                                     resultTable = resultTable.setFieldValue(iResult, field, resultStruct.(field), ...
-                                        'saveCache', saveCache, 'storeInTable', false);
+                                        'saveCache', saveCache, 'storeInTable', storeInTable);
                                 end
                             else
-                                resultEntry = rmfield(resultTable, extraFields); 
+                                resultEntry = rmfield(resultStruct, extraFields); 
                             end
-                                
-                        end
+                        end 
 
+                        % set all of the additional field values
                         if cacheFieldsIndividually
-                            % set all of the additional field values
-                            resultTable = resultTable.setFieldValue(iResult, 'success', success, 'saveCache', saveCache);
-                            resultTable = resultTable.setFieldValue(iResult, 'output', output, 'saveCache', saveCache);
-                            resultTable = resultTable.setFieldValue(iResult, 'runTimestamp', da.timeRun, 'saveCache', saveCache);
-                            resultTable = resultTable.setFieldValue(iResult, 'exception', exc, 'saveCache', saveCache);
-                            resultTable = resultTable.setFieldValue(iResult, 'figureInfo', da.figureInfoCurrentEntry, 'saveCache', saveCache);
+                            saveCacheIndividual = true;
                         else
+                            saveCacheIndividual = false;
+                        end
+                        
+                        if saveCacheIndividual || storeInTable
+                            resultTable = resultTable.setFieldValue(iResult, 'success', success, 'saveCache', saveCacheIndividual, 'storeInTable', storeInTable);
+                            resultTable = resultTable.setFieldValue(iResult, 'output', output, 'saveCache', saveCacheIndividual, 'storeInTable', storeInTable);
+                            resultTable = resultTable.setFieldValue(iResult, 'runTimestamp', da.timeRun, 'saveCache', saveCacheIndividual, 'storeInTable', storeInTable);
+                            resultTable = resultTable.setFieldValue(iResult, 'exception', exc, 'saveCache', saveCacheIndividual, 'storeInTable', storeInTable);
+                            resultTable = resultTable.setFieldValue(iResult, 'figureInfo', da.figureInfoCurrentEntry, 'saveCache', saveCacheIndividual, 'storeInTable', storeInTable);
+                        end
+                        
+                        if ~cacheFieldsIndividually
                             resultEntry.success = success;
                             resultEntry.output = output;
                             resultEntry.runTimestamp = da.timeRun;
                             resultEntry.exception = exc;
-                            resultEntry.figureInfo = figureInfoCurrentEntry;
-                            
-                            resultTable = resultTable.updateEntry(iResult, entry, 'saveCache', saveCache);
+                            resultEntry.figureInfo = da.figureInfoCurrentEntry;
+                            resultTable = resultTable.updateEntry(iResult, resultEntry, 'saveCache', saveCache, 'storeInTable', false);
                         end
+                        
+                        if ~storeInTable
+                            resultTable = resultTable.unloadFieldsForEntry(iResult);
+                        end 
 
                         close all;
                     end
@@ -641,17 +683,15 @@ classdef DatabaseAnalysis < handle & DataSource
                 fprintf('\n');
                 debug('Finishing analysis run\n');
             end
-
-            debug('Call tbl = da.resultTable.loadFields() to load analysis results\n');
             
             resultTable.updateInDatabase();
 
             % now fill in all of the info fields of this class with the full table data
             % these are mainly used by the DatabaseAnalysisHTMLWriter class
-            da.successByEntry = resultTable.getValues('success') > 0;                
-            da.exceptionByEntry = resultTable.getValues('exception');
-            da.figureInfoByEntry = resultTable.getValues('figureInfo');
-            da.logByEntry = resultTable.getValues('output');
+%             da.successByEntry = resultTable.getValues('success') > 0;                
+%             da.exceptionByEntry = resultTable.getValues('exception');
+%             da.figureInfoByEntry = resultTable.getValues('figureInfo');
+%             da.logByEntry = resultTable.getValues('output');
             da.resultTable = resultTable;
 
             % mark loaded in database
@@ -667,16 +707,18 @@ classdef DatabaseAnalysis < handle & DataSource
                     da.timeRun = max(timeRunList);
                 end
             else
+                debug('Generating analysis report: Loading displayable fields for all entries');
                 % here we're writing the report
                 % before we do this, we need to load the values of all displayable fields
                 % and additional fields used in the report
-                fieldsAnalysisDisplayable = intersect(da.resultTable.fieldsAnalysis, da.resultTable.fieldsDisplayable);
-                fieldsToLoad = union(fieldsAnalysisDisplayable,  da.resultTable.fieldsAdditional);
+                fieldsToLoad = intersect(da.resultTable.fieldsLoadOnDemand, da.resultTable.fieldsDisplayable);
+                fieldsToLoad = union(fieldsToLoad, fieldsAdditional);
                 da.resultTable = da.resultTable.loadFields('fields', fieldsToLoad, 'loadCacheOnly', true);
                 da.resultTable.updateInDatabase();
                 
                 % make sure analysis path exists
                 mkdirRecursive(da.pathAnalysis);
+                chmod(MatdbSettingsStore.settings.permissionsAnalysisFiles, da.pathAnalysisRoot);
                 chmod(MatdbSettingsStore.settings.permissionsAnalysisFiles, da.pathAnalysis);
                 if exist(da.pathFigures, 'dir')
                     chmod(MatdbSettingsStore.settings.permissionsAnalysisFiles, da.pathFigures);
@@ -709,8 +751,23 @@ classdef DatabaseAnalysis < handle & DataSource
                 % Cached field values have been cached as they were generated already
                 % da.resultTable.cache('cacheValues', false);
             end
+            
+            debug('Call da.resultTable.loadFields().updateInDatabase(); to load analysis results\n');
+            debug('Call da.viewAsHtml to view html report with figures and output\n');
 
             da.isRunning = false;
+        end
+        
+        function pauseOutputLog(da)
+            if ~isempty(da.currentDiaryFile)
+                diary off;
+            end
+        end
+        
+        function resumeOutputLog(da)
+            if ~isempty(da.currentDiaryFile)
+                diary(da.currentDiaryFile);
+            end
         end
 
         function saveFigure(da, figh, figName, figCaption)
@@ -719,9 +776,11 @@ classdef DatabaseAnalysis < handle & DataSource
                 figCaption = '';
             end
 
+            da.pauseOutputLog();
+            
             drawnow;
             if isempty(da.isRunning) || ~da.isRunning
-                debug('Figure %s would be saved when run via .run()\n', figName);
+                debug('Figure %s would be saved when run via DatabaseAnalysis.run()\n', figName);
                 return;
             end
 
@@ -762,6 +821,8 @@ classdef DatabaseAnalysis < handle & DataSource
             else
                 da.figureInfoCurrentEntry(end+1) = figInfo;
             end
+            
+            da.resumeOutputLog();
         end
 
         function fileName = getFigureName(da, entryTable, figName, ext)
@@ -860,7 +921,7 @@ classdef DatabaseAnalysis < handle & DataSource
                 % update the figure info in the result table
                 if madeChanges
                     da.resultTable = da.resultTable.setFieldValue(iEntry, 'figureInfo', ...
-                        info, 'saveCache', saveCache);
+                        info, 'saveCache', false);
                 end
             end
 
@@ -886,14 +947,15 @@ classdef DatabaseAnalysis < handle & DataSource
         end
 
         function disp(da)
-            fprintf('DatabaseAnalysis : %s on %s\n\n', da.getName(), da.getMapsEntryName());
+            tcprintf('inline', '{bright blue}DatabaseAnalysis {none}: {bright white}%s{none} maps {bright white}%s\n\n', da.getName(), da.getMapsEntryName());
+            builtin('disp', da);
         end
     end
 
     methods % Cacheable instantiations
         % return the cacheName to be used when instance 
         function name = getCacheName(obj)
-            name = obj.getName();
+            name = [obj.getName() '_analysis'];
         end
 
         function timestamp = getCacheValidAfterTimestamp(obj)
@@ -901,9 +963,10 @@ classdef DatabaseAnalysis < handle & DataSource
             if isempty(obj.database)
                 % shouldn't happen when running normally, but could if cache functions
                 % are called directly
-                debug('Warning: Unable to determine whether analysis cache is valid because no .database found');
-                % invalidate the cache
-                timestamp = Inf;
+                debug('Warning: Unable to determine whether analysis cache is valid because no .database found\n');
+                
+                % assume the cache is valid
+                timestamp = -Inf;
             else
                 % loop through these tables and find the latest modification time
                 list = obj.getEntryNamesChangesInvalidateCache();
@@ -912,20 +975,78 @@ classdef DatabaseAnalysis < handle & DataSource
                 timestamp = obj.database.getLastUpdated(list);
             end
         end
+        
+        function da = prepareForCache(da, varargin)
+            p = inputParser;
+            p.addParamValue('snapshot', false, @islogical);  
+            p.addParamValue('snapshotName', '', @ischar);  
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            if isempty(da.resultTable)
+                error('Cannot cache DatabaseAnalysis before it has been initialized');
+            end
+        
+%             if p.Results.snapshot
+%                 % let the result table snapshot itself, then empty it
+%                 da.resultTable.snapshot(p.Results.snapshotName);
+%             else
+%                 da.resultTable.cache();
+%             end
+%             da.resultTable = [];
+        end
+        
+        function da = postLoadFromCache(da, param, timestamp, preLoadObj, varargin)
+            p = inputParser;
+            p.addParamValue('snapshot', false, @islogical);  
+            p.addParamValue('snapshotName', '', @ischar);  
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            if ~isempty(preLoadObj.database)
+                da.setDatabase(preLoadObj.database);
+            end
+            
+%             if p.Results.snapshot
+%                 % let the result table snapshot itself, then empty it
+%                 da.resultTable = da.resultTable.loadFromSnapshot(p.Results.snapshotName);
+%             else
+%                 % initialize if we need the result table to allow loading it from cache!
+%                 if isempty(da.resultTable)
+%                     da.initialize();
+%                 end
+%                 da.resultTable = da.resultTable.loadFromCache();
+%             end
+            
+            if ~isempty(da.database)
+                da.initialize();
+            end
+        end
     end
 
     methods % Dependent properties
+        % path to folder of this run of this analysis
         function path = get.pathAnalysis(da)
-            da.checkIsRunning();
-            if isempty(da.timeRun)
+            if ~da.getIsRunning()
                 path = '';
             else
-                root = getFirstExisting(MatdbSettingsStore.settings.pathListAnalysis);
-                name = da.getName();
-                timestr = datestr(da.timeRun, 'yyyy-mm-dd HH.MM.SS');
-                path = GetFullPath(fullfile(root, name, timestr));
+                if isempty(da.timeRun)
+                    path = '';
+                else
+                    root = getFirstExisting(MatdbSettingsStore.settings.pathListAnalysis);
+                    name = da.getName();
+                    timestr = datestr(da.timeRun, 'yyyy-mm-dd HH.MM.SS');
+                    path = GetFullPath(fullfile(root, name, timestr));
+                end
             end
         end
+        
+        % path to parent folder of all runs of this analysis
+        function path = get.pathAnalysisRoot(da)
+            root = getFirstExisting(MatdbSettingsStore.settings.pathListAnalysis);
+            name = da.getName();
+            path = GetFullPath(fullfile(root, name));
+        end  
 
         function path = get.pathCurrent(da)
             root = getFirstExisting(MatdbSettingsStore.settings.pathListAnalysis);
@@ -958,12 +1079,7 @@ classdef DatabaseAnalysis < handle & DataSource
         % actually load this into the database, assume all dependencies have been loaded
         function loadInDatabase(da, database)
             da.database = database;
-            % do the bare minimum. Don't check cache timestamps or existence,
-            % don't run new entries, don't rerun failed entries
-            %da.run('loadCacheSuccess', false, 'loadCache', false, 'loadCacheOnly', true);
-            
-            % Load success field
-            da.run('loadCacheSuccessOnly', true);
+            da.initialize();
         end
 
         function useAsResultTable(da, resultTable)
@@ -979,23 +1095,10 @@ classdef DatabaseAnalysis < handle & DataSource
             if isempty(db)
                 error('Please call .setDatabase(db)');
             end
-            db.loadSource(da.getRequiredSources());
             
-            % load all data views 
-            db.applyView(da.getRequiredViews());
-
-            % get the appropriate table to map
-            entryName = da.getMapsEntryName();
-            table = db.getTable(entryName);
-            % enforce singular for 1:1 relationship to work
-            entryName = table.entryName;
-
-            resultTable = db.addTable(resultTable);
-            db.addRelationshipOneToOne(resultTable.entryName, entryName); 
             da.resultTable = resultTable;
+            da.initialize();
             da.hasRun = true;
-
-            db.markSourceLoaded(da);
         end
 
         function deleteCache(da)

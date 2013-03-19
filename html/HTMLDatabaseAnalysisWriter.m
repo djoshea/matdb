@@ -285,9 +285,16 @@ classdef HTMLDatabaseAnalysisWriter < HTMLDataTableWriter
                 html.closeTag('div');
             else
                 exc = html.table(index).getValue('exception');
-                func = exc.stack(1).name;
-                line = exc.stack(1).line;
-                msg = exc.message;
+                if isempty(exc)
+                    warning('Exception field not loaded when writing DatabaseAnalysisResultsTable');
+                    func = '';
+                    line = NaN;
+                    msg = '';
+                else
+                    func = exc.stack(1).name;
+                    line = exc.stack(1).line;
+                    msg = exc.message;
+                end
     
                 html.openTag('div', 'class', 'alert alert-error');
                 html.openTag('p');
@@ -296,7 +303,7 @@ classdef HTMLDatabaseAnalysisWriter < HTMLDataTableWriter
                 html.writeTag('p', sprintf('<tt>%s</tt> at line <tt>%d</tt>', ...
                      func, line));
                 html.openTag('p');
-                html.writeTag('tt', exc.message);
+                html.writeTag('tt', msg);
                 html.closeTag('p');
                 html.closeTag('div');
             end
@@ -352,7 +359,7 @@ classdef HTMLDatabaseAnalysisWriter < HTMLDataTableWriter
             entryName = da.getMapsEntryName();
             html.pageTitle = name;
             html.mainHeader = html.table.entryNamePlural; 
-            html.subHeader = sprintf('DatabaseAnalysis run on %s with %d entries.<br/>Parameters : %s <br/>', ...
+            html.subHeader = sprintf('DatabaseAnalysis run on %s with %d entries.<br/><strong>Parameters</strong> : %s <br/><br/>', ...
                 entryName, html.table.nEntries, desc);
             html.navTitle = 'Database Analysis';
             html.navSubTitle = name;
