@@ -44,9 +44,8 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
         % from within runOnEntry (e.g. saveFigure)
         figureInfoCurrentEntry
         currentEntry
-        currentDiaryFile
     end
-
+    
     properties(Transient, SetAccess=protected)
         % reference to the current database when running
         database 
@@ -583,7 +582,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                         diary off;
                         diaryFile = tempname(); 
                         diary(diaryFile);
-                        da.currentDiaryFile = diaryFile;
+                        DatabaseAnalysis.setOutputLogStatus('file', diaryFile);
 
                         % clear the figure info for saveFigure to use
                         da.figureInfoCurrentEntry = [];
@@ -623,35 +622,49 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                         end
 
                         % load the output from the diary file
+                        DatabaseAnalysis.setOutputLogStatus('file', '');
                         diary('off');
                         output = fileread(diaryFile);
-                        da.currentDiaryFile = '';
+
                         % don't clutter with temp files
                         if exist(diaryFile, 'file')
                             delete(diaryFile);
                         end
 
+                        
                         if success
                             tcprintf('bright green', '\nAnalysis ran successfully on this entry\n');
+                            
                             % Copy only fieldsAnalysis that were returned.
                             % Fields in dt.fieldsAnalysis but not fieldsAnalysis are okay
-                            [fieldsCopy fieldsReturnedMask] = intersect(da.fieldsAnalysis, fieldnames(resultStruct));
-                            
-                            if cacheFieldsIndividually
-                                fieldsCopyIsDisplayable = fieldsAnalysisIsDisplayable(fieldsReturnedMask); 
-                                for iField = 1:length(fieldsCopy)
-                                    field = fieldsCopy{iField};
-                                    % don't keep any values in the table, this way we don't run out of memory as the
-                                    % analysis drags on
-                                    % Displayable field values needed for report generation will be reloaded
-                                    % later on in this function
-                                    resultTable = resultTable.setFieldValue(iResult, field, resultStruct.(field), ...
-                                        'saveCache', saveCache, 'storeInTable', storeInTable);
-                                end
-                            else
-                                resultEntry = rmfield(resultStruct, extraFields); 
+                            [fieldsCopy fieldsReturnedMask] = intersect(allFieldsAnalysis, fieldnames(resultStruct));
+                        else
+                            % Blank all fields (even if only some were
+                            % requested), and set them in the table 
+                            % This is to avoid conclusion or contamination
+                            % with old results
+                            for field = allFieldsAnalysis
+                                resultStruct.(field{1}) = [];
                             end
-                        end 
+                            fieldsCopy = allFieldsAnalysis;
+                            fieldsReturnedMask = true(length(allFieldsAnalysis), 1);
+                            extraFields = {};
+                        end
+                        
+                        if cacheFieldsIndividually
+                            fieldsCopyIsDisplayable = fieldsAnalysisIsDisplayable(fieldsReturnedMask); 
+                            for iField = 1:length(fieldsCopy)
+                                field = fieldsCopy{iField};
+                                % don't keep any values in the table, this way we don't run out of memory as the
+                                % analysis drags on
+                                % Displayable field values needed for report generation will be reloaded
+                                % later on in this function
+                                resultTable = resultTable.setFieldValue(iResult, field, resultStruct.(field), ...
+                                    'saveCache', saveCache, 'storeInTable', storeInTable);
+                            end
+                        else
+                            resultEntry = rmfield(resultStruct, extraFields); 
+                        end
 
                         % set all of the additional field values
                         if cacheFieldsIndividually
@@ -766,25 +779,13 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             da.isRunning = false;
         end
         
-        function pauseOutputLog(da)
-            if ~isempty(da.currentDiaryFile)
-                diary off;
-            end
-        end
-        
-        function resumeOutputLog(da)
-            if ~isempty(da.currentDiaryFile)
-                diary(da.currentDiaryFile);
-            end
-        end
-
         function saveFigure(da, figh, figName, figCaption)
             % use this to save figures while running the analysis
             if nargin < 4
                 figCaption = '';
             end
 
-            da.pauseOutputLog();
+            DatabaseAnalysis.pauseOutputLog();
             
             drawnow;
             if isempty(da.isRunning) || ~da.isRunning
@@ -830,7 +831,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                 da.figureInfoCurrentEntry(end+1) = figInfo;
             end
             
-            da.resumeOutputLog();
+            DatabaseAnalysis.resumeOutputLog();
         end
 
         function fileName = getFigureName(da, entryTable, figName, ext)
@@ -1118,4 +1119,38 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             r.deleteCache();
         end
     end
+    
+    methods(Static) % Diary file related statics
+        function setOutputLogStatus(varargin)
+            persistent currentDiaryFile;
+            
+            p = inputParser;
+            p.addParamValue('file', '', @ischar);
+            p.addParamValue('paused', [], @islogical);
+            p.parse(varargin{:});
+            
+            if ~isempty(p.Results.file)
+                currentDiaryFile = p.Results.file;
+            end
+            
+            if ~isempty(p.Results.paused)
+                if p.Results.paused
+                    diary off;
+                else
+                    if ~isempty(currentDiaryFile)
+                        diary(currentDiaryFile);
+                    end
+                end
+            end
+        end
+        
+        function pauseOutputLog(da)
+            DatabaseAnalysis.setOutputLogStatus('paused', true);
+        end
+        
+        function resumeOutputLog(da)
+            DatabaseAnalysis.setOutputLogStatus('paused', false);
+        end
+    end 
+        
 end

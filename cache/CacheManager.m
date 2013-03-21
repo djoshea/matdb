@@ -1,11 +1,18 @@
 classdef CacheManager < handle
+    properties
+        cachedCacheRootList
+    end
+    
     properties(Dependent)
         cacheRootList;
     end
 
     methods
         function rootList = get.cacheRootList(cm)
-            rootList = MatdbSettingsStore.settings.pathListCache;
+            if isempty(cm.cachedCacheRootList)
+                cm.cachedCacheRootList = MatdbSettingsStore.settings.pathListCache;
+            end
+            rootList = cm.cachedCacheRootList;
         end
     end
 
@@ -39,30 +46,33 @@ classdef CacheManager < handle
             else
                 opts.Method = 'SHA-1';
                 opts.Format = 'hex'; 
-
                 hashData.param = param;
                 hashData.cacheName = cacheName;
                 str = DataHash(hashData, opts);
+                
+                % cache for next time
+                pLastHash = str;
+                pLastParam = param;
             end
         end
     end
 
     methods % methods that should remain public
-        function tf = cacheExists(cm, cacheName, param)
-            data = cm.getFileListDataForRead(cacheName, param);
-            meta = cm.getFileListMetaForRead(cacheName, param);
+        function tf = cacheExists(cm, cacheName, param, varargin)
+            data = cm.getFileListDataForRead(cacheName, param, varargin{:});
+            meta = cm.getFileListMetaForRead(cacheName, param, varargin{:});
 
             tf = ~isempty(data) && ~isempty(meta);
         end
 
         % retrieve the timestamp from the newest meta file
-        function [timestamp indexNewest] = retrieveTimestamp(cm, cacheName, param)
-            [indexNewest, timestamp, isSeparate] = retrieveMeta(cm, cacheName, param);
+        function [timestamp indexNewest] = retrieveTimestamp(cm, cacheName, param, varargin)
+            [indexNewest, timestamp, isSeparate] = retrieveMeta(cm, cacheName, param, varargin{:});
         end
 
         % retrieve all meta info from the newest meta file
-        function [indexNewest timestamp separateFields] = retrieveMeta(cm, cacheName, param)
-            fileList = cm.getFileListMetaForRead(cacheName, param);
+        function [indexNewest timestamp separateFields] = retrieveMeta(cm, cacheName, param, varargin)
+            fileList = cm.getFileListMetaForRead(cacheName, param, varargin{:});
             if isempty(fileList)
                 indexNewest = [];
                 timestamp = [];
@@ -120,8 +130,8 @@ classdef CacheManager < handle
             warning(warnStatus);
         end
 
-        function [tf timestamp] = hasCacheNewerThan(cm, cacheName, param, refTimestamp)
-            timestamp = cm.retrieveTimestamp(cacheName, param);
+        function [tf timestamp] = hasCacheNewerThan(cm, cacheName, param, refTimestamp, varargin)
+            timestamp = cm.retrieveTimestamp(cacheName, param, varargin{:});
             tf = ~isempty(timestamp) && timestamp > refTimestamp;
         end
 
@@ -130,18 +140,24 @@ classdef CacheManager < handle
             p.addRequired('cacheName', @ischar);
             p.addRequired('param', @(x) true);
             p.addParamValue('fields', {}, @iscellstr);
+            p.KeepUnmatched = true;
             p.parse(cacheName, param, varargin{:});
+            
             fields = p.Results.fields;
 
-            fileList = cm.getFileListDataForRead(cacheName, param);
+            fileList = cm.getFileListDataForRead(cacheName, param, p.Unmatched);
             if isempty(fileList)
-                error('No cache files found');
+                % no cache files found
+                data = [];
+                timestamp = NaN;
+                return;
+                % error('No cache files found');
             end
 
             % load the data file with the newest timestamp
-            [indexNewest, timestamp, separateFields] = cm.retrieveMeta(cacheName, param);
+            [indexNewest, timestamp, separateFields] = cm.retrieveMeta(cacheName, param, p.Unmatched);
             file = fileList{indexNewest};
-
+            
             % turn off value not found warnings
             warnId = 'MATLAB:load:variableNotFound';
             warnStatus = warning('off', warnId);
@@ -188,13 +204,13 @@ classdef CacheManager < handle
             % within the same mat file, allowing for individual fields to be
             % selectively loaded easily
             p.addParamValue('separateFields', false, @islogical);
-
+            p.KeepUnmatched = true;
             p.parse(cacheName, param, data, varargin{:});
             timestamp = p.Results.timestamp;
             separateFields = p.Results.separateFields;
 
-            fileMeta = cm.getFileMetaForWrite(cacheName, param);
-            fileData = cm.getFileDataForWrite(cacheName, param);
+            fileMeta = cm.getFileMetaForWrite(cacheName, param, p.Unmatched);
+            fileData = cm.getFileDataForWrite(cacheName, param, p.Unmatched);
             mkdirRecursive(fileparts(fileMeta));
 
             if separateFields
@@ -222,10 +238,10 @@ classdef CacheManager < handle
     end
     
     methods 
-        function deleteCache(cm, cacheName, param)
+        function deleteCache(cm, cacheName, param, varargin)
             % delete cache files everywhere they exist for a specific entry
-            fileListData = cm.getFileListDataForRead(cacheName, param);
-            fileListMeta = cm.getFileListMetaForRead(cacheName, param);
+            fileListData = cm.getFileListDataForRead(cacheName, param, varargin{:});
+            fileListMeta = cm.getFileListMetaForRead(cacheName, param, varargin{:});
             fileList = [fileListData; fileListMeta];
             for iFile = 1:length(fileList)
                 file = fileList{iFile};
@@ -236,61 +252,97 @@ classdef CacheManager < handle
             end
         end
 
-        function fileList = getFileListData(cm, cacheName, param, root) 
+        function fileList = getFileListData(cm, cacheName, param, varargin)
+            % get full list of all possible file locations for data .mat
+            % not all may exist
             cm.assertParamValid(param);
+            
+            p = inputParser;
+            p.addOptional('root', '', @(x) ischar(x) || iscell(x));
+            p.addParamValue('hash', '', @ischar);
+            p.parse(varargin{:});
+            rootList = p.Results.root;
 
             % list of all existing data cache files
-            if nargin == 4
-                rootList = {root};
-            else
+            if isempty(rootList)
                 rootList = cm.cacheRootList;
             end
-            hash = cm.hashParam(cacheName, param);
+            if ischar(rootList)
+                rootList = {rootList};
+            end
+            if isempty(p.Results.hash)
+                hash = cm.hashParam(cacheName, param);
+            else
+                hash = p.Results.hash;
+            end
             fileName = ['cache_' hash '.data.mat'];
-            fileList = fullfileMulti(rootList, cacheName, fileName);
+            if length(rootList) == 1
+                %fileList = {fullfile(rootList{1}, cacheName, fileName)};
+                fileList = {[ rootList{1}, filesep(), cacheName, filesep, fileName ]};
+            else
+                fileList = fullfileMulti(rootList, cacheName, fileName);
+            end
         end
 
-        function fileList = getFileListDataForRead(cm, cacheName, param)
-            fileList = cm.getFileListData(cacheName, param);
+        function fileList = getFileListDataForRead(cm, cacheName, param, varargin)
+            fileList = cm.getFileListData(cacheName, param, '', varargin{:});
             fileList = cm.filterExisting(fileList);
         end
 
-        function file = getFileDataForWrite(cm, cacheName, param)
+        function file = getFileDataForWrite(cm, cacheName, param, varargin)
             % data cache file in the first root folder that exists
             root = getFirstExisting(cm.cacheRootList);
             if isempty(root)
                 error('No cacheRoot in cacheRootList {%s} exists', strjoin(cm.cacheRootList));
             end
-            file = cm.getFileListData(cacheName, param, root);
+            file = cm.getFileListData(cacheName, param, root, varargin{:});
             file = file{1};
         end
         
-        function fileList = getFileListMeta(cm, cacheName, param, root) 
-            cm.assertParamValid(param);
-            
-            if nargin == 4
-                rootList = {root};
-            else
+        function fileList = getFileListMeta(cm, cacheName, param, varargin) 
+            p = inputParser;
+            p.addOptional('root', '', @(x) ischar(x) || iscell(x));
+            p.addParamValue('hash', '', @ischar);
+            p.parse(varargin{:});
+            rootList = p.Results.root;
+
+            % list of all existing data cache files
+            if isempty(rootList)
                 rootList = cm.cacheRootList;
             end
-            hash = cm.hashParam(cacheName, param);
+            if ischar(rootList)
+                rootList = {rootList};
+            end
+            
+            cm.assertParamValid(param);
+            
+            if isempty(p.Results.hash)
+                hash = cm.hashParam(cacheName, param);
+            else
+                hash = p.Results.hash;
+            end
             fileName = ['cache_' hash '.meta.mat'];
-            fileList = fullfileMulti(rootList, cacheName, fileName);
+            
+            if length(rootList) == 1
+                fileList = {[rootList{1}, filesep(), cacheName, filesep, fileName]};
+            else
+                fileList = fullfileMulti(rootList, cacheName, fileName);
+            end
         end
 
-        function fileList = getFileListMetaForRead(cm, cacheName, param)
+        function fileList = getFileListMetaForRead(cm, cacheName, param, varargin)
             % list of all existing meta cache files
-            fileList = cm.getFileListMeta(cacheName, param);
+            fileList = cm.getFileListMeta(cacheName, param, '', varargin{:});
             fileList = cm.filterExisting(fileList);
         end
 
-        function file = getFileMetaForWrite(cm, cacheName, param)
+        function file = getFileMetaForWrite(cm, cacheName, param, varargin)
             % meta cache file in the first root folder that exists
             root = getFirstExisting(cm.cacheRootList);
             if isempty(root)
                 error('No cacheRoot in cacheRootList {%s} exists', strjoin(cm.cacheRootList));
             end
-            file = cm.getFileListMeta(cacheName, param, root);
+            file = cm.getFileListMeta(cacheName, param, root, varargin{:});
             file = file{1};
         end
 

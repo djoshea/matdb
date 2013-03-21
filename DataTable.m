@@ -247,7 +247,9 @@ classdef DataTable < DynamicClass & Cacheable
         end
 
         function dfd = getFieldDescriptor(db, field)
-            dfd = db.fieldDescriptorMapCache(field);
+            db.fieldDescriptorMapCache.dynamicClassActive = false;
+            dfd = db.fieldDescriptorMapCache.get(field);
+            db.fieldDescriptorMapCache.dynamicClassActive = true;
         end
 
         function db = setFieldDescriptor(db, field, dfd)
@@ -1784,9 +1786,9 @@ classdef DataTable < DynamicClass & Cacheable
 
             assert(isscalar(idx) && isnumeric(idx) && idx > 0 && idx <= dt.nEntries, ...
                 'Index invalid or out of range [0 nEntries]');
-            dt.assertIsField(field);
+            %dt.assertIsField(field);
 
-            dfd = dt.fieldDescriptorMap.get(field);
+            dfd = dt.getFieldDescriptor(field);
             value = dfd.convertValues(value);
 
             if isempty(value)

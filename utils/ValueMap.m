@@ -199,8 +199,8 @@ classdef ValueMap < DynamicClass
                 else
                     map.hashStruct = rmfield(map.hashStruct, hashKey);
                     if map.storeKeys
-                        idx = cellfun(@(storedKey) isequal(key,storedKey), map.keySet);
-                        map.keySet = map.keySet([1:idx-1 idx+1:end]);
+                        idx = cellfun(@(storedKey) isequaln(key,storedKey), map.keySet);
+                        map.keySet = map.keySet(~idx);
                     end
                 end
             end

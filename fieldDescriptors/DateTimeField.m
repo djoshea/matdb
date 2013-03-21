@@ -52,6 +52,11 @@ classdef DateTimeField < DataFieldDescriptor
                 return;
             end
             
+            if isnumeric(values)
+                num = values;
+                return;
+            end
+            
             if ~isempty(dfd.dateFormat)
                 datenumFn = @(values) datenum(values, dfd.dateFormat);
                 defaultValue = datestr(0, dfd.dateFormat);

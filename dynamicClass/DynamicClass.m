@@ -13,6 +13,10 @@ classdef (HandleCompatible) DynamicClass
         % recognized
         NotSupported = DynamicClassEnumeration.NotSupported;
     end
+    
+    properties(Hidden)
+        dynamicClassActive = true;
+    end
 
     % Override if you'd like dynamic access to take precedence over declared properties/methods
     methods(Hidden, Access=protected) 
@@ -171,6 +175,12 @@ classdef (HandleCompatible) DynamicClass
             % for indexing and dynamic property/method references
             %
             % Any indexing beyond this will be passed to the builtin
+            
+            % for performance, the dynamic subsref can be turned off
+            if ~obj.dynamicClassActive
+                [varargout{1:nargout}] = builtin('subsref', obj, s);
+                return;
+            end
             
             % for storing intermediate results
             result = obj;
@@ -335,6 +345,15 @@ classdef (HandleCompatible) DynamicClass
         end
 
         function obj = subsasgn(obj, s, value)
+            if strcmp(s(1).subs, 'dynamicClassActive')
+                obj.dynamicClassActive = value;
+                return;
+            end
+            if ~obj.dynamicClassActive
+                [varargout{1:nargout}] = builtin('subsasgn', obj, s, value);
+                return;
+            end
+            
             sExtra = s(2:end);
 
             switch s(1).type;
