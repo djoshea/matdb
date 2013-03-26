@@ -207,11 +207,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             tf = da.isRunning || da.hasRun;
         end
         
-        function initialize(da)
-            name = da.getName();
-            assert(isvarname(name), 'getName() must return a valid variable name');
-            debug('Initializing DatabaseAnalysis %s\n', name);
-            
+        function readyDatabase(da)    
             % set up in database
             if isempty(da.database)
                 error('Please call .setDatabase(db) first');
@@ -222,7 +218,15 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             
             % load all data views 
             da.database.applyView(da.getRequiredViews()); 
-           
+        end
+        
+        function initialize(da)
+            name = da.getName();
+            assert(isvarname(name), 'getName() must return a valid variable name');
+            debug('Initializing DatabaseAnalysis %s\n', name);
+
+            da.readyDatabase();
+            
             currentResultTable = da.resultTable;
             
             % build the resultTable as a LoadOnDemandTable
@@ -294,21 +298,35 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             keepCurrentValues = p.Results.keepCurrentValues;
             db = p.Results.database;
 
+            % get analysis name
+            name = da.getName();
+            debug('Preparing for analysis : %s\n', name);
+            
             if ~isempty(db)
                 da.setDatabase(db);
             end
-            db = da.database;
+            db = da.database;            
             
-            % load required source/views, map the result table, etc.
+            % call this before calling preFilterTable below!
+            da.readyDatabase();
+            
+            % get the appropriate table to map
+            entryName = da.getMapsEntryName();
+            table = db.getTable(entryName);
+            % enforce singular for 1:1 relationship to work
+            entryName = table.entryName;
+            
+            % prefilter the table further if requested (database views also do this)
+            debug('Filtering mapped table %s via preFilterTable\n', entryName);
+            table = da.preFilterTable(table).updateInDatabase();
+            table.updateInDatabase();
+            
+            % load required source/views, re-map the result table, etc.
             if ~keepCurrentValues
                 da.resultTable = [];
             end
             da.initialize();
             resultTable = da.resultTable;
-            
-            % get analysis name
-            name = da.getName();
-            debug('Preparing for analysis : %s\n', name);
             
             da.isRunning = true;
 
@@ -326,15 +344,6 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
 
             % keep track of whether we need to re-cache the result table 
             resultTableChanged = false;
-
-            % get the appropriate table to map
-            entryName = da.getMapsEntryName();
-            table = db.getTable(entryName);
-            % enforce singular for 1:1 relationship to work
-            entryName = table.entryName;
-
-            % prefilter the table further if requested (database views also do this)
-            table = da.preFilterTable(table);
 
             % mask by entry of which entries must be run
             maskAlreadyRun = false(resultTable.nEntries, 1);
@@ -470,7 +479,8 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                 % and thus need not be rerun
                 successFlag = resultTable.success;
                 for iEntry = 1:resultTable.nEntries
-                    if isempty(timestampsByEntry(iEntry).success)
+                    if isempty(timestampsByEntry(iEntry).success) || ...
+                       isnan(timestampsByEntry(iEntry).success)
                         % no success field found cached, not yet run
                         maskAlreadyRun(iEntry) = false;
                         
@@ -533,6 +543,15 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                 
                 nAnalyze = nnz(maskToAnalyze);
                 if nAnalyze > 0
+                    
+                    % create a failure entry we can simply drop in when a
+                    % failure occurs
+                    failureEntry = struct();
+                    for field = allFieldsAnalysis
+                        dfd = resultTable.getFieldDescriptor(field{1});
+                        failureEntry.(field{1}) = dfd.getEmptyValue();
+                    end
+                    
                     idxAnalyze = find(maskToAnalyze);
 
                     resultTableChanged = true;
@@ -643,9 +662,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                             % requested), and set them in the table 
                             % This is to avoid conclusion or contamination
                             % with old results
-                            for field = allFieldsAnalysis
-                                resultStruct.(field{1}) = [];
-                            end
+                            resultStruct = failureEntry;
                             fieldsCopy = allFieldsAnalysis;
                             fieldsReturnedMask = true(length(allFieldsAnalysis), 1);
                             extraFields = {};
@@ -701,7 +718,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                 resultTable = resultTable.apply();
                 resultTable = resultTable.setAutoApply(savedAutoApply);
                 
-                fprintf('\n');
+                %fprintf('\n');
                 debug('Finishing analysis run\n');
             end
             
@@ -728,7 +745,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                     da.timeRun = max(timeRunList);
                 end
             else
-                debug('Generating analysis report: Loading displayable fields for all entries');
+                debug('Generating analysis report: loading displayable fields for all entries\n');
                 % here we're writing the report
                 % before we do this, we need to load the values of all displayable fields
                 % and additional fields used in the report
@@ -837,11 +854,17 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
         function fileName = getFigureName(da, entryTable, figName, ext)
             % construct figure name that looks like:
             % {{analysisRoot}}/figures/ext/figName.{{keyField descriptors}}.ext
-            assert(entryTable.nEntries == 1);
-            descriptors = entryTable.getKeyFieldValueDescriptors();
+            
+            if ischar(entryTable)
+                descriptor = entryTable;
+            else
+                assert(entryTable.nEntries == 1);
+                descriptors = entryTable.getKeyFieldValueDescriptors();
+                descriptor = descriptors{1};
+            end
 
             path = fullfile(da.pathFigures, ext);
-            fileName = fullfile(path, sprintf('%s.%s.%s', figName, descriptors{1}, ext));
+            fileName = fullfile(path, sprintf('%s.%s.%s', figName, descriptor, ext));
             fileName = GetFullPath(fileName);
         end
 
@@ -893,45 +916,58 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                 % TODO add support for windows nt junctions 
                 return;
             end
-
-            debug('Creating symbolic links to figures saved in earlier runs\n');
             figurePath = da.pathFigures;
             nEntries = da.resultTable.nEntries;
+            
+            table = da.resultTable.table;
+            emptyMask = arrayfun(@(x) isempty(x.figureInfo), table);
+            
+            if any(~emptyMask)
+                prog = ProgressBar(nEntries, 'Creating symbolic links to figures saved in earlier runs');
+                
+                descriptors = da.resultTable.getKeyFieldValueDescriptors();
 
-            for iEntry = 1:nEntries
-                entry = da.resultTable(iEntry);
-                info = entry.getValue('figureInfo');
-                madeChanges = false;
+                for iEntry = 1:nEntries
+                    if emptyMask(iEntry)
+                        continue;
+                    end
+                    info = table(iEntry).figureInfo;
+                    madeChanges = false;
 
-                for iFigure = 1:length(info)
-                    figInfo = info(iFigure);
-                    for iExt = 1:length(figInfo.extensions)
-                        mostRecentLink = resolveSymLink(figInfo.fileLinkList{iExt});
-                        thisRunLocation = resolveSymLink(da.getFigureName(entry, figInfo.name, figInfo.extensions{iExt}));
+                    prog.update(iEntry);
+                    for iFigure = 1:length(info)
+                        figInfo = info(iFigure);
+                        for iExt = 1:length(figInfo.extensions)
+                            mostRecentLink = resolveSymLink(figInfo.fileLinkList{iExt});
+                            thisRunLocation = resolveSymLink(da.getFigureName(descriptors{iEntry}, figInfo.name, figInfo.extensions{iExt}));
 
-                        if ~strcmp(mostRecentLink, thisRunLocation)
-                            % point the symlink at the original file, not at the most recent link
-                            % to avoid cascading symlinks
-                            actualFile = resolveSymLink(figInfo.fileList{iExt});
-                            success = makeSymLink(actualFile, thisRunLocation);
-                            if success
-                                % change the figure info link location, not the actual file path
-                                info(iFigure).fileLinkList{iExt} = thisRunLocation;
-                                madeChanges = true;
-                                
-                                % expose permissions on the symlink and the
-                                % original file, just in case
-                                chmod(MatdbSettingsStore.settings.permissionsAnalysisFiles, {actualFile, thisRunLocation});
+                            if ~strcmp(mostRecentLink, thisRunLocation)
+                                % point the symlink at the original file, not at the most recent link
+                                % to avoid cascading symlinks
+                                actualFile = resolveSymLink(figInfo.fileList{iExt});
+                                success = makeSymLink(actualFile, thisRunLocation);
+                                if success
+                                    % change the figure info link location, not the actual file path
+                                    info(iFigure).fileLinkList{iExt} = thisRunLocation;
+                                    madeChanges = true;
+
+                                    % expose permissions on the symlink and the
+                                    % original file, just in case
+                                    chmod(MatdbSettingsStore.settings.permissionsAnalysisFiles, {actualFile, thisRunLocation});
+                                end
                             end
                         end
                     end
-                end
 
-                % update the figure info in the result table
-                if madeChanges
-                    da.resultTable = da.resultTable.setFieldValue(iEntry, 'figureInfo', ...
-                        info, 'saveCache', false);
+                    % update the figure info in the result table
+                    if madeChanges
+                        table(iEntry).figureInfo = info;
+                    end
                 end
+            
+                prog.finish();
+                
+                da.resultTable.table = table;
             end
 
         end

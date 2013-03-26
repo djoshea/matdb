@@ -20,6 +20,7 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
 
         referenceNames = cell(2, 1);
 
+        isJunction = false;
         isHalfOfJunction = false;
     end
 
@@ -41,8 +42,6 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
         referenceRightForLeft
         isManyLeft
         isManyRight
-
-        isJunction 
         isOneToOne
     end
 
@@ -146,11 +145,7 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
         function set.keyFieldsRightInLeft(rel, fields)
             rel.keyFieldsReference{2} = fields;
         end
-
-        function tf = get.isJunction(rel)
-            tf = rel.isManyLeft && rel.isManyRight;
-        end
-
+        
         function tf = get.isOneToOne(rel)
             tf = ~rel.isManyLeft && ~rel.isManyRight;
         end
@@ -161,7 +156,7 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             p = inputParser;
             p.addParamValue('tableLeft', [], @(t) isa(t, 'DataTable'));
             p.addParamValue('tableRight', [], @(t) isa(t, 'DataTable'));
-            p.addParamValue('tableJunction', [], @(t) isa(t, 'DataTable'));
+            p.addParamValue('tableJunction', [], @(t) isempty(t) || isa(t, 'DataTable'));
             p.addParamValue('referenceLeftForRight', [], @ischar); 
             p.addParamValue('referenceRightForLeft', [], @ischar); 
             p.addParamValue('keyFieldsLeft', [], @iscellstr); 
@@ -183,9 +178,12 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             end
 
             tableJunction = p.Results.tableJunction;
-            if ~ismember('tableJunction', p.UsingDefaults)
+            if ~isempty(tableJunction)
                 rel.entryNameJunction = tableJunction.entryName;
                 rel.entryNameJunctionPlural = tableJunction.entryNamePlural;
+                rel.isJunction = true;
+            else
+                rel.isJunction = false;
             end
 
             rel.isManyLeft = p.Results.isManyLeft; 
@@ -198,6 +196,13 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                           
             if ~ismember('keyFieldsRight', p.UsingDefaults)
                 rel.keyFieldsRight = p.Results.keyFieldsRight;
+            end
+            
+            if isempty(rel.keyFieldsLeft)
+                error('Table left must have at least one key field to identify its entries');
+            end
+            if isempty(rel.keyFieldsRight)
+                error('Table right must have at least one key field to identify its entries');
             end
 
             % handle keyFieldReference names
@@ -635,7 +640,7 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             p = inputParser;
             p.addRequired('tableLeft', @(x) isa(x, 'DataTable'));
             p.addRequired('tableRight', @(x) isa(x, 'DataTable'));
-            p.addParamValue('tableJunction', [], @(x) isa(x, 'DataTable')); 
+            p.addParamValue('tableJunction', [], @(x) isempty(x) || isa(x, 'DataTable')); 
             p.addParamValue('combine', true, @islogical);
             p.parse(tableLeft, tableRight, varargin{:});
 
@@ -659,6 +664,8 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             
             entriesLeft = tableLeft.getEntriesAsStruct(true(nEntriesLeft, 1), rel.keyFieldsLeft);
 
+            hasPrintedWarning = false;
+            
             if combine
                 matchIdx = [];
             else
@@ -706,7 +713,8 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                 end
                 
             elseif ~isempty(keyFieldsLeftInRight)
-                % key fields lie within right, so we can loop through and search directly
+                % key fields for left lie within right, so we can loop through left table 
+                % and search directly for each's match(es) in right
                 % this is essentially a reverse lookup
                 %debug('Performing reverse key lookup\n');
                 matchFilterArgs = DataRelationship.fillCellOddEntries(keyFieldsLeftInRight);
@@ -715,20 +723,31 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                     for iField = 1:nKeyFieldsLeft
                         matchFilterArgs{2*iField} = entriesLeft(iEntryLeft).(keyFieldsLeft{iField});
                     end
+                    
+                    newMatchIdx = tableRight.matchIdx(matchFilterArgs{:});
+                    
+                    % truncate matches at 1 if ~isManyRight
+                    if ~rel.isManyRight && length(newMatchIdx) > 1
+                        if ~hasPrintedWarning
+                            hasPrintedWarning = true;
+                            debug('WARNING: Found multiple matches for relationship which should have one match only, truncating\n');
+                        end
+                        newMatchIdx = newMatchIdx(1);
+                    end
                     if combine 
-                        matchIdx = [matchIdx; tableRight.matchIdx(matchFilterArgs{:})];
+                        matchIdx = [matchIdx; newMatchIdx];
                     else
-                        matchTableCell{iEntryLeft} = tableRight.match(matchFilterArgs{:});
+                        matchTableCell{iEntryLeft} = tableRight.select(newMatchIdx);
                     end
                 end
 
             else
-                % key fields lie within left, so we loop through left table
+                % key fields for right table lie within left, so we loop through left table
                 % and lookup each right entry by key fields
                 %debug('Performing forward key lookup\n');
                 matchFilterArgs = DataRelationship.fillCellOddEntries(keyFieldsRight);
                 for iEntryLeft = 1:nEntriesLeft
-                    missingValue = false;
+                    missingValue = false; % does this left entry point to a right entry? true implies zero matches
                     for iField = 1:nKeyFieldsRight
                         value = entriesLeft(iEntryLeft).(keyFieldsRightInLeft{iField});
                         if isempty(value)
@@ -737,13 +756,22 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                         end
                         matchFilterArgs{2*iField} = value;
                     end
+                    
+                    newMatchIdx = tableRight.matchIdx(matchFilterArgs{:});
+                    if ~rel.isManyRight && length(newMatchIdx) > 1
+                        if ~hasPrintedWarning
+                            hasPrintedWarning = true;
+                            debug('WARNING: Found multiple matches for relationship which should have one match only, truncating\n');
+                        end
+                        newMatchIdx = newMatchIdx(1);
+                    end
                     if combine
                         if ~missingValue
-                            matchIdx = [matchIdx; tableRight.matchIdx(matchFilterArgs{:})];
+                            matchIdx = [matchIdx; newMatchIdx];
                         end
                     else
                         if ~missingValue
-                            matchTableCell{iEntryLeft} = tableRight.match(matchFilterArgs{:});
+                            matchTableCell{iEntryLeft} = tableRight.select(newMatchIdx);
                         else
                             matchTableCell{iEntryLeft} = tableRight.none();
                         end

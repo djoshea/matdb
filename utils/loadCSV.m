@@ -39,6 +39,9 @@ end
 if(isempty(colList))
     header = fgetl(fid);
     headerList = splitCsvLine(header);
+    
+    emptyMask = cellfun(@isempty, headerList);
+    headerList = headerList(~emptyMask);
     colList = safeFieldName(headerList);
 end
 

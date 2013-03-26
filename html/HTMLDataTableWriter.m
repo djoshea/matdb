@@ -20,15 +20,15 @@ classdef HTMLDataTableWriter < HTMLReportWriter
             p.addParamValue('displayableFieldsOnly', true, @islogical)
             p.parse(varargin{:});
 
-            if p.Results.displayableFieldsOnly
+            %if p.Results.displayableFieldsOnly
                 % strip non-displayable fields from table
-                dfdMap = html.table.fieldDescriptorMap;
-                fields = html.table.fields;
-                for iField = 1:length(fields)
-                    removeMask(iField) = ~dfdMap(fields{iField}).isDisplayable;
-                end
-                html.table = html.table.removeField(fields(removeMask));
-            end
+            %    dfdMap = html.table.fieldDescriptorMap;
+            %    fields = html.table.fields;
+            %    for iField = 1:length(fields)
+            %        removeMask(iField) = ~dfdMap(fields{iField}).isDisplayable;
+            %    end
+            %    html.table = html.table.removeField(fields(removeMask));
+            %end
             
             html.buildValueStruct();
 
@@ -45,10 +45,13 @@ classdef HTMLDataTableWriter < HTMLReportWriter
             html.openTableBody();
 
             nEntries = length(html.valueStruct); 
+            prog = ProgressBar(nEntries, 'Writing DataTable entries as HTML');
             for iEntry = 1:nEntries
+                prog.update(iEntry);
                 entry = html.valueStruct(iEntry);
                 html.writeEntryRow(entry);
             end
+            prog.finish();
 
             html.closeTableBody();
             html.closeTable();
@@ -57,7 +60,7 @@ classdef HTMLDataTableWriter < HTMLReportWriter
         end
 
         function buildValueStruct(html);
-            html.valueStruct = html.table.getFullEntriesAsStringsAsStruct();
+            html.valueStruct = html.table.getFullEntriesAsDisplayStringsAsStruct();
             html.fields = [{'index'}; makecol(fieldnames(html.valueStruct))];
             html.valueStruct = assignIntoStructArray(html.valueStruct, 'index', arrayfun(@num2str, 1:length(html.valueStruct), ...
                 'UniformOutput', false));

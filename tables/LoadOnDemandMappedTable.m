@@ -691,9 +691,6 @@ classdef LoadOnDemandMappedTable < StructTable
                 loadedFields = fieldnames(loadedValues);
 
                 if storeInTable
-                    if iEntryInList > 460 && iEntryInList < 480
-                        continue;
-                    end
                     for iField = 1:length(loadedFields)
                         field = loadedFields{iField};
                         % no need to save cache here, already handled above
@@ -738,6 +735,10 @@ classdef LoadOnDemandMappedTable < StructTable
             assert(dt.nEntries == 1, 'retrieveValue only valid for single entries');
             [dt values] = dt.loadFields('fields', {field}, 'storeInTable', false, varargin{:});
             value = values.(field);
+        end
+        
+        function values = retrieveValues(dt, field, varargin)
+            [~, values] = dt.loadField('fields', {field}, 'storeInTable', false, varargin{:});
         end
         
         function dt = unloadFieldsForEntry(dt, entryMask, varargin)

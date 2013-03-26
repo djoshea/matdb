@@ -862,6 +862,26 @@ classdef DataTable < DynamicClass & Cacheable
                 end
             end
         end
+        
+        function [fieldsDisplayable maskOverAllFields] = getFieldsDisplayable(db)
+            fields = db.fields;
+            maskOverAllFields = false(length(fields), 1);
+            for iField = 1:length(fields)
+                field = fields{iField};
+                dfd = db.getFieldDescriptor(field);
+                if dfd.isDisplayable()
+                    maskOverAllFields(iField) = true;
+                end
+            end
+            
+            fieldsDisplayable = fields(maskOverAllFields);
+        end
+        
+        function strStruct = getFullEntriesAsDisplayStringsAsStruct(db, varargin)
+            fieldsDisplayable = db.getFieldsDisplayable();
+            [stringMap displayableFields] = db.getValueMapAsDisplayStrings(fieldsDisplayable);
+            strStruct = mapToStructArray(stringMap); 
+        end   
 
         function [stringMap] = getKeyFieldMapAsFilenameStrings(db, varargin)
             db.checkAppliedEntryData();
@@ -1372,7 +1392,7 @@ classdef DataTable < DynamicClass & Cacheable
             if db.isField(field)
                 warning('Field %s already exists in database. Overwriting', field); 
                 % have the subclass remove this field in preparation for adding it back in
-                db = db.subclassRemoveField(field);
+                db = db.removeField(field);
                 overwritingExistingField = true;
             else
                 overwritingExistingField = false;

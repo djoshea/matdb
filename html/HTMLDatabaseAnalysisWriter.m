@@ -1,6 +1,7 @@
 classdef HTMLDatabaseAnalysisWriter < HTMLDataTableWriter
 
     properties
+        outputFieldDfd
         da
         useImageExtensionList = {'png', 'svg', 'jpg'};
     end
@@ -8,18 +9,21 @@ classdef HTMLDatabaseAnalysisWriter < HTMLDataTableWriter
     methods
         function html = HTMLDatabaseAnalysisWriter(varargin)
             html = html@HTMLDataTableWriter(varargin{:});
+            html.outputFieldDfd = OutputField();
         end
         
-        function buildValueStruct(html);
-            html.valueStruct = html.table.getFullEntriesAsStringsAsStruct();
+        function buildValueStruct(html)
+            buildValueStruct@HTMLDataTableWriter(html);
 
             fieldNames = fieldnames(html.valueStruct);
             [~, origIdx] = setdiff(fieldNames, {'runTimestamp', 'success', 'figureInfo', 'output', 'exception'});
             fieldNames = makecol(fieldNames(sort(origIdx)));
             html.fields = [{'index'; 'success'; 'figures'; 'output'}; fieldNames; {'runTimestamp'}];
-            html.valueStruct = assignIntoStructArray(html.valueStruct, 'index', ...
-                arrayfun(@num2str, 1:length(html.valueStruct), ...
-                'UniformOutput', false));
+            
+            html.valueStruct = assignIntoStructArray(html.valueStruct, 'exception', ...
+                html.table.exception);
+            html.valueStruct = assignIntoStructArray(html.valueStruct, 'figureInfo', ...
+                html.table.figureInfo);
         end
 
         function str = getTooltipForField(html, field)
@@ -56,7 +60,7 @@ classdef HTMLDatabaseAnalysisWriter < HTMLDataTableWriter
             figureRowId = sprintf('figureRow%d', index);
             outputRowId = sprintf('outputRow%d', index);
 
-            figureInfo = html.table(index).getValue('figureInfo');
+            figureInfo = entry.figureInfo;
             nFigures = length(figureInfo);
 
             % color row red if error
@@ -105,16 +109,11 @@ classdef HTMLDatabaseAnalysisWriter < HTMLDataTableWriter
                     end
 
                 elseif strcmp(field, 'output')
-                    dfd = html.table.fieldDescriptorMap(field);
                     html.openTag('div')
                     output = entry.output;
                    
-                    if isa(dfd, 'OutputField')
-                        nLines = dfd.getLineCounts(output);
-                    else
-                        nLines = nnz(output == char(13) | output == char(10));
-                    end
-
+                    nLines = html.outputFieldDfd.getLineCounts(output);
+                   
                     buttonText = sprintf('%d Lines', nLines);
                     buttonClick = sprintf('$(''#%s'').toggle()', outputRowId);
                     html.writeTag('button', buttonText, 'type', 'button', ...
@@ -137,7 +136,7 @@ classdef HTMLDatabaseAnalysisWriter < HTMLDataTableWriter
 
         function writeFigureCarouselRow(html, entry, entryRowId, figureRowId)
             index = str2num(entry.index);
-            figureInfo = html.table(index).getValue('figureInfo');
+            figureInfo = entry.figureInfo;
             nFigures = length(figureInfo);
             
             % write tr full of figures into a script
@@ -367,18 +366,7 @@ classdef HTMLDatabaseAnalysisWriter < HTMLDataTableWriter
             html.openFile();
             html.writeHeader();
 
-            % strip the non-displayable analysis fields from the data table
-            fieldsAnalysis = intersect(html.table.fields, da.fieldsAnalysis);
-            dfdMap = html.table.fieldDescriptorMap;
-            for iField = 1:length(fieldsAnalysis)
-                removeMask(iField) = ~dfdMap(fieldsAnalysis{iField}).isDisplayable;
-            end
-            html.table = html.table.removeField(fieldsAnalysis(removeMask));
-
-            % don't automatically strip non-displayable fields as we use some of them
-            % as placeholders for figures, output, etc.
-
-            html.writeDataTable('displayableFieldsOnly', false);
+            html.writeDataTable();
 
             html.writeFooter();
             html.closeFile();

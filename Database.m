@@ -336,44 +336,51 @@ classdef Database < DynamicClass & handle
             db.addRelationship(rel);
         end
 
-        function addRelationshipManyToMany(db, entryLeft, entryRight, entryJunction, varargin)
+        function addRelationshipManyToMany(db, entryLeft, entryRight, varargin)
             p = inputParser;
             p.KeepUnmatched = true;
             p.addRequired('entryLeft', @ischar);
             p.addRequired('entryRight', @ischar);
-            p.addRequired('entryJunction', @ischar);
-            p.parse(entryLeft, entryRight, entryJunction, varargin{:});
+            p.addOptional('entryJunction', '', @ischar);
+            p.parse(entryLeft, entryRight, varargin{:});
+            entryJunction = p.Results.entryJunction;
 
             tableLeft = db.getTable(entryLeft);
             tableRight = db.getTable(entryRight);
-            tableJunction = db.getTable(entryJunction);
+            if ~isempty(entryJunction)
+                tableJunction = db.getTable(entryJunction);
+            else
+                tableJunction = [];
+            end
 
             rel = DataRelationship('tableLeft', tableLeft, 'tableRight', tableRight, ...
                 'tableJunction', tableJunction, ...
                 'isManyLeft', true, 'isManyRight', true, p.Unmatched); 
-
-            % a junction relationship connects entryLeft to entryRight through entryJunction
-            % this function builds the constituent relationships entryLeft to entryJunction
-            % and entryJunction to entryRight. Typically when adding a junction relationship
-            % to the database, these constituent 1:1 relationships will be automatically
-            % added as well
-            relLeftToJunction = DataRelationship('tableLeft', tableLeft, 'tableRight', tableJunction, ...
-                'isManyLeft', false, 'isManyRight', true, ...
-                'keyFieldsLeft', rel.keyFieldsLeft, ...
-                'keyFieldsRight', rel.keyFieldsLeftInRight, ...
-                'keyFieldsLeftInRight' , rel.keyFieldsLeftInRight, ...
-                'isHalfOfJunction', true);
-
-            relJunctionToRight = DataRelationship('tableLeft', tableJunction, 'tableRight', tableRight, ...
-                'isManyLeft', true, 'isManyRight', false, ...
-                'keyFieldsLeft', rel.keyFieldsRightInLeft, ...
-                'keyFieldsRightInLeft', rel.keyFieldsRightInLeft, ...
-                'keyFieldsRight', rel.keyFieldsRight, ...
-                'isHalfOfJunction', true);
-
             db.addRelationship(rel);
-            db.addRelationship(relLeftToJunction);
-            db.addRelationship(relJunctionToRight);
+            
+            if ~isempty(tableJunction)
+                % a junction relationship connects entryLeft to entryRight through entryJunction
+                % this function builds the constituent relationships entryLeft to entryJunction
+                % and entryJunction to entryRight. Typically when adding a junction relationship
+                % to the database, these constituent 1:1 relationships will be automatically
+                % added as well
+                relLeftToJunction = DataRelationship('tableLeft', tableLeft, 'tableRight', tableJunction, ...
+                    'isManyLeft', false, 'isManyRight', true, ...
+                    'keyFieldsLeft', rel.keyFieldsLeft, ...
+                    'keyFieldsRight', rel.keyFieldsLeftInRight, ...
+                    'keyFieldsLeftInRight' , rel.keyFieldsLeftInRight, ...
+                    'isHalfOfJunction', true);
+
+                relJunctionToRight = DataRelationship('tableLeft', tableJunction, 'tableRight', tableRight, ...
+                    'isManyLeft', true, 'isManyRight', false, ...
+                    'keyFieldsLeft', rel.keyFieldsRightInLeft, ...
+                    'keyFieldsRightInLeft', rel.keyFieldsRightInLeft, ...
+                    'keyFieldsRight', rel.keyFieldsRight, ...
+                    'isHalfOfJunction', true);
+
+                db.addRelationship(relLeftToJunction);
+                db.addRelationship(relJunctionToRight);
+            end
         end
 
         function matchTableCell = matchRelated(db, table, referenceName, varargin)
