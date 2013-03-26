@@ -16,14 +16,14 @@ classdef HTMLDatabaseAnalysisWriter < HTMLDataTableWriter
             buildValueStruct@HTMLDataTableWriter(html);
 
             fieldNames = fieldnames(html.valueStruct);
-            [~, origIdx] = setdiff(fieldNames, {'runTimestamp', 'success', 'figureInfo', 'output', 'exception'});
+            [~, origIdx] = setdiff(fieldNames, {'index', 'runTimestamp', 'success', 'figureInfo', 'output', 'exception'});
             fieldNames = makecol(fieldNames(sort(origIdx)));
             html.fields = [{'index'; 'success'; 'figures'; 'output'}; fieldNames; {'runTimestamp'}];
             
             html.valueStruct = assignIntoStructArray(html.valueStruct, 'exception', ...
-                html.table.exception);
+                html.table.getValues('exception'));
             html.valueStruct = assignIntoStructArray(html.valueStruct, 'figureInfo', ...
-                html.table.figureInfo);
+                html.table.getValues('figureInfo'));
         end
 
         function str = getTooltipForField(html, field)
@@ -307,7 +307,7 @@ classdef HTMLDatabaseAnalysisWriter < HTMLDataTableWriter
                 html.closeTag('div');
             end
 
-            html.writeTag('pre', ansiToHtml(output), 'class', 'prettyprint linenums');
+            html.writeTag('pre', ansiToHtml(output), 'class', 'linenums pre-scrollable');
             html.closeTag('div');
 
             html.closeTag('td');

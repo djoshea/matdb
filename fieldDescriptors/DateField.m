@@ -95,6 +95,10 @@ classdef DateField < DataFieldDescriptor
         function strCell = getAsStrings(dfd, values) 
             strCell = dfd.getAsDateStr(values, DateField.standardDisplayFormat);
         end
+        
+        function strCell = getAsDisplayStrings(dfd, values) 
+            strCell = dfd.getAsStrings(values);
+        end
 
         function strCell = getAsFilenameStrings(dfd, values)
             strCell = dfd.getAsDateStr(values, 'yyyy-mm-dd');

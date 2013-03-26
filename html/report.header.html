@@ -1,4 +1,13 @@
 <style>
+    .main-container {
+        min-width: 1170px;
+        margin: 0 auto;
+        padding: 0 20px 0 20px;
+    }
+    .navbar-container {
+        padding-left: 20px;
+        padding-right: 20px;
+    }
     .pageHeader h1 {
         margin-bottom: 9px;
         font-size: 61px;
@@ -76,11 +85,11 @@
 </style>
 <div class="navbar navbar-fixed-top">
     <div class="navbar-inner">
-        <div class="container">
-            <a class="brand" href="#">{{ navTitle }}</a>
+        <div class="navbar-container">
+            <a class="brand" href="../..">{{ navTitle }}</a>
             <div id="main-menu" class="nav-collapse">
                 <ul id="main-menu-left" class="nav">
-                    <li class="active"><a href="#"><span class="icon-th-list" style="padding-right: 10px;"></span>{{ navSubTitle }}</a></li>
+                    <li class="active"><a href=".."><span class="icon-th-list" style="padding-right: 10px;"></span>{{ navSubTitle }}</a></li>
                 </ul>
                 <ul id="main-menu-right" class="nav pull-right">
                     <li><a href="http://github.com/nplcode/matdb"><span class="icon-fire" style="padding-right: 10px;"></span>Powered by matdb</a></li>
@@ -90,7 +99,7 @@
     </div>
 </div>
 
-<div class="container">
+<div class="main-container">
     <div class="pageHeader">
         <h1>{{ mainHeader }}</h1>
         <p>{{ subHeader }} Generated at {{ timestamp }}.</p>

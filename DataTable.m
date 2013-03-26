@@ -839,7 +839,12 @@ classdef DataTable < DynamicClass & Cacheable
             values = db.getValues(field);
 
             dfd = db.fieldDescriptorMap(field);
-            strCell = dfd.getAsDisplayStrings(values);
+            if db.isKeyField(field)
+                % never truncate key fields, it's annoying
+                strCell = dfd.getAsStrings(values);
+            else
+                strCell = dfd.getAsDisplayStrings(values);
+            end
         end
 
         function [stringMap displayableFields] = getValueMapAsDisplayStrings(db, fields, varargin)
@@ -855,7 +860,11 @@ classdef DataTable < DynamicClass & Cacheable
                 dfd = db.fieldDescriptorMap(field);
                 if dfd.isDisplayable()
                     displayableFields = [displayableFields; field];
-                    stringMap(field) = dfd.getAsDisplayStrings(valueMap(field));
+                    if db.isKeyField(field)
+                        stringMap(field) = dfd.getAsStrings(valueMap(field));
+                    else
+                        stringMap(field) = dfd.getAsDisplayStrings(valueMap(field));
+                    end
                     if ~iscellstr(stringMap(field))
                         error('getAsDisplayStrings failed to return a string');
                     end
