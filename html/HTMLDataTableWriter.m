@@ -4,6 +4,7 @@ classdef HTMLDataTableWriter < HTMLReportWriter
         valueStruct
         columnAttrMap
         fields
+        isKeyField
         table
 
         indexColumnBackground = '#f2f2f2';
@@ -143,6 +144,7 @@ classdef HTMLDataTableWriter < HTMLReportWriter
                 end
                 html.openTableCell(extras{:});
                 html.writeTag('div', ansiToHtml(entry.(field)), 'class', 'ellipsis'); 
+                %html.writeTag('div', ansiToHtml(entry.(field))); 
                 html.closeTableCell();
             end
 

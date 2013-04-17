@@ -32,5 +32,11 @@ classdef PValueField < ScalarField
         function strCell = getAsStrings(dfd, values) 
             strCell = arrayfun(@PValueField.getPValueString, values, 'UniformOutput', false);
         end
+        
+        % don't truncate values here
+        function strCell = getAsDisplayStrings(dfd, values)
+            strCell = dfd.getAsStrings(values);
+        end
+        
     end
 end

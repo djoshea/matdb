@@ -91,8 +91,12 @@ classdef LoadOnDemandMappedTable < StructTable
         
         % if true, cacheable fields are written to the cache individually
         % if false, all cacheable fields are written to the cache collectively by entry
+        %
+        % false is MUCH faster unless you have several fields with VERY large contents.
+        % With false, you can still load fields individually (internally this happens by telling
+        % load() what variables to load from a single mat file)
         function tf = getCacheFieldsIndividually(dt)
-            tf = true;
+            tf = false;
         end
 
         % return a list of fields that we can call loadValuesForEntry for
@@ -174,8 +178,13 @@ classdef LoadOnDemandMappedTable < StructTable
             if isempty(table)
                 % no table specified, build it via mapping one-to-one off database table
                 entryNameMap = dt.getMapsEntryName(); 
-                debug('Mapping LoadOnDemand table off table %s\n', entryNameMap);
-                table = db.getTable(entryNameMap).keyFieldsTable;
+                if isempty(entryNameMap)
+                    debug('Building LoadOnDemand table with single entry\n');
+                    table = StructTable(struct(), 'entryName', entryName, 'entryNamePlural', entryNamePlural); 
+                else
+                    debug('Mapping LoadOnDemand table off table %s\n', entryNameMap);
+                    table = db.getTable(entryNameMap).keyFieldsTable;
+                end
                 
                 table = table.setEntryName(entryName, entryNamePlural);
                 
@@ -256,11 +265,15 @@ classdef LoadOnDemandMappedTable < StructTable
             dt = dt.addField('keyFieldHash', {}, 'fieldDescriptor', UnspecifiedField());
             
             if keepCurrentValues
-                % now dt has been mapped off of the table correctly, and dtOriginal holds certain
-                % values that we'd like to hold onto, but only for specific entries that still 
-                % exist within dt. Since the order of entries won't change, we don't need
-                % to worry about loadedByEntry or cacheTimestampsByEntry changing
-                dt = dt.mergeEntriesWith(dtOriginal, 'keyFieldMatchesOnly', true);
+                if isempty(mapsEntryName)
+                    dt = dtOriginal;
+                else
+                    % now dt has been mapped off of the table correctly, and dtOriginal holds certain
+                    % values that we'd like to hold onto, but only for specific entries that still 
+                    % exist within dt. Since the order of entries won't change, we don't need
+                    % to worry about loadedByEntry or cacheTimestampsByEntry changing
+                    dt = dt.mergeEntriesWith(dtOriginal, 'keyFieldMatchesOnly', true);
+                end
             end
                 
             % pre-compute all of the key field hashes so that no further
@@ -302,7 +315,9 @@ classdef LoadOnDemandMappedTable < StructTable
             DatabaseAnalysis.resumeOutputLog();
             
             dt = db.addTable(dt);
-            db.addRelationshipOneToOne(entryNameMap, entryName);
+            if ~isempty(entryNameMap)
+                db.addRelationshipOneToOne(entryNameMap, entryName);
+            end
             dt.initialized = true;
             
             dt.updateInDatabase();
@@ -627,7 +642,9 @@ classdef LoadOnDemandMappedTable < StructTable
                         end
 %                         fprintf('\r%s Retrieving cache timestamps for entry %d         ', ...
 %                             progressStr, iEntry);
-                        prog.update(iEntryInList, 'Retrieving cache timestamps for entry %d', iEntryInList);
+                        if ~isempty(prog)
+                            prog.update(iEntryInList, 'Retrieving cache timestamps for entry %d', iEntryInList);
+                        end
                         
                         [validCache timestamp] = dt.retrieveCachedTimestampForEntry(iEntry);
                         for iField = 1:length(fieldsCacheable)

@@ -241,8 +241,11 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             
             da.resultTable = resultTable.setDatabase(da.database).updateInDatabase();
             entryName = da.getMapsEntryName();
-            
-            da.database.addRelationshipOneToOne(da.resultTable.entryName, entryName); 
+           
+            % empty entry name means runs once on entire database
+            if ~isempty(entryName)
+                da.database.addRelationshipOneToOne(da.resultTable.entryName, entryName); 
+            end
             
             da.database.markSourceLoaded(da);
         end
@@ -312,14 +315,18 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             
             % get the appropriate table to map
             entryName = da.getMapsEntryName();
-            table = db.getTable(entryName);
-            % enforce singular for 1:1 relationship to work
-            entryName = table.entryName;
-            
-            % prefilter the table further if requested (database views also do this)
-            debug('Filtering mapped table %s via preFilterTable\n', entryName);
-            table = da.preFilterTable(table).updateInDatabase();
-            table.updateInDatabase();
+            if isempty(entryName)
+                table = StructTable(struct(), 'entryName', 'database');  
+            else
+                table = db.getTable(entryName);
+                % enforce singular for 1:1 relationship to work
+                entryName = table.entryName;
+                
+                % prefilter the table further if requested (database views also do this)
+                debug('Filtering mapped table %s via preFilterTable\n', entryName);
+                table = da.preFilterTable(table).updateInDatabase();
+                table.updateInDatabase();
+            end
             
             % load required source/views, re-map the result table, etc.
             if ~keepCurrentValues
@@ -441,7 +448,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                     'entryMask', resultTable.success);
                 resultTable.updateInDatabase();
 
-                timestampsByEntry = cell2mat(resultTable.cacheTimestampsByEntry);
+                timestampsByEntry = cell2mat(resultTable.getValues('cacheTimestampsByEntry'));
                 
                 if checkCacheTimestamps && ~isempty(tableListCacheWarning) || ~isempty(tableListCacheInvalidate)
                     % now we search for field values in fieldsAnalysis in the cache
@@ -612,6 +619,13 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                                 resultStruct = da.runOnEntry(entry, fieldsAnalysis); 
                                 exc = [];
                                 success = true;
+                                
+                                if isempty(resultStruct)
+                                    resultStruct = struct();
+                                end
+                                if ~isstruct(resultStruct)
+                                    error('runOnEntry did not return a struct');
+                                end
                             catch exc 
                                 tcprintf('red', 'EXCEPTION: %s\n', exc.getReport);
                                 success = false;
@@ -621,8 +635,16 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                             resultStruct = da.runOnEntry(entry, fieldsAnalysis); 
                             exc = [];
                             success = true;
+                           
+                            if isempty(resultStruct)
+                                resultStruct = struct();
+                            end
+                            if ~isstruct(resultStruct)
+                                error('runOnEntry did not return a struct');
+                            end
                         end
 
+                        
                         % warn if not all fields requested were returned
                         % use the requested list fieldsAnalysis, a subset of dt.fieldsAnalysis
                         if success
@@ -634,7 +656,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                             % warn if the analysis returned extraneous fields as a reminder to add them
                             % to .getFieldsAnalysis. Fields in dt.fieldsAnalysis but not fieldsAnalysis are okay
                             extraFields = setdiff(fieldnames(resultStruct), da.fieldsAnalysis);
-                            if ~isempty(missingFields)
+                            if ~isempty(extraFields)
                                 debug('WARNING: analysis on this entry returned extra fields not listed in .getFieldsAnalysis(): %s\n', ...
                                     strjoin(extraFields, ', '));
                             end
