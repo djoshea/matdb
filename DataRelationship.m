@@ -642,10 +642,16 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             p.addRequired('tableRight', @(x) isa(x, 'DataTable'));
             p.addParamValue('tableJunction', [], @(x) isempty(x) || isa(x, 'DataTable')); 
             p.addParamValue('combine', true, @islogical);
+            p.addParamValue('keepFirst', false, @isscalar); % keep first N matches
+            p.addParamValue('warnIfMissing', false, @islogical);
+            p.addParamValue('uniquify', true, @islogical);
             p.parse(tableLeft, tableRight, varargin{:});
 
             tableJunction = p.Results.tableJunction;
             combine = p.Results.combine;
+            keepFirst = double(p.Results.keepFirst);
+            warnIfMissing = p.Results.warnIfMissing;
+            uniquify = p.Results.uniquify;
             
             % check entry names match
             assert(strcmp(tableLeft.entryName, rel.entryNameLeft));
@@ -671,6 +677,7 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             else
                 matchTableCell = cell(nEntriesLeft, 1);
             end
+            
 
             if rel.isJunction
                 %debug('Performing junction table lookup\n');
@@ -681,7 +688,13 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                 matchFilterArgsJunction = DataRelationship.fillCellOddEntries(keyFieldsLeftInRight);
                 matchFilterArgsRight = DataRelationship.fillCellOddEntries(keyFieldsRight);
 
+                if nEntriesLeft > 0
+                    prog = ProgressBar(nEntriesLeft, 'Matching %s to %s...', tableLeft.entryName, tableJunction.entryName);
+                end
                 for iEntryLeft = 1:nEntriesLeft
+                    if nEntriesLeft > 0
+                        prog.update(iEntryLeft);
+                    end
                     % find matches for this left entry in junction table
                     for iField = 1:nKeyFieldsLeft
                         matchFilterArgsJunction{2*iField} = ...
@@ -690,8 +703,17 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                     junctionMatchIdx{iEntryLeft} = ...
                         tableJunction.matchIdx(matchFilterArgsJunction{:});
                 end
+                if nEntriesLeft > 0
+                    prog.finish();
+                end
 
+                if nEntriesLeft > 0
+                    prog = ProgressBar(nEntriesLeft, 'Matching %s to %s...', tableJunction.entryName, tableRight.entryName);
+                end
                 for iEntryLeft = 1:nEntriesLeft
+                    if nEntriesLeft > 0
+                        prog.update(iEntryLeft);
+                    end
                     % for each junction match, find the corresponding row idx in tableRight
                     rightMatchIdx = [];
                     junctionMatchIdxThisLeft = junctionMatchIdx{iEntryLeft};
@@ -704,12 +726,23 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                         rightMatchIdx = [rightMatchIdx; tableRight.matchIdx(matchFilterArgsRight{:})];
                     end
 
+                    if keepFirst > 0 && length(rightMatchIdx) > keepFirst % truncate to first N
+                        rightMatchIdx = rightMatchIdx(1:keepFirst);
+                    end
+                    
+                    if isempty(rightMatchIdx) && warnIfMissing
+                        debug('WARNING: No match found for %s entry %d\n', tableLeft.entryName, iEntryLeft);
+                    end
+                    
                     if combine
                         matchIdx = [matchIdx; rightMatchIdx];
                     else
                         % now filter tableRight by these idx
                         matchTableCell{iEntryLeft} = tableRight.select(rightMatchIdx);
                     end
+                end
+                if nEntriesLeft > 0
+                    prog.finish();
                 end
                 
             elseif ~isempty(keyFieldsLeftInRight)
@@ -719,12 +752,22 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                 %debug('Performing reverse key lookup\n');
                 matchFilterArgs = DataRelationship.fillCellOddEntries(keyFieldsLeftInRight);
 
+                if nEntriesLeft > 0
+                    prog = ProgressBar(nEntriesLeft, 'Matching %s to %s...', tableLeft.entryName, tableRight.entryName);
+                end
                 for iEntryLeft = 1:nEntriesLeft
+                    if nEntriesLeft > 0
+                        prog.update(iEntryLeft);
+                    end
                     for iField = 1:nKeyFieldsLeft
                         matchFilterArgs{2*iField} = entriesLeft(iEntryLeft).(keyFieldsLeft{iField});
                     end
                     
                     newMatchIdx = tableRight.matchIdx(matchFilterArgs{:});
+                    
+                    if keepFirst > 0 && length(newMatchIdx) > keepFirst
+                        newMatchIdx = newMatchIdx(1:keepFirst);
+                    end
                     
                     % truncate matches at 1 if ~isManyRight
                     if ~rel.isManyRight && length(newMatchIdx) > 1
@@ -734,19 +777,33 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                         end
                         newMatchIdx = newMatchIdx(1);
                     end
+                    
+                    if isempty(newMatchIdx) && warnIfMissing
+                        debug('WARNING: No match found for %s entry %d\n', tableLeft.entryName, iEntryLeft);
+                    end
+                    
                     if combine 
                         matchIdx = [matchIdx; newMatchIdx];
                     else
                         matchTableCell{iEntryLeft} = tableRight.select(newMatchIdx);
                     end
                 end
+                if nEntriesLeft > 0
+                    prog.finish();
+                end
 
             else
                 % key fields for right table lie within left, so we loop through left table
                 % and lookup each right entry by key fields
                 %debug('Performing forward key lookup\n');
+                if nEntriesLeft > 0
+                    prog = ProgressBar(nEntriesLeft, 'Matching %s to %s...', tableLeft.entryName, tableRight.entryName);
+                end
                 matchFilterArgs = DataRelationship.fillCellOddEntries(keyFieldsRight);
                 for iEntryLeft = 1:nEntriesLeft
+                    if nEntriesLeft > 0
+                        prog.update(iEntryLeft);
+                    end
                     missingValue = false; % does this left entry point to a right entry? true implies zero matches
                     for iField = 1:nKeyFieldsRight
                         value = entriesLeft(iEntryLeft).(keyFieldsRightInLeft{iField});
@@ -758,6 +815,15 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                     end
                     
                     newMatchIdx = tableRight.matchIdx(matchFilterArgs{:});
+                    
+                    if keepFirst > 0 && length(newMatchIdx) > keepFirst
+                        newMatchIdx = newMatchIdx(1:keepFirst);
+                    end
+                    
+                    if isempty(newMatchIdx) && warnIfMissing
+                        debug('WARNING: No match found for %s entry %d\n', tableLeft.entryName, iEntryLeft);
+                    end
+                    
                     if ~rel.isManyRight && length(newMatchIdx) > 1
                         if ~hasPrintedWarning
                             hasPrintedWarning = true;
@@ -777,10 +843,15 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                         end
                     end
                 end
+                if nEntriesLeft > 0
+                    prog.finish();  
+                end
             end
 
             if combine
-                matchIdx = unique(matchIdx);
+                if uniquify
+                    matchIdx = unique(matchIdx);
+                end
                 result = tableRight.select(matchIdx);
             else
                 result = matchTableCell;

@@ -369,7 +369,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                 
                 debug('Loading cached success field for all entries\n');
                 % load success so that we can check failed entries later
-                resultTable = resultTable.loadFields('fields', 'success', 'loadCacheOnly', true);
+                resultTable = resultTable.loadFields('fields', {'success'}, 'loadCacheOnly', true);
                 resultTable = resultTable.updateInDatabase();
                 loadCache = false;
                 loadCacheOnly = true;
@@ -440,7 +440,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                 % check the cache timestamps to determine
                 % which entry x field cells are missing or out of date 
                 debug('Checking cached field existence and success field\n');
-                resultTable = resultTable.loadFields('fields', 'success', 'loadCacheOnly', true);
+                resultTable = resultTable.loadFields('fields', {'success'}, 'loadCacheOnly', true);
                 fieldsToLoad = setdiff(resultTable.fieldsCacheable, 'success');
                 % load the cache timestamps (and thereby determine whether
                 % they exist) for all fields for successful entries
@@ -960,23 +960,27 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                     for iFigure = 1:length(info)
                         figInfo = info(iFigure);
                         for iExt = 1:length(figInfo.extensions)
-                            mostRecentLink = resolveSymLink(figInfo.fileLinkList{iExt});
-                            thisRunLocation = resolveSymLink(da.getFigureName(descriptors{iEntry}, figInfo.name, figInfo.extensions{iExt}));
+                            try
+                                mostRecentLink = resolveSymLink(figInfo.fileLinkList{iExt});
+                                thisRunLocation = resolveSymLink(da.getFigureName(descriptors{iEntry}, figInfo.name, figInfo.extensions{iExt}));
 
-                            if ~strcmp(mostRecentLink, thisRunLocation)
-                                % point the symlink at the original file, not at the most recent link
-                                % to avoid cascading symlinks
-                                actualFile = resolveSymLink(figInfo.fileList{iExt});
-                                success = makeSymLink(actualFile, thisRunLocation);
-                                if success
-                                    % change the figure info link location, not the actual file path
-                                    info(iFigure).fileLinkList{iExt} = thisRunLocation;
-                                    madeChanges = true;
+                                if ~strcmp(mostRecentLink, thisRunLocation)
+                                    % point the symlink at the original file, not at the most recent link
+                                    % to avoid cascading symlinks
+                                    actualFile = resolveSymLink(figInfo.fileList{iExt});
+                                    success = makeSymLink(actualFile, thisRunLocation);
+                                    if success
+                                        % change the figure info link location, not the actual file path
+                                        info(iFigure).fileLinkList{iExt} = thisRunLocation;
+                                        madeChanges = true;
 
-                                    % expose permissions on the symlink and the
-                                    % original file, just in case
-                                    chmod(MatdbSettingsStore.settings.permissionsAnalysisFiles, {actualFile, thisRunLocation});
+                                        % expose permissions on the symlink and the
+                                        % original file, just in case
+                                        chmod(MatdbSettingsStore.settings.permissionsAnalysisFiles, {actualFile, thisRunLocation});
+                                    end
                                 end
+                            catch exc
+                                debug('ERROR: linking old figure %s\n', figInfo.fileLinkList{iExt}); 
                             end
                         end
                     end

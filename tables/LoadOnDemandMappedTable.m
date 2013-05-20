@@ -447,7 +447,7 @@ classdef LoadOnDemandMappedTable < StructTable
             p = inputParser;
 
             % specify a subset of fieldsLoadOnDemand to load
-            p.addParamValue('fields', dt.fieldsLoadOnDemand, @(x) ischar(x) || iscellstr(x));
+            p.addOptional('fields', dt.fieldsLoadOnDemand, @iscellstr);
 
             % if true, force reload of ALL fields
             p.addParamValue('reload', false, @islogical);
@@ -656,7 +656,7 @@ classdef LoadOnDemandMappedTable < StructTable
 
                 % manually request the values of any remaining fields
                 if ~loadCacheOnly
-                    fieldsRequestable = dt.fieldsRequestable;
+                    fieldsRequestable = intersect(dt.fieldsRequestable, fields);
                     if ~isempty(fieldsRequestable)
                         loadedMask = cellfun(@(field) loaded.(field), fieldsRequestable);
 
@@ -671,6 +671,12 @@ classdef LoadOnDemandMappedTable < StructTable
                             thisEntry = dt.select(iEntry).apply();
                             mapEntryName = dt.getMapsEntryName();
                             mapEntry = thisEntry.getRelated(mapEntryName);
+                            
+                            if mapEntry.nEntries < 1
+                                error('Could not find related entry mapped to this entry');
+                            elseif mapEntry.nEntries > 1
+                                error('Multiple related entries map to this entry; check key fields');
+                            end
                             S = dt.loadValuesForEntry(mapEntry, fieldsToRequest);
 
                             retFields = fieldnames(S);

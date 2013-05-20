@@ -432,9 +432,18 @@ classdef DataTable < DynamicClass & Cacheable
         function db = select(db, idx)
             % select(idx) : filter only the entries in mask or list idx
             db.warnIfNoArgOut(nargout);
-            filt = IndexSelectDataFilter(idx); 
+            %filt = IndexSelectDataFilter(idx); 
             db = db.removeSort();
-            db = db.filterEntries(filt);
+            assert(isvector(idx), 'Selection must be a vector');
+            if islogical(idx)
+                assert(numel(idx) == db.nEntries, 'Logical mask must match table size');
+            else
+                assert(all(idx >= 1) && all(idx <= db.nEntries), 'Index out of range');
+            end
+            db = db.selectSortEntries(idx);
+            db.pendingApplyEntryMask = true;
+            db = db.autoApplyEntryMask();
+            %db = db.filterEntries(filt);
         end
 
         function db = exclude(db, idx)
