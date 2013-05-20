@@ -60,6 +60,9 @@ classdef CountStudentsByTeacher < DatabaseAnalysis
 
             figure(1); clf;
             plot(rand(20,10));
+            xlabel('X axis');
+            ylabel('Y axis');
+            title('Figure 1');
             box off
             da.saveFigure(gcf, 'Figure 1', 'Figure 1 Caption');
 
@@ -68,6 +71,9 @@ classdef CountStudentsByTeacher < DatabaseAnalysis
             figure(2); clf;
             plot(rand(20,10), 'kx', 'MarkerSize', 20);
             box off
+            xlabel('X axis');
+            ylabel('Y axis');
+            title('Figure 2');
             da.saveFigure(gcf, 'Figure 2', 'Figure 2 Caption');
             fprintf('Output post fig2\n');
         end
