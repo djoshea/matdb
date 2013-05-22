@@ -1,6 +1,9 @@
 classdef DatabaseAnalysisResultsTable < LoadOnDemandMappedTable
 
     properties
+        analysisParam
+        analysisParamDesc
+        
         databaseAnalysisClass 
         analysisName 
         mapsEntryName
@@ -32,6 +35,10 @@ classdef DatabaseAnalysisResultsTable < LoadOnDemandMappedTable
             p.parse(da, varargin{:});
             
             assert(~isempty(da.database), 'Associate the DatabaseAnalysis with a Database first using .setDatabase(db)');
+            
+            % store parameter info and description info
+            dt.analysisParam = da.getCacheParam();
+            dt.analysisParamDesc = da.getDescriptionParam();
             
             [dt.fieldsAnalysis dt.fieldsAnalysisDescriptorMap] = da.getFieldsAnalysis();
             [dt.fieldsAdditional dt.fieldsAdditionalDescriptorMap] = da.getFieldsAdditional();

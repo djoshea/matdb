@@ -105,7 +105,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
         end
         
         function tf = getCacheFieldsIndividually(da)
-            tf = true;
+            tf = false;
         end
 
         function tf = getRerunCachedUnsuccessful(da)
