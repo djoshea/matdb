@@ -222,12 +222,18 @@ classdef Database < DynamicClass & handle
             % determine whether a relationship from table with entryName referring
             % to the other table as referenceName is found within db.relationships
             % Return the relationship if found or [] if not found
+            % If the relationship is found with the reverse order, automatically swapCopies the relationship
+            % to point in the other direction
 
             for iRel = 1:db.nRelationships
                 rel = db.relationships{iRel};
                 [tf leftToRight] = rel.matchesEntryNameAndReference(entryName, referenceName);
                 if tf
-                    matchRel = rel;
+                    if leftToRight
+                        matchRel = rel;
+                    else
+                        matchRel = rel.swapCopy();
+                    end
                     return;
                 end
             end
