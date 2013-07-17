@@ -912,10 +912,14 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
     end
 
     methods(Static) % Utilities
-        function name = combinedTableFieldName(table, field)
+        function name = combinedTableFieldName(tableOrEntryName, field)
             % returns a camel-case-concatenation of the table entry name on to the field names
             % i.e. teacher.id --> teacherId 
-            entryName = table.entryName;
+            if ischar(tableOrEntryName)
+                entryName = tableOrEntryName;
+            else
+                entryName = tableOrEntryName.entryName;
+            end
             name = strcat(entryName, upper(field(1)), field(2:end));
         end
 
@@ -974,10 +978,18 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             p = inputParser;
             p.addRequired('table1', @(x) isa(x, 'DataTable'));
             p.addRequired('table2', @(x) isa(x, 'DataTable'));
+
+            % by default, the entry names of the two tables will be used both as 
+            % field name prefixes and as the fieldname in the relationship
+            p.addParamValue('keyName1', '', @ischar);
+            p.addParamValue('keyName2', '', @ischar);
+
             p.addParamValue('entryName', [], @ischar);
             p.addParamValue('entryNamePlural', [], @ischar);
             p.parse(tbl1, tbl2, varargin{:});
             
+            keyName1 = p.Results.keyName1;
+            keyName2 = p.Results.keyName2;
             entryName1 = tbl1.entryName;
             entryNamePlural1 = tbl1.entryNamePlural;
             keyFields1 = tbl1.keyFields;
@@ -988,9 +1000,22 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             % default entryName junction12
             entryName = p.Results.entryName;
             entryNamePlural = p.Results.entryNamePlural;
+
+            if isempty(keyName1)
+                keyName1 = entryName1;
+            end
+            if isempty(keyName2)
+                keyName2 = entryName2;
+            end
+            if strcmp(keyName1, keyName2)
+                debug('Tables constituting junction have same entryName, adding suffixes 1 and 2 to keyName to prevent conflict. Please manually specify keyName1 and keyName2 to overrride this\n');
+                keyName1 = [keyName1 '1'];
+                keyName2 = [keyName2 '2'];
+            end
+
             if isempty(entryName)
                 entryName = sprintf('junction%s%s', ...
-                    upperFirst(entryName1), upperFirst(entryName2));
+                    upperFirst(keyName1), upperFirst(keyName2));
             end
             if isempty(entryNamePlural)
                 entryNamePlural = entryName;
@@ -1000,20 +1025,23 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                 'entryNamePlural', entryNamePlural);
             
             % add keyFields from tbl1,2 using concatenated entryNameField names
+            jField1 = cell(length(keyFields1), 1);
             for i = 1:length(keyFields1)
                 field = keyFields1{i};
-                jField = DataRelationship.combinedTableFieldName(tbl1, field);
-                jTbl = tbl1.copyFieldToDataTable(field, jTbl, 'as', jField, 'keyField', true);
+                jField1{i} = DataRelationship.combinedTableFieldName(keyName1, field);
+                jTbl = tbl1.copyFieldToDataTable(field, jTbl, 'as', jField1{i}, 'keyField', true);
             end
+            jField2 = cell(length(keyFields2), 1);
             for i = 1:length(keyFields2)
                 field = keyFields2{i};
-                jField = DataRelationship.combinedTableFieldName(tbl2, field);
-                jTbl = tbl2.copyFieldToDataTable(field, jTbl, 'as', jField, 'keyField', true);
+                jField2{i} = DataRelationship.combinedTableFieldName(keyName2, field);
+                jTbl = tbl2.copyFieldToDataTable(field, jTbl, 'as', jField2{i}, 'keyField', true);
             end
             
             % build many to many relationship for convenience
             rel = DataRelationship('tableLeft', tbl1, 'tableRight', tbl2, ...
-                'tableJunction', jTbl, 'isManyLeft', true, 'isManyRight', true); 
+                'tableJunction', jTbl, 'isManyLeft', true, 'isManyRight', true, ...
+                'keyFieldsLeftInRight', jField1, 'keyFieldsRightInLeft', jField2); 
         end
     end  
 

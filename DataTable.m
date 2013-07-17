@@ -1408,7 +1408,7 @@ classdef DataTable < DynamicClass & Cacheable
 
             % check whether this field already exists
             if db.isField(field)
-                warning('Field %s already exists in database. Overwriting', field); 
+                warning('Field %s already exists in DataTable. Overwriting', field); 
                 % have the subclass remove this field in preparation for adding it back in
                 db = db.removeField(field);
                 overwritingExistingField = true;
@@ -1490,7 +1490,7 @@ classdef DataTable < DynamicClass & Cacheable
                 % remove from keyFields list
                 if db.isKeyField(field)
                     keyFields = setdiff(db.keyFields, field);
-                    db.setKeyFields(keyFields);
+                    db = db.setKeyFields(keyFields);
                 end
 
                 % have subclass actually add this fields data
