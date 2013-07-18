@@ -1,7 +1,7 @@
 classdef Database < DynamicClass & handle
 
     properties(Hidden)
-        tableMap % containers.Map : entryName --> Table
+        tableMap % ValueMap mapping :entryName --> Table
         relationships % cell array of DataRelationship instances 
         singularToPluralMap % conversion table from entryName to entryNamePlural
         pluralToSingularMap % vice versa
