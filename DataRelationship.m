@@ -22,6 +22,7 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
 
         isJunction = false;
         isHalfOfJunction = false;
+        isBidirectional = false; % are the reference names and entry names equivalent on both sides? should we check both directions when determining matches?
     end
 
     properties 
@@ -43,6 +44,7 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
         isManyLeft
         isManyRight
         isOneToOne
+        
     end
 
     methods % Dependent property implementations
@@ -166,6 +168,7 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             p.addParamValue('isManyLeft', false, @(t) islogical(t) && isscalar(t));
             p.addParamValue('isManyRight', false, @(t) islogical(t) && isscalar(t));
             p.addParamValue('isHalfOfJunction', false, @islogical);
+            p.addParamValue('isBidirectional', false, @islogical);
             p.parse(varargin{:});
 
             tableLeft = p.Results.tableLeft;
@@ -177,6 +180,10 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                 rel.setTableRight(tableRight);
             end
 
+            if p.Results.isBidirectional
+                rel.isBidirectional = true;
+            end
+            
             tableJunction = p.Results.tableJunction;
             if ~isempty(tableJunction)
                 rel.entryNameJunction = tableJunction.entryName;
@@ -391,18 +398,32 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             else
                 nameLeft = rel.entryNameLeft;
             end
+            
+            % include reference name
+            if ~strcmp(nameLeft, rel.referenceRightForLeft)
+                nameLeft = [nameLeft ' (as ' rel.referenceRightForLeft ')'];
+            end
+            
             if rel.isManyRight
                 nameRight = rel.entryNamePluralRight;
             else
                 nameRight = rel.entryNameRight;
             end
+            % include reference name
+            if ~strcmp(nameRight, rel.referenceLeftForRight)
+                nameRight = [nameRight ' (as ' rel.referenceLeftForRight ')'];
+            end
 
             if rel.isHalfOfJunction
-                prefix = '    (';
-                postfix = ')';
+                prefix = '    ';
+                postfix = '';
             else
                 prefix = '';
                 postfix = '';
+            end
+            
+            if rel.isBidirectional
+                postfix = [postfix ' [bidir]'];
             end
 
             str = sprintf('%s%s %s %s %s %s%s', prefix, numLeft, nameLeft, connector, ...
@@ -688,11 +709,11 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                 matchFilterArgsJunction = DataRelationship.fillCellOddEntries(keyFieldsLeftInRight);
                 matchFilterArgsRight = DataRelationship.fillCellOddEntries(keyFieldsRight);
 
-                if nEntriesLeft > 0
+                if nEntriesLeft > 1
                     prog = ProgressBar(nEntriesLeft, 'Matching %s to %s...', tableLeft.entryName, tableJunction.entryName);
                 end
                 for iEntryLeft = 1:nEntriesLeft
-                    if nEntriesLeft > 0
+                    if nEntriesLeft > 1
                         prog.update(iEntryLeft);
                     end
                     % find matches for this left entry in junction table
@@ -703,15 +724,15 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                     junctionMatchIdx{iEntryLeft} = ...
                         tableJunction.matchIdx(matchFilterArgsJunction{:});
                 end
-                if nEntriesLeft > 0
+                if nEntriesLeft > 1
                     prog.finish();
                 end
 
-                if nEntriesLeft > 0
+                if nEntriesLeft > 1
                     prog = ProgressBar(nEntriesLeft, 'Matching %s to %s...', tableJunction.entryName, tableRight.entryName);
                 end
                 for iEntryLeft = 1:nEntriesLeft
-                    if nEntriesLeft > 0
+                    if nEntriesLeft > 1
                         prog.update(iEntryLeft);
                     end
                     % for each junction match, find the corresponding row idx in tableRight
@@ -741,7 +762,7 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                         matchTableCell{iEntryLeft} = tableRight.select(rightMatchIdx);
                     end
                 end
-                if nEntriesLeft > 0
+                if nEntriesLeft > 1
                     prog.finish();
                 end
                 
@@ -752,11 +773,11 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                 %debug('Performing reverse key lookup\n');
                 matchFilterArgs = DataRelationship.fillCellOddEntries(keyFieldsLeftInRight);
 
-                if nEntriesLeft > 0
+                if nEntriesLeft > 1
                     prog = ProgressBar(nEntriesLeft, 'Matching %s to %s...', tableLeft.entryName, tableRight.entryName);
                 end
                 for iEntryLeft = 1:nEntriesLeft
-                    if nEntriesLeft > 0
+                    if nEntriesLeft > 1
                         prog.update(iEntryLeft);
                     end
                     for iField = 1:nKeyFieldsLeft
@@ -788,7 +809,7 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                         matchTableCell{iEntryLeft} = tableRight.select(newMatchIdx);
                     end
                 end
-                if nEntriesLeft > 0
+                if nEntriesLeft > 1
                     prog.finish();
                 end
 
@@ -796,12 +817,12 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                 % key fields for right table lie within left, so we loop through left table
                 % and lookup each right entry by key fields
                 %debug('Performing forward key lookup\n');
-                if nEntriesLeft > 0
+                if nEntriesLeft > 1
                     prog = ProgressBar(nEntriesLeft, 'Matching %s to %s...', tableLeft.entryName, tableRight.entryName);
                 end
                 matchFilterArgs = DataRelationship.fillCellOddEntries(keyFieldsRight);
                 for iEntryLeft = 1:nEntriesLeft
-                    if nEntriesLeft > 0
+                    if nEntriesLeft > 1
                         prog.update(iEntryLeft);
                     end
                     missingValue = false; % does this left entry point to a right entry? true implies zero matches
@@ -843,7 +864,7 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                         end
                     end
                 end
-                if nEntriesLeft > 0
+                if nEntriesLeft > 1
                     prog.finish();  
                 end
             end
@@ -856,17 +877,45 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             else
                 result = matchTableCell;
             end
-
         end
 
         function matchTableCell = matchRightInLeft(rel, tableLeft, tableRight, varargin)
             relSwap = rel.swapCopy;
             matchTableCell = relSwap.matchLeftInRight(tableRight, tableLeft, varargin{:});
         end
+        
+        function matchTableCell = matchBidirectionally(rel, tableLeft, tableRight, varargin)
+            % if bidirectional, automatically combine both directions
+            assert(rel.isBidirectional, 'Relationship is not bidirectional');
+            resultLR = rel.matchLeftInRight(tableLeft, tableRight, varargin{:});
+            resultRL = rel.swapCopy.matchLeftInRight(tableLeft, tableRight, varargin{:});
+            
+            if iscell(resultLR)
+                matchTableCell = cellfun(@(t1, t2) t1.addEntriesFrom(t2, 'overwriteKeyFieldsMatch', true), resultLR, resultRL, 'UniformOutput', false);
+            else
+                matchTableCell = resultLR.addEntriesFrom(resultRL, 'overwriteKeyFieldsMatch', true);
+            end
+        end
     end
 
     methods % Tools for creating junction table entries
-        function entryJunction = createJunctionTableEntry(rel, entryLeft, entryRight)
+        function entryJunction = createJunctionTableEntry(rel, entryLeft, entryRight, varargin)
+            % Assuming rel is a junction table relationship (many 2 many via junction)
+            % creates a set of rows for the junction table which would join entries from
+            % entryLeft to entries from entryRight. If either entryLeft or entryRight has length 1,
+            % joins all in the other array to that 1 entry in entryRight. If both are the same size,
+            % joins entryLeft(i) to entryRight(i) for each i. 
+            %
+            % If param 'allToAll' is set to true, 
+            % joins each entryLeft to each entryRight regardless.
+           
+            p = inputParser();
+            p.addRequired('entryLeft', @(t) isstruct(t) || isa(t, 'DataTable'));
+            p.addRequired('entryRight', @(t) isstruct(t) || isa(t, 'DataTable'));
+            p.addParamValue('allToAll', false, @islogical);
+            p.parse(entryLeft, entryRight, varargin{:});
+            allToAll = p.Results.allToAll;
+             
             assert(rel.isJunction, 'Relationship must be via junction table');
             
             if ~isstruct(entryLeft)
@@ -876,46 +925,70 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                 entryRight = entryRight.getFullEntriesAsStruct();
             end
 
-            assert(length(entryLeft) == 1 || length(entryRight) == 1, ...
-                'Either entryLeft or entryRight must be a single entry');
+            if length(entryLeft) == 1 || length(entryRight) == 1
+                % assume this is what they wanted, for backwards compatibility
+                allToAll = true;
+            end
 
             keyFieldsLeft = rel.keyFieldsLeft;
             keyFieldsLeftInRight = rel.keyFieldsLeftInRight;
             keyFieldsRight = rel.keyFieldsRight;
             keyFieldsRightInLeft = rel.keyFieldsRightInLeft;
 
-            % build up the junction entries for each left with each right
-            % due to the assert above one of the two outer loops will have one
-            % iteration only
-            iJunction = 1;
-            entryJunction = emptyStructArray([0 1], [keyFieldsLeftInRight; keyFieldsRightInLeft]);
-            for iLeft = 1:length(entryLeft)
-                for iRight = 1:length(entryRight)
-                
-                    for iField = 1:length(keyFieldsLeft)
-                        fieldLeft = keyFieldsLeft{iField};
-                        fieldJunction = keyFieldsLeftInRight{iField};
-                        entryJunction(iJunction).(fieldJunction) = entryLeft(iLeft).(fieldLeft);
+            if allToAll
+                % build up the junction entries for each left with every right
+                iJunction = 1;
+                nEntries = numel(entryLeft) * numel(entryRight);
+
+                entryJunction = emptyStructArray([nEntries 1], [keyFieldsLeftInRight; keyFieldsRightInLeft]);
+
+                for iLeft = 1:length(entryLeft)
+                    for iRight = 1:length(entryRight)
+                        entryJunction(iJunction) = createEntry(iLeft, iRight);
+                        iJunction = iJunction + 1;
                     end
-                    for iField = 1:length(keyFieldsRight)
-                        fieldRight = keyFieldsRight{iField};
-                        fieldJunction = keyFieldsRightInLeft{iField};
-                        entryJunction(iJunction).(fieldJunction) = entryRight(iRight).(fieldRight);
-                    end
-                    
-                    iJunction = iJunction + 1;
+                end
+            else
+                assert(numel(entryRight) == numel(entryLeft), ...
+                    'entryLeft and entryRight must be the same size if allToAll=false');
+
+                % build up the junction entries for each left with the corresponding right
+                nEntries = max([numel(entryLeft) numel(entryRight)]);
+
+                entryJunction = emptyStructArray([nEntries 1], [keyFieldsLeftInRight; keyFieldsRightInLeft]);
+
+                for iJunction = 1:numel(entryLeft)
+                    entryJunction(iJunction) = createEntry(iJunction, iJunction);
                 end
             end
-            
+
             entryJunction = makecol(entryJunction);
+
+            % utility function for creating a single row
+            function entry = createEntry(iLeft, iRight)
+                for iField = 1:length(keyFieldsLeft)
+                    fieldLeft = keyFieldsLeft{iField};
+                    fieldJunction = keyFieldsLeftInRight{iField};
+                    entry.(fieldJunction) = entryLeft(iLeft).(fieldLeft);
+                end
+                for iField = 1:length(keyFieldsRight)
+                    fieldRight = keyFieldsRight{iField};
+                    fieldJunction = keyFieldsRightInLeft{iField};
+                    entry.(fieldJunction) = entryRight(iRight).(fieldRight);
+                end
+            end
         end
     end
 
     methods(Static) % Utilities
-        function name = combinedTableFieldName(table, field)
+        function name = combinedTableFieldName(tableOrEntryName, field)
             % returns a camel-case-concatenation of the table entry name on to the field names
             % i.e. teacher.id --> teacherId 
-            entryName = table.entryName;
+            if ischar(tableOrEntryName)
+                entryName = tableOrEntryName;
+            else
+                entryName = tableOrEntryName.entryName;
+            end
             name = strcat(entryName, upper(field(1)), field(2:end));
         end
 
@@ -970,14 +1043,32 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             oddList(1:2:end) = list;
         end
 
-        function [jTbl rel] = buildEmptyJunctionTable(tbl1, tbl2, varargin)
+        function [jTbl, relManyToMany, relLeftToJunction, relJunctionToRight] = buildEmptyJunctionTable(tbl1, tbl2, varargin)
+            % builds a junction table and related DataRelationships to join
+            % tbl1 to tbl2 via a junction table
             p = inputParser;
             p.addRequired('table1', @(x) isa(x, 'DataTable'));
             p.addRequired('table2', @(x) isa(x, 'DataTable'));
+            
+            % is this relationship undirected? if so, both directions will
+            % be checked when matching
+            p.addParamValue('isBidirectional', false, @islogical);
+
+            % by default, the entry names of the two tables will be used both as 
+            % field name prefixes and as the fieldname in the relationship
+            p.addParamValue('referenceJunctionForLeft', '', @ischar);
+            p.addParamValue('referenceJunctionForRight', '', @ischar);
+            
+            p.addParamValue('referenceLeftForRight', tbl2.entryName, @ischar);
+            p.addParamValue('referenceRightForLeft', tbl1.entryName, @ischar);
+
             p.addParamValue('entryName', [], @ischar);
             p.addParamValue('entryNamePlural', [], @ischar);
+            
             p.parse(tbl1, tbl2, varargin{:});
             
+            keyName1 = p.Results.referenceJunctionForLeft;
+            keyName2 = p.Results.referenceJunctionForRight;
             entryName1 = tbl1.entryName;
             entryNamePlural1 = tbl1.entryNamePlural;
             keyFields1 = tbl1.keyFields;
@@ -988,32 +1079,120 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             % default entryName junction12
             entryName = p.Results.entryName;
             entryNamePlural = p.Results.entryNamePlural;
+
+            % keyNames (i.e. reference from junction out to individual tables)
+            % defaults to reference names across junction
+            if isempty(keyName1)
+                keyName1 = p.Results.referenceRightForLeft;
+            end
+            if isempty(keyName2)
+                keyName2 = p.Results.referenceLeftForRight;
+            end
+            
+            % although if they are the same, add 1, 2 to the end to
+            % disambiguate
+            if strcmp(keyName1, keyName2)
+                error('Tables constituting junction have same entryName. Please manually specify referenceJunctionForLeft and referenceJunctionForLeft to specify unique names\n');
+            end
+
             if isempty(entryName)
                 entryName = sprintf('junction%s%s', ...
-                    upperFirst(entryName1), upperFirst(entryName2));
+                    upperFirst(keyName1), upperFirst(keyName2));
             end
-            if isempty(entryNamePlural)
-                entryNamePlural = entryName;
-            end
+%             if isempty(entryNamePlural)
+%                 entryNamePlural = entryName;
+%             end
 
             jTbl = StructTable('entryName', entryName, ...
                 'entryNamePlural', entryNamePlural);
             
             % add keyFields from tbl1,2 using concatenated entryNameField names
+            jField1 = cell(length(keyFields1), 1);
             for i = 1:length(keyFields1)
                 field = keyFields1{i};
-                jField = DataRelationship.combinedTableFieldName(tbl1, field);
-                jTbl = tbl1.copyFieldToDataTable(field, jTbl, 'as', jField, 'keyField', true);
+                jField1{i} = DataRelationship.combinedTableFieldName(keyName1, field);
+                jTbl = tbl1.copyFieldToDataTable(field, jTbl, 'as', jField1{i}, 'keyField', true);
             end
+            jField2 = cell(length(keyFields2), 1);
             for i = 1:length(keyFields2)
                 field = keyFields2{i};
-                jField = DataRelationship.combinedTableFieldName(tbl2, field);
-                jTbl = tbl2.copyFieldToDataTable(field, jTbl, 'as', jField, 'keyField', true);
+                jField2{i} = DataRelationship.combinedTableFieldName(keyName2, field);
+                jTbl = tbl2.copyFieldToDataTable(field, jTbl, 'as', jField2{i}, 'keyField', true);
             end
             
             % build many to many relationship for convenience
-            rel = DataRelationship('tableLeft', tbl1, 'tableRight', tbl2, ...
-                'tableJunction', jTbl, 'isManyLeft', true, 'isManyRight', true); 
+            relManyToMany = DataRelationship('tableLeft', tbl1, 'tableRight', tbl2, ...
+                'tableJunction', jTbl, 'isManyLeft', true, 'isManyRight', true, ...
+                'keyFieldsLeftInRight', jField1, 'keyFieldsRightInLeft', jField2, ...
+                'referenceLeftForRight', p.Results.referenceLeftForRight, ...
+                'referenceRightForLeft', p.Results.referenceRightForLeft, ...
+                'isBidirectional', p.Results.isBidirectional); 
+            
+            [relLeftToJunction, relJunctionToRight] = DataRelationship.buildRelationshipsToJunction(...
+                relManyToMany, tbl1, tbl2, jTbl, ...
+                'referenceJunctionForLeft', keyName1, 'referenceJunctionForRight', keyName2);
+        end
+        
+        function [jTbl, relManyToMany, relLeftToJunction, relJunctionToRight] = buildEmptyJunctionTableForTableSelfLink(tbl, varargin)
+            % builds a junction table and related relationships to join
+            % entries in tbl to other entries in tbl (via that junction
+            % table)
+            p = inputParser();
+            p.addParamValue('entryName', ['junction' upperFirst(tbl.entryName) upperFirst(tbl.entryName)], @(x) isempty(x) || ischar(x));
+            p.addParamValue('referenceJunctionForLeft', [tbl.entryName '1'], @ischar);
+            p.addParamValue('referenceJunctionForRight', [tbl.entryName '2'], @ischar);
+            p.addParamValue('referenceLink', tbl.entryName, @ischar);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            referenceLink = p.Results.referenceLink;
+            
+            % cannot refer to the junction table itself and the entries at
+            % the other side of the link by the same reference name
+            assert(~strcmp(referenceLink, p.Results.entryName), ...
+                'Junction table entry name cannot match referenceLink or the reference will be ambiguous');
+            
+            [jTbl, relManyToMany, relLeftToJunction, relJunctionToRight] = ...
+                DataRelationship.buildEmptyJunctionTable(tbl, tbl, ...
+                'entryName', p.Results.entryName, ...
+                'referenceLeftForRight', referenceLink, ...
+                'referenceRightForLeft', referenceLink, ...
+                'isBidirectional', true, ...
+                'referenceJunctionForRight', p.Results.referenceJunctionForLeft, ...
+                'referenceJunctionForLeft', p.Results.referenceJunctionForRight, p.Unmatched);
+        end
+        
+        function [relLeftToJunction, relJunctionToRight] = buildRelationshipsToJunction(...
+                manyToManyRel, tableLeft, tableRight, tableJunction, varargin)
+            % a junction relationship connects entryLeft to entryRight through entryJunction
+            % this function builds the constituent relationships entryLeft to entryJunction
+            % and entryJunction to entryRight. Typically when adding a junction relationship
+            % to the database, these constituent 1:1 relationships will be automatically
+            % added as well
+            rel = manyToManyRel;
+            
+            % allow override of how junction table refers to left and right
+            % matches
+            p = inputParser;
+            p.addParamValue('referenceJunctionForLeft', rel.referenceRightForLeft, @ischar);
+            p.addParamValue('referenceJunctionForRight', rel.referenceLeftForRight, @ischar);
+            p.parse(varargin{:});
+            
+            relLeftToJunction = DataRelationship('tableLeft', tableLeft, 'tableRight', tableJunction, ...
+                'isManyLeft', false, 'isManyRight', true, ...
+                'keyFieldsLeft', rel.keyFieldsLeft, ...
+                'keyFieldsRight', rel.keyFieldsLeftInRight, ...
+                'keyFieldsLeftInRight' , rel.keyFieldsLeftInRight, ...
+                'isHalfOfJunction', true, ...
+                'referenceRightForLeft', p.Results.referenceJunctionForLeft);
+
+            relJunctionToRight = DataRelationship('tableLeft', tableJunction, 'tableRight', tableRight, ...
+                'isManyLeft', true, 'isManyRight', false, ...
+                'keyFieldsLeft', rel.keyFieldsRightInLeft, ...
+                'keyFieldsRightInLeft', rel.keyFieldsRightInLeft, ...
+                'keyFieldsRight', rel.keyFieldsRight, ...
+                'isHalfOfJunction', true, ...
+                'referenceLeftForRight', p.Results.referenceJunctionForRight);
         end
     end  
 

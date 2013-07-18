@@ -62,9 +62,9 @@ classdef DataFilter < handle & matlab.mixin.Heterogeneous
         function map = getKeywordMap(rebuild)
             persistent keywordMap;
             if isempty(keywordMap) || (nargin > 0 && rebuild)
-                debug('Building keyword to DataFilter map...\n');
+                %debug('Building keyword to DataFilter map...\n');
                 keywordMap = DataFilter.buildKeywordMap();
-                debug('Found filters for keywords: %s\n', strjoin(keywordMap.keys)); 
+                %debug('Found filters for keywords: %s\n', strjoin(keywordMap.keys)); 
             end
 
             map = keywordMap;
