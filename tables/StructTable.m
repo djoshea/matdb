@@ -18,7 +18,7 @@ classdef StructTable < DataTable
             p = inputParser;
             p.addOptional('table', struct([]), @(t) isa(t, 'DataTable') || isempty(t) || (isstruct(t) && isvector(t)));
             p.addParamValue('entryName', '', @(t) ischar(t) && ~isempty(t));
-            p.addParamValue('entryNamePlural', '', @(t) ischar(t) && ~isempty(t));
+            p.addParamValue('entryNamePlural', '', @(t) ischar(t) || isempty(t));
             p.addParamValue('fieldDescriptorMap', '', @(m) isempty(m) || isa(m, 'ValueMap'));
             p.parse(varargin{:});
 

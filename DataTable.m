@@ -434,7 +434,7 @@ classdef DataTable < DynamicClass & Cacheable
             db.warnIfNoArgOut(nargout);
             %filt = IndexSelectDataFilter(idx); 
             db = db.removeSort();
-            assert(isvector(idx), 'Selection must be a vector');
+            assert(isempty(idx) || isvector(idx), 'Selection must be a vector');
             if islogical(idx)
                 assert(numel(idx) == db.nEntries, 'Logical mask must match table size');
             else
@@ -1611,6 +1611,8 @@ classdef DataTable < DynamicClass & Cacheable
             keyFieldMatchesOnly = p.Results.keyFieldMatchesOnly;
 
             if isempty(entryTable)
+                indInOrigTable = [];
+                indInAddedTable = [];
                 return;
             elseif isa(entryTable, 'ValueMap') || isa(entryTable, 'containers.Map')
                 S = mapToStructArray(entryTable);

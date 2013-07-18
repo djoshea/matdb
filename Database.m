@@ -242,6 +242,23 @@ classdef Database < DynamicClass & handle
             matchRel = [];
             leftToRight = [];
         end
+        
+        % like the above but returns more than one relationship if there
+        % are multiple matches
+        function [relCell] = findAllRelationships(db, entryName, referenceName)
+            relCell = {};
+            for iRel = 1:db.nRelationships
+                rel = db.relationships{iRel};
+                [tf leftToRight] = rel.matchesEntryNameAndReference(entryName, referenceName);
+                if tf
+                    if leftToRight
+                        relCell{end+1} = rel;
+                    else
+                        relCell{end+1} = rel.swapCopy();
+                    end
+                end
+            end
+        end
 
         function removeRelationship(db, entryName, referenceName)
             % remove any relationships from the table with entryName referring
@@ -267,13 +284,15 @@ classdef Database < DynamicClass & handle
             rel = p.Results.rel;
 
             % check for existing entry->reference relationships
-            if db.hasRelationship(rel.entryNameLeft, rel.referenceLeftForRight)
+            if db.hasRelationship(rel.entryNameLeft, rel.referenceLeftForRight) && ...
+                ~rel.isHalfOfJunction
                 %warning('Overwriting existing relationship %s -> %s', ...
                 %    rel.entryNameLeft, rel.referenceLeftForRight);
                 db.removeRelationship(rel.entryNameLeft, rel.referenceLeftForRight);
             end
 
-            if db.hasRelationship(rel.entryNameRight, rel.referenceRightForLeft)
+            if db.hasRelationship(rel.entryNameRight, rel.referenceRightForLeft) && ...
+                ~rel.isHalfOfJunction
                 %warning('Overwriting existing relationship %s -> %s', ...
                 %    rel.entryNameRight, rel.referenceRightForLeft);
                 db.removeRelationship(rel.entryNameRight, rel.referenceRightForLeft);
@@ -289,7 +308,7 @@ classdef Database < DynamicClass & handle
                 rel.checkFields(tableLeft, tableRight);
             end
 
-            debug('Adding %s\n', rel.describe());
+            debug('Adding DataRelationship: %s\n', rel.describeLink());
 
             db.relationships{db.nRelationships+1} = rel;
         end
@@ -370,47 +389,87 @@ classdef Database < DynamicClass & handle
                 % and entryJunction to entryRight. Typically when adding a junction relationship
                 % to the database, these constituent 1:1 relationships will be automatically
                 % added as well
-                relLeftToJunction = DataRelationship('tableLeft', tableLeft, 'tableRight', tableJunction, ...
-                    'isManyLeft', false, 'isManyRight', true, ...
-                    'keyFieldsLeft', rel.keyFieldsLeft, ...
-                    'keyFieldsRight', rel.keyFieldsLeftInRight, ...
-                    'keyFieldsLeftInRight' , rel.keyFieldsLeftInRight, ...
-                    'isHalfOfJunction', true);
-
-                relJunctionToRight = DataRelationship('tableLeft', tableJunction, 'tableRight', tableRight, ...
-                    'isManyLeft', true, 'isManyRight', false, ...
-                    'keyFieldsLeft', rel.keyFieldsRightInLeft, ...
-                    'keyFieldsRightInLeft', rel.keyFieldsRightInLeft, ...
-                    'keyFieldsRight', rel.keyFieldsRight, ...
-                    'isHalfOfJunction', true);
-
+                [relLeftToJunction, relJunctionToRight] = ...
+                    DataRelationship.buildRelationshipsToJunction(...
+                    rel, tableLeft, tableRight, tableJunction);
+                
                 db.addRelationship(relLeftToJunction);
                 db.addRelationship(relJunctionToRight);
             end
         end
 
         function matchTableCell = matchRelated(db, table, referenceName, varargin)
-            [rel leftToRight]  = db.findRelationship(table.entryName, referenceName);
-
-            if leftToRight
+            % return a list of matches for each 
+            %[rel leftToRight]  = db.findRelationship(table.entryName, referenceName);
+            relCell = db.findAllRelationships(table.entryName, referenceName);
+            
+            if isempty(relCell)
+                error('Could not find matching relationship');
+            end
+            
+            for i = 1:numel(relCell)
+                rel = relCell{i};
                 tableReference = db.getTable(rel.entryNameRight);
                 if rel.isJunction
                     tableJunction = db.getTable(rel.entryNameJunction);
-                    matchTableCell = rel.matchLeftInRight(table, tableReference, ...
-                        'tableJunction', tableJunction, varargin{:});
+
+                    if rel.isBidirectional
+                        newMatchTableCell = rel.matchBidirectionally(table, tableReference, ...
+                            'tableJunction', tableJunction, varargin{:});
+                    else
+                        newMatchTableCell = rel.matchLeftInRight(table, tableReference, ...
+                            'tableJunction', tableJunction, varargin{:});  
+                    end
                 else
-                    matchTableCell = rel.matchLeftInRight(table, tableReference, varargin{:});
+                    if rel.isBidirectional
+                        newMatchTableCell = rel.matchBidirectionally(table, tableReference, varargin{:});
+                    else
+                        newMatchTableCell = rel.matchLeftInRight(table, tableReference, varargin{:});
+                    end
                 end
-            else
-                tableReference = db.getTable(rel.entryNameLeft);
-                if rel.isJunction
-                    tableJunction = db.getTable(rel.entryNameJunction);
-                    matchTableCell = rel.matchRightInLeft(tableReference, table, ...
-                        'tableJunction', tableJunction, varargin{:});
+                
+                if i == 1
+                    matchTableCell = newMatchTableCell;
                 else
-                    matchTableCell = rel.matchRightInLeft(tableReference, table, varargin{:});
+                    % combine matches from each matching relationship
+                    % initially intended for many2many links involving the
+                    % same table (i.e. internal links). There will be two
+                    % relatinoships binding this table to the junction
+                    % table, one on the left and one on the right, but the
+                    % original table should have only one "combined"
+                    % reference to the junction table
+                    if iscell(matchTableCell)
+                        % if 'combine' is false
+                        matchTableCell = cellfun(@(old, new) old.addEntriesFrom(new, 'overwriteKeyFieldsMatch', true), ...
+                            matchTableCell, newMatchTableCell, 'UniformOutput', false);
+                    else
+                        % if 'combine' is true (passed to matchLeftInRight
+                        % above)
+                        matchTableCell = matchTableCell.addEntriesFrom(newMatchTableCell, 'overwriteKeyFieldsMatch', true);
+                    end
                 end
             end
+
+            % old code
+%             if leftToRight
+%                 tableReference = db.getTable(rel.entryNameRight);
+%                 if rel.isJunction
+%                     tableJunction = db.getTable(rel.entryNameJunction);
+%                     matchTableCell = rel.matchLeftInRight(table, tableReference, ...
+%                         'tableJunction', tableJunction, varargin{:});
+%                 else
+%                     matchTableCell = rel.matchLeftInRight(table, tableReference, varargin{:});
+%                 end
+%             else
+%                 tableReference = db.getTable(rel.entryNameLeft);
+%                 if rel.isJunction
+%                     tableJunction = db.getTable(rel.entryNameJunction);
+%                     matchTableCell = rel.matchRightInLeft(tableReference, table, ...
+%                         'tableJunction', tableJunction, varargin{:});
+%                 else
+%                     matchTableCell = rel.matchRightInLeft(tableReference, table, varargin{:});
+%                 end
+%             end
         end
 
         function printRelationships(db)
