@@ -422,7 +422,7 @@ classdef DataTable < DynamicClass & Cacheable
         end
 
         function tf = hasMatch(db, varargin)
-            tf = nnz(db.filterGetMask('match', varargin{:})) > 0
+            tf = nnz(db.filterGetMask('match', varargin{:})) > 0;
         end
 
         function db = matchExclude(db, varargin)
@@ -453,7 +453,7 @@ classdef DataTable < DynamicClass & Cacheable
             db = db.filterOutEntries(filt);
         end
 
-        function db = none(db, idx)
+        function db = none(db)
             % get empty table
             db.warnIfNoArgOut(nargout)
             filt = IndexSelectDataFilter(false(db.nEntries, 1));
@@ -724,11 +724,22 @@ classdef DataTable < DynamicClass & Cacheable
         function s = getFullEntriesAsStruct(db)
             s = db.getEntriesAsStruct(true(db.nEntries, 1), db.fields);
         end
+        
+        function db = addEmptyEntry(db)
+            % add a new [default] empty entry
+            warnIfNoArgOut(db, nargout);
+            db = db.addEntry(struct());
+        end
+        
+        function s = getEmptyEntry(db)
+            % return a single entry table with blank rows filled in
+            s = db.none().addEntry(struct());
+        end
 
         function s = getEmptyEntryAsStruct(db)
             % filter out all the existing entries, add one using entirely
             % empty/default values, and return as struct
-            s = db.none().addEntry(struct()).getFullEntriesAsStruct();
+            s = db.getEmptyEntry().getFullEntriesAsStruct();
             
             % this way of doing things is simpler, but returns an empty
             % struct (size 0 x 1) with no values filled in with defaults
@@ -2170,16 +2181,21 @@ classdef DataTable < DynamicClass & Cacheable
             tf = ismember(name, db.relationshipReferences);
         end
 
-        function count = getRelatedCount(db, entryName)
+        function count = getRelatedCount(db, entryName, varargin)
             db.checkHasDatabase();
-            relatedCell = db.database.matchRelated(db, entryName, 'combine', false);
-            count = cellfun(@length, relatedCell);
+            relatedCell = db.getRelatedIdx(entryName, 'combine', false);
+            count = cellfun(@numel, relatedCell);
         end
 
         function match = getRelated(db, entryName, varargin)
             % one param value useful is combine = true/false
             db.checkHasDatabase();
             match = db.database.matchRelated(db, entryName, varargin{:});
+        end
+        
+        function matchIdx = getRelatedIdx(db, entryName, varargin)
+            db.checkHasDatabase();
+            matchIdx = db.database.getRelatedIdx(db, entryName, varargin{:});
         end
 
         % update the table stored in the database with this version of it,

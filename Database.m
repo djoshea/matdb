@@ -398,9 +398,13 @@ classdef Database < DynamicClass & handle
             end
         end
 
-        function matchTableCell = matchRelated(db, table, referenceName, varargin)
+        function [matchIdx tableReference] = getRelatedIdx(db, table, referenceName, varargin)
+            % return a cell of matches to 
             % return a list of matches for each 
             %[rel leftToRight]  = db.findRelationship(table.entryName, referenceName);
+            % optional param combine = true or false
+            % if true, matchIdx will be a vector of idx
+            % if false, matchIdx be a cell array of idx for each row
             relCell = db.findAllRelationships(table.entryName, referenceName);
             
             if isempty(relCell)
@@ -412,24 +416,15 @@ classdef Database < DynamicClass & handle
                 tableReference = db.getTable(rel.entryNameRight);
                 if rel.isJunction
                     tableJunction = db.getTable(rel.entryNameJunction);
-
-                    if rel.isBidirectional
-                        newMatchTableCell = rel.matchBidirectionally(table, tableReference, ...
-                            'tableJunction', tableJunction, varargin{:});
-                    else
-                        newMatchTableCell = rel.matchLeftInRight(table, tableReference, ...
-                            'tableJunction', tableJunction, varargin{:});  
-                    end
                 else
-                    if rel.isBidirectional
-                        newMatchTableCell = rel.matchBidirectionally(table, tableReference, varargin{:});
-                    else
-                        newMatchTableCell = rel.matchLeftInRight(table, tableReference, varargin{:});
-                    end
+                    tableJunction = [];
                 end
+
+                newMatchIdx = rel.match(table, tableReference, ...
+                    'tableJunction', tableJunction, varargin{:});
                 
                 if i == 1
-                    matchTableCell = newMatchTableCell;
+                    matchIdx = newMatchIdx;
                 else
                     % combine matches from each matching relationship
                     % initially intended for many2many links involving the
@@ -440,36 +435,25 @@ classdef Database < DynamicClass & handle
                     % reference to the junction table
                     if iscell(matchTableCell)
                         % if 'combine' is false
-                        matchTableCell = cellfun(@(old, new) old.addEntriesFrom(new, 'overwriteKeyFieldsMatch', true), ...
-                            matchTableCell, newMatchTableCell, 'UniformOutput', false);
+                        matchIdx = cellfun(@(old, new) unique([old new]), ...
+                            matchIdx, newMatchIdx, 'UniformOutput', false);
                     else
                         % if 'combine' is true (passed to matchLeftInRight
                         % above)
-                        matchTableCell = matchTableCell.addEntriesFrom(newMatchTableCell, 'overwriteKeyFieldsMatch', true);
+                        matchIdx = unique(matchIdx, newMatchIdx);
                     end
                 end
             end
-
-            % old code
-%             if leftToRight
-%                 tableReference = db.getTable(rel.entryNameRight);
-%                 if rel.isJunction
-%                     tableJunction = db.getTable(rel.entryNameJunction);
-%                     matchTableCell = rel.matchLeftInRight(table, tableReference, ...
-%                         'tableJunction', tableJunction, varargin{:});
-%                 else
-%                     matchTableCell = rel.matchLeftInRight(table, tableReference, varargin{:});
-%                 end
-%             else
-%                 tableReference = db.getTable(rel.entryNameLeft);
-%                 if rel.isJunction
-%                     tableJunction = db.getTable(rel.entryNameJunction);
-%                     matchTableCell = rel.matchRightInLeft(tableReference, table, ...
-%                         'tableJunction', tableJunction, varargin{:});
-%                 else
-%                     matchTableCell = rel.matchRightInLeft(tableReference, table, varargin{:});
-%                 end
-%             end
+        end
+        
+        function result = matchRelated(db, table, referenceName, varargin)
+            [matchIdx, tableReference] = db.getRelatedIdx(table, referenceName, varargin{:});
+            
+            if iscell(matchIdx)
+                result = cellfun(@(idx) tableReference.select(idx), matchIdx, 'UniformOutput', false);
+            else
+                result = tableReference.select(matchIdx);
+            end
         end
 
         function printRelationships(db)

@@ -598,6 +598,19 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                 leftToRight = [];
             end
         end
+        
+        function [relLeftToRight] = swapToMatchTables(rel, tableFrom, tableReference)
+            % swap this relationship so that it can point from entryName to
+            % entryNameReference (the entry name, not the reference name)
+            
+            if strcmp(tableFrom.entryName, rel.entryNameLeft) && strcmp(tableReference.entryName, rel.entryNameRight)
+                relLeftToRight = rel;
+            elseif strcmp(tableFrom.entryName, rel.entryNameRight) && strcmp(tableReference.entryName, rel.entryNameLeft)
+                relLeftToRight = rel.swapCopy();
+            else
+                error('This relationship does not match this pair of entry names');
+            end
+        end
 
         function assertInvolvesEntryName(rel, entryName)
             assert(rel.involvesEntryName(entryName), 'This DataRelationship does not involve entryName %s', entryName);
@@ -651,12 +664,15 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             tableCheck.assertIsField(rel.keyFieldsLeftInRight);
         end
 
-        function result = matchLeftInRight(rel, tableLeft, tableRight, varargin)
+        function matchIdx = matchLeftInRight(rel, tableLeft, tableRight, varargin)
             % given a data table corresponding to the left table and right table
             % in this relationship, return either:
             % if parameter 'combine', false is passed (default)
-            %     a cell array of cells which each contains a DataTable
+            %     a cell array of cells which each contains a list of idx
             %     listing entries in the right table which match each entry in the left table
+            % if parameter 'combine' true is passed
+            %     a list of idx containing all matching idx in the right
+            %     table
 
             p = inputParser;
             p.addRequired('tableLeft', @(x) isa(x, 'DataTable'));
@@ -693,12 +709,7 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
 
             hasPrintedWarning = false;
             
-            if combine
-                matchIdx = [];
-            else
-                matchTableCell = cell(nEntriesLeft, 1);
-            end
-            
+            matchIdx = cell(nEntriesLeft, 1);
 
             if rel.isJunction
                 %debug('Performing junction table lookup\n');
@@ -735,6 +746,7 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                     if nEntriesLeft > 1
                         prog.update(iEntryLeft);
                     end
+                    
                     % for each junction match, find the corresponding row idx in tableRight
                     rightMatchIdx = [];
                     junctionMatchIdxThisLeft = junctionMatchIdx{iEntryLeft};
@@ -746,21 +758,8 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                         end
                         rightMatchIdx = [rightMatchIdx; tableRight.matchIdx(matchFilterArgsRight{:})];
                     end
-
-                    if keepFirst > 0 && length(rightMatchIdx) > keepFirst % truncate to first N
-                        rightMatchIdx = rightMatchIdx(1:keepFirst);
-                    end
                     
-                    if isempty(rightMatchIdx) && warnIfMissing
-                        debug('WARNING: No match found for %s entry %d\n', tableLeft.entryName, iEntryLeft);
-                    end
-                    
-                    if combine
-                        matchIdx = [matchIdx; rightMatchIdx];
-                    else
-                        % now filter tableRight by these idx
-                        matchTableCell{iEntryLeft} = tableRight.select(rightMatchIdx);
-                    end
+                    matchIdx{iEntryLeft} = rightMatchIdx;
                 end
                 if nEntriesLeft > 1
                     prog.finish();
@@ -784,30 +783,7 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                         matchFilterArgs{2*iField} = entriesLeft(iEntryLeft).(keyFieldsLeft{iField});
                     end
                     
-                    newMatchIdx = tableRight.matchIdx(matchFilterArgs{:});
-                    
-                    if keepFirst > 0 && length(newMatchIdx) > keepFirst
-                        newMatchIdx = newMatchIdx(1:keepFirst);
-                    end
-                    
-                    % truncate matches at 1 if ~isManyRight
-                    if ~rel.isManyRight && length(newMatchIdx) > 1
-                        if ~hasPrintedWarning
-                            hasPrintedWarning = true;
-                            debug('WARNING: Found multiple matches for relationship which should have one match only, truncating\n');
-                        end
-                        newMatchIdx = newMatchIdx(1);
-                    end
-                    
-                    if isempty(newMatchIdx) && warnIfMissing
-                        debug('WARNING: No match found for %s entry %d\n', tableLeft.entryName, iEntryLeft);
-                    end
-                    
-                    if combine 
-                        matchIdx = [matchIdx; newMatchIdx];
-                    else
-                        matchTableCell{iEntryLeft} = tableRight.select(newMatchIdx);
-                    end
+                    matchIdx{iEntryLeft} = tableRight.matchIdx(matchFilterArgs{:});
                 end
                 if nEntriesLeft > 1
                     prog.finish();
@@ -837,63 +813,81 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                     
                     newMatchIdx = tableRight.matchIdx(matchFilterArgs{:});
                     
-                    if keepFirst > 0 && length(newMatchIdx) > keepFirst
-                        newMatchIdx = newMatchIdx(1:keepFirst);
-                    end
-                    
-                    if isempty(newMatchIdx) && warnIfMissing
-                        debug('WARNING: No match found for %s entry %d\n', tableLeft.entryName, iEntryLeft);
-                    end
-                    
-                    if ~rel.isManyRight && length(newMatchIdx) > 1
-                        if ~hasPrintedWarning
-                            hasPrintedWarning = true;
-                            debug('WARNING: Found multiple matches for relationship which should have one match only, truncating\n');
-                        end
-                        newMatchIdx = newMatchIdx(1);
-                    end
-                    if combine
-                        if ~missingValue
-                            matchIdx = [matchIdx; newMatchIdx];
-                        end
-                    else
-                        if ~missingValue
-                            matchTableCell{iEntryLeft} = tableRight.select(newMatchIdx);
-                        else
-                            matchTableCell{iEntryLeft} = tableRight.none();
-                        end
-                    end
+                    matchIdx{iEntryLeft} = newMatchIdx;
                 end
                 if nEntriesLeft > 1
                     prog.finish();  
                 end
             end
 
-            if combine
-                if uniquify
-                    matchIdx = unique(matchIdx);
+            counts = cellfun(@numel, matchIdx);
+            if warnIfMissing && any(counts < 0)
+                debug('WARNING: No match found for %d %s entries\n', nnz(counts==0), tableLeft.entryName);
+            end
+
+            if ~rel.isManyRight
+                if any(counts > 1)
+                    debug('WARNING: Found unexpected multiple matches for %d %s entries, truncating.\n', nnz(counts > 1), tableLeft.entryName);
                 end
-                result = tableRight.select(matchIdx);
+                keepFirst = 1;
+            end
+                        
+            if keepFirst > 0 
+                % truncate to first N matches
+                matchIdx(counts > keepFirst) = ...
+                    cellfun(@(idx) idx(1:keepFirst), matchIdx(counts > keepFirst), ...
+                    'UniformOutput', false);
+            end
+            
+            if combine
+                if ~rel.isManyRight
+                    % this is a *toOne rel, so the list should be the exact
+                    % same length as nEntriesLeft, i.e. empty slots will be
+                    % replaced with NaNs.
+                    [matchIdx{counts == 0}] = deal(NaN);
+                    matchIdx = cell2mat(matchIdx);
+                else
+                    matchIdx = cell2mat(matchIdx);
+                    if uniquify
+                        matchIdx = unique(matchIdx, 'stable');
+                    end
+                    result = matchIdx;
+                end
             else
-                result = matchTableCell;
+                % keep as cell
+                result = matchIdx;
             end
         end
 
         function matchTableCell = matchRightInLeft(rel, tableLeft, tableRight, varargin)
+            % returning a list of idx, not DataTables
             relSwap = rel.swapCopy;
             matchTableCell = relSwap.matchLeftInRight(tableRight, tableLeft, varargin{:});
         end
         
         function matchTableCell = matchBidirectionally(rel, tableLeft, tableRight, varargin)
             % if bidirectional, automatically combine both directions
+            % returning a list of idx, not DataTables
             assert(rel.isBidirectional, 'Relationship is not bidirectional');
             resultLR = rel.matchLeftInRight(tableLeft, tableRight, varargin{:});
             resultRL = rel.swapCopy.matchLeftInRight(tableLeft, tableRight, varargin{:});
             
             if iscell(resultLR)
-                matchTableCell = cellfun(@(t1, t2) t1.addEntriesFrom(t2, 'overwriteKeyFieldsMatch', true), resultLR, resultRL, 'UniformOutput', false);
+                matchTableCell = cellfun(@(t1, t2) unique([t1 t2]), resultLR, resultRL, 'UniformOutput', false);
             else
-                matchTableCell = resultLR.addEntriesFrom(resultRL, 'overwriteKeyFieldsMatch', true);
+                matchTableCell = unique([resultLR resultRL]);
+            end
+        end
+        
+        function matchIdx = match(rel, tableFrom, tableReference, varargin)
+            % match tableFrom -> tableReference using the appropriate
+            % match* method above
+            rel = rel.swapToMatchTables(tableFrom, tableReference);
+           
+            if rel.isBidirectional
+                matchIdx = rel.matchBidirectionally(tableFrom, tableReference, varargin{:});
+            else
+                matchIdx = rel.matchLeftInRight(tableFrom, tableReference, varargin{:});
             end
         end
     end
