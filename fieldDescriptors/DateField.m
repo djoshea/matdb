@@ -214,6 +214,16 @@ classdef DateField < DataFieldDescriptor
 
             isEqual = nums == refAsNum;
         end
+        
+        function maskMat = valueCompareMulti(dfd, valuesLeft, valuesRight)
+            % maskMat(i,j) is true iff valuesLeft(i) == valuesRight(j)
+            
+            numsLeft = dfd.getAsDateNum(valuesLeft);
+            numsRight = dfd.getAsDateNum(valuesRight);
+            
+            % assumes valuesLeft and valuesRight are both column vectors
+            maskMat = pdist2(numsLeft, numsRight, 'hamming') == 0;
+        end
     end
 
     methods(Static) % Static utility methods

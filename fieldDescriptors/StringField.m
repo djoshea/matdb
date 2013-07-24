@@ -108,6 +108,18 @@ classdef StringField < DataFieldDescriptor
             % use sort to sort ref into values 
             isEqual = strcmp(values, ref);
         end
+        
+        function maskMat = valueCompareMulti(dfd, valuesLeft, valuesRight)
+            % maskMat(i,j) is true iff valuesLeft(i) == valuesRight(j)
+            
+            % assumes valuesLeft and valuesRight are both column cellstr vectors
+            
+            % build matrix of strings like ndgrid
+            mLeft = repmat(valuesLeft, 1, numel(valuesRight));
+            mRight = repmat(valuesRight', numel(valuesLeft), 1);
+            
+            maskMat = strcmp(mLeft, mRight);
+        end
     end
 
     methods(Static) % Static utility methods

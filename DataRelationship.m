@@ -682,6 +682,7 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             p.addParamValue('keepFirst', false, @isscalar); % keep first N matches
             p.addParamValue('warnIfMissing', false, @islogical);
             p.addParamValue('uniquify', true, @islogical);
+            p.addParamValue('fillMissingWithEmpty', false, @islogical); % when no match is found, substitute an empty row to keep the indices matched for *toOne relationships
             p.parse(tableLeft, tableRight, varargin{:});
 
             tableJunction = p.Results.tableJunction;
@@ -689,6 +690,7 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             keepFirst = double(p.Results.keepFirst);
             warnIfMissing = p.Results.warnIfMissing;
             uniquify = p.Results.uniquify;
+            fillMissingWithEmpty = p.Results.fillMissingWithEmpty;
             
             % check entry names match
             assert(strcmp(tableLeft.entryName, rel.entryNameLeft));
@@ -705,121 +707,51 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             nKeyFieldsRight = length(keyFieldsRight);
             nKeyFieldsLeft = length(keyFieldsLeft);
             
-            entriesLeft = tableLeft.getEntriesAsStruct(true(nEntriesLeft, 1), rel.keyFieldsLeft);
-
-            hasPrintedWarning = false;
+            entriesLeft = tableLeft.getAllEntriesAsStruct(rel.keyFieldsLeft);
+            entriesRight = tableRight.getAllEntriesAsStruct(rel.keyFieldsRight);
             
-            matchIdx = cell(nEntriesLeft, 1);
-
             if rel.isJunction
                 %debug('Performing junction table lookup\n');
                 assert(exist('tableJunction', 'var') > 0, 'tableJunction argument required');
-                entriesJunction = tableJunction.entries;
+                entriesJunctionForLeft = tableJunction.getAllEntriesAsStruct(keyFieldsLeftInRight);
+                entriesJunctionForRight = tableJunction.getAllEntriesAsStruct(keyFieldsRightInLeft);
                
-                % preload the fieldNames for .match(args{:} for tableJunction and tableRight
-                matchFilterArgsJunction = DataRelationship.fillCellOddEntries(keyFieldsLeftInRight);
-                matchFilterArgsRight = DataRelationship.fillCellOddEntries(keyFieldsRight);
+%                 % preload the fieldNames for .match(args{:} for tableJunction and tableRight
+%                 matchFilterArgsJunction = DataRelationship.fillCellOddEntries(keyFieldsLeftInRight);
+%                 matchFilterArgsRight = DataRelationship.fillCellOddEntries(keyFieldsRight);
 
-                if nEntriesLeft > 1
-                    prog = ProgressBar(nEntriesLeft, 'Matching %s to %s...', tableLeft.entryName, tableJunction.entryName);
-                end
-                for iEntryLeft = 1:nEntriesLeft
-                    if nEntriesLeft > 1
-                        prog.update(iEntryLeft);
-                    end
-                    % find matches for this left entry in junction table
-                    for iField = 1:nKeyFieldsLeft
-                        matchFilterArgsJunction{2*iField} = ...
-                            entriesLeft(iEntryLeft).(keyFieldsLeft{iField});
-                    end
-                    junctionMatchIdx{iEntryLeft} = ...
-                        tableJunction.matchIdx(matchFilterArgsJunction{:});
-                end
-                if nEntriesLeft > 1
-                    prog.finish();
-                end
-
-                if nEntriesLeft > 1
-                    prog = ProgressBar(nEntriesLeft, 'Matching %s to %s...', tableJunction.entryName, tableRight.entryName);
-                end
-                for iEntryLeft = 1:nEntriesLeft
-                    if nEntriesLeft > 1
-                        prog.update(iEntryLeft);
-                    end
-                    
-                    % for each junction match, find the corresponding row idx in tableRight
-                    rightMatchIdx = [];
-                    junctionMatchIdxThisLeft = junctionMatchIdx{iEntryLeft};
-                    for iMatch = 1:length(junctionMatchIdxThisLeft)
-                        match = junctionMatchIdxThisLeft(iMatch);
-                        for iField = 1:nKeyFieldsRight
-                            matchFilterArgsRight{2*iField} = ...
-                                entriesJunction(match).(keyFieldsRightInLeft{iField});
-                        end
-                        rightMatchIdx = [rightMatchIdx; tableRight.matchIdx(matchFilterArgsRight{:})];
-                    end
-                    
-                    matchIdx{iEntryLeft} = rightMatchIdx;
-                end
-                if nEntriesLeft > 1
-                    prog.finish();
-                end
+                % (i,j) is true if entryLeft(i) matches entryJunction(j)
+                matchMatLeftJunction = DataRelationship.getMatchMatrix(entriesLeft, entriesJunctionForLeft, ...
+                    keyFieldsLeft, keyFieldsLeftInRight, tableLeft.fieldDescriptorMap);
+            
+                % TODO might be able to make this faster by prefiltering
+                % columns of junction
+                matchMatJunctionRight = DataRelationship.getMatchMatrix(entriesJunctionForRight, entriesRight, ...
+                    keyFieldsRightInLeft, keyFieldsRight, tableJunction.fieldDescriptorMap);
+                
+                % simply multiply them together to find left-right matches via any
+                % junction entry
+                matchMat = (single(matchMatLeftJunction) * single(matchMatJunctionRight)) ~= 0;
                 
             elseif ~isempty(keyFieldsLeftInRight)
                 % key fields for left lie within right, so we can loop through left table 
                 % and search directly for each's match(es) in right
                 % this is essentially a reverse lookup
                 %debug('Performing reverse key lookup\n');
-                matchFilterArgs = DataRelationship.fillCellOddEntries(keyFieldsLeftInRight);
-
-                if nEntriesLeft > 1
-                    prog = ProgressBar(nEntriesLeft, 'Matching %s to %s...', tableLeft.entryName, tableRight.entryName);
-                end
-                for iEntryLeft = 1:nEntriesLeft
-                    if nEntriesLeft > 1
-                        prog.update(iEntryLeft);
-                    end
-                    for iField = 1:nKeyFieldsLeft
-                        matchFilterArgs{2*iField} = entriesLeft(iEntryLeft).(keyFieldsLeft{iField});
-                    end
-                    
-                    matchIdx{iEntryLeft} = tableRight.matchIdx(matchFilterArgs{:});
-                end
-                if nEntriesLeft > 1
-                    prog.finish();
-                end
+                matchMat = DataRelationship.getMatchMatrix(entriesLeft, entriesRight, ...
+                    keyFieldsLeft, keyFieldsLeftInRight, tableLeft.fieldDescriptorMap);
 
             else
                 % key fields for right table lie within left, so we loop through left table
                 % and lookup each right entry by key fields
                 %debug('Performing forward key lookup\n');
-                if nEntriesLeft > 1
-                    prog = ProgressBar(nEntriesLeft, 'Matching %s to %s...', tableLeft.entryName, tableRight.entryName);
-                end
-                matchFilterArgs = DataRelationship.fillCellOddEntries(keyFieldsRight);
-                for iEntryLeft = 1:nEntriesLeft
-                    if nEntriesLeft > 1
-                        prog.update(iEntryLeft);
-                    end
-                    missingValue = false; % does this left entry point to a right entry? true implies zero matches
-                    for iField = 1:nKeyFieldsRight
-                        value = entriesLeft(iEntryLeft).(keyFieldsRightInLeft{iField});
-                        if isempty(value)
-                            missingValue = true;
-                            break;
-                        end
-                        matchFilterArgs{2*iField} = value;
-                    end
-                    
-                    newMatchIdx = tableRight.matchIdx(matchFilterArgs{:});
-                    
-                    matchIdx{iEntryLeft} = newMatchIdx;
-                end
-                if nEntriesLeft > 1
-                    prog.finish();  
-                end
+                matchMat = DataRelationship.getMatchMatrix(entriesLeft, entriesRight, ...
+                    keyFieldsRightInLeft, keyFieldsRight, tableLeft.fieldDescriptorMap);
             end
 
+            % convert match matrix to list of matches for each left entry
+            matchIdx = arrayfun(@(i) find(matchMat(i, :)), 1:nEntriesLeft, 'UniformOutput', false);
+            
             counts = cellfun(@numel, matchIdx);
             if warnIfMissing && any(counts < 0)
                 debug('WARNING: No match found for %d %s entries\n', nnz(counts==0), tableLeft.entryName);
@@ -844,7 +776,10 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                     % this is a *toOne rel, so the list should be the exact
                     % same length as nEntriesLeft, i.e. empty slots will be
                     % replaced with NaNs.
-                    [matchIdx{counts == 0}] = deal(NaN);
+                    
+                    if fillMissingWithEmpty
+                        [matchIdx{counts == 0}] = deal(NaN);
+                    end
                     matchIdx = cell2mat(matchIdx);
                 else
                     matchIdx = cell2mat(matchIdx);
@@ -975,6 +910,30 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
     end
 
     methods(Static) % Utilities
+        function matchMat = getMatchMatrix(entriesLeft, entriesRight, ...
+                keyFieldsLeft, keyFieldsRight, dfdMap)
+            % return a matrix which indicates whether entryLeft(i) matches
+            % entryRight(j) along the specified sets of keyFields. Used in
+            % joins via match*() above
+            
+            % whether entriesLeft(i) matches entriesRight(j)
+            matchMat = true(numel(entriesLeft), numel(entriesRight));
+            
+            for i = 1:length(keyFieldsLeft)
+                dfd = dfdMap(keyFieldsLeft{i});
+                valuesLeft = {entriesLeft.(keyFieldsLeft{i})}';
+                valuesRight = {entriesRight.(keyFieldsRight{i})}';
+                if dfd.matrix
+                    valuesLeft = cell2mat(valuesLeft);
+                    valuesRight = cell2mat(valuesRight);
+                end
+                
+                matchMatThis = dfd.valueCompareMulti(valuesLeft, valuesRight);
+                matchMat = matchMat & matchMatThis;
+            end
+            
+        end
+        
         function name = combinedTableFieldName(tableOrEntryName, field)
             % returns a camel-case-concatenation of the table entry name on to the field names
             % i.e. teacher.id --> teacherId 

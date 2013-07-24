@@ -99,6 +99,13 @@ classdef BooleanField < DataFieldDescriptor
 
             isEqual = values == (ref ~= 0);
         end
+        
+        function maskMat = valueCompareMulti(dfd, valuesLeft, valuesRight)
+            % maskMat(i,j) is true iff valuesLeft(i) == valuesRight(j)
+            
+            % assumes valuesLeft and valuesRight are both column vectors
+            maskMat = pdist2(single(valuesLeft), single(valuesRight), 'hamming') == 0;
+        end
     end
 
     methods(Static) % Static utility methods

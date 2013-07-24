@@ -102,6 +102,16 @@ classdef ScalarField < DataFieldDescriptor
                 isEqual = (isnan(values) & isnan(ref)) | (values == ref);
             end
         end
+        
+        function maskMat = valueCompareMulti(dfd, valuesLeft, valuesRight)
+            % maskMat(i,j) is true iff valuesLeft(i) == valuesRight(j)
+            
+            % assumes valuesLeft and valuesRight are both column vectors
+            maskMat = pdist2(valuesLeft, valuesRight, 'hamming') == 0;
+            
+            % where both are NaN, consider them equal
+            maskMat(isnan(valuesLeft), isnan(valuesRight)) = true;
+        end
     end
 
     methods(Static) % Static utility methods

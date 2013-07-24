@@ -71,6 +71,10 @@ classdef UnspecifiedField < DataFieldDescriptor
         function isEqual = valuesEqualTo(dfd, values, ref)
             error('valuesEqualTo not supported for UnspecifiedField');
         end
+        
+        function maskMat = valueCompareMulti(dfd, valuesLeft, valuesRight)
+            error('valueCompareMulti not supported for UnspecifiedField');
+        end
 
     end
 

@@ -157,6 +157,11 @@ classdef DataTable < DynamicClass & Cacheable
                 entries = assignIntoStructArray(entries, field, values);
             end
         end
+        
+        % optional argument: fields cell array
+        function entries = getAllEntriesAsStruct(db, varargin)
+            entries = db.getEntriesAsStruct(true(db.nEntries, 1), varargin{:});
+        end
 
     end
 
