@@ -73,8 +73,15 @@ classdef DataFieldDescriptor < handle
         function strCell = getAsFilenameStrings(dfd, values)
             strCell = dfd.getAsStrings(values);
         end
+        
+        function emptyValue = getEmptyValueElement(dfd)
+            emptyValue = dfd.getEmptyValue();
+            if iscell(emptyValue)
+                emptyValue = emptyValue{1};
+            end
+        end
 
-        function emptyValue = getEmptyValue(dfd, nValues);
+        function emptyValue = getEmptyValue(dfd, nValues)
             if nargin < 2
                 nValues = 1;
             end
