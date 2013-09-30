@@ -16,12 +16,14 @@ classdef NumericField < DataFieldDescriptor
 
         % indicates whether this field should be displayed or not
         function tf = isDisplayable(dfd)
-            tf = true;
+            tf = false;
         end
 
         % converts field values to a string
         function strCell = getAsStrings(dfd, values) 
-            if ndims(strCell) == 2
+            strCell = repmat('', sizeof(values));
+            return;
+            if ndims(values) == 2
                 strCell = cellfun(@mat2str, values, 'UniformOutput', false);
             else
                 strCell = cellfun(@num2str, values, 'UniformOutput', false);
@@ -40,6 +42,8 @@ classdef NumericField < DataFieldDescriptor
                 convValues = {};
             elseif ~iscell(values)
                 convValues = num2cell(values);
+            elseif iscell(values)
+                convValues = values;
             else
                 error('Values must be either a cell array or numeric vector');
             end

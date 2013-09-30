@@ -556,7 +556,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                     failureEntry = struct();
                     for field = allFieldsAnalysis
                         dfd = resultTable.getFieldDescriptor(field{1});
-                        failureEntry.(field{1}) = dfd.getEmptyValue();
+                        failureEntry.(field{1}) = dfd.getEmptyValueElement();
                     end
                     
                     idxAnalyze = find(maskToAnalyze);
