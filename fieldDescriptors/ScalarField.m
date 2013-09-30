@@ -18,6 +18,10 @@ classdef ScalarField < DataFieldDescriptor
         function tf = isDisplayable(dfd)
             tf = true;
         end
+        
+        function emptyValue = getEmptyValueElement(dfd)
+            emptyValue = NaN;
+        end
 
         % converts field values to a string
         function strCell = getAsStrings(dfd, values) 
