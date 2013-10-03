@@ -31,7 +31,7 @@ classdef CSVTable < StructTable
                     return;
                 else
                     debug('Cache miss!\n');
-                    data = loadCSV(dt.csvName);
+                    data = loadCSVAsStruct(dt.csvName);
                 end
             end
             if nargin > 1

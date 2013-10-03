@@ -232,7 +232,7 @@ classdef DateField < DataFieldDescriptor
 
             if tf
                 % all entries are date strings, are they even days with no time offset?
-                if all(floor(num) == num)
+                if isequaln(floor(num), num)
                     % all values work with datevec --> date field
                     dfd = DateField();
                     dfd.dateFormat = format;

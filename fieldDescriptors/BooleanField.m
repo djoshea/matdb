@@ -57,6 +57,12 @@ classdef BooleanField < DataFieldDescriptor
             if isempty(values)
                 convValues = false;
             elseif iscell(values)
+                % swap out Y/N y/n with true/false
+                yMask = strcmpi(values, 'y'); 
+                [values{yMask}] = deal(true);
+                nMask = strcmpi(values, 'n'); 
+                [values{nMask}] = deal(false);
+
                 [valid convValues] = isScalarCell(values);
                 % NaN and 0 --> false.
                 convValues = ~isnan(convValues) & convValues ~= 0;
@@ -110,8 +116,14 @@ classdef BooleanField < DataFieldDescriptor
 
     methods(Static) % Static utility methods
         function [tf dfd] = canDescribeValues(cellValues)
+            % swap out Y/N y/n with true/false
+            yMask = strcmpi(cellValues, 'y'); 
+            [cellValues{yMask}] = deal(true);
+            nMask = strcmpi(cellValues, 'n'); 
+            [cellValues{nMask}] = deal(false);
+            
             [tf values] = isScalarCell(cellValues);
-            tf = tf && all(values == 0 | values == 1);
+            tf = tf && all(isnan(values) | values == 0 | values == 1);
            
             if tf
                 % all values can be converted to strings --> string field
