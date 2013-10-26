@@ -123,7 +123,9 @@ classdef BooleanField < DataFieldDescriptor
             [cellValues{nMask}] = deal(false);
             
             [tf values] = isScalarCell(cellValues);
-            tf = tf && all(isnan(values) | values == 0 | values == 1);
+            % NaN values not acceptable since they'd be converted to false
+            % which may not be correct
+            tf = tf && all(values == 0 | values == 1);
            
             if tf
                 % all values can be converted to strings --> string field
