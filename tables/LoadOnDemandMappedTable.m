@@ -436,7 +436,7 @@ classdef LoadOnDemandMappedTable < StructTable
 
         function dt = loadField(dt, field, varargin)
             dt.warnIfNoArgOut(nargout);
-            dt = dt.loadFields('fields', field, varargin{:});
+            dt = dt.loadFields('fields', {field}, varargin{:});
         end
 
         % load in the loadable values for fields listed in fields (1st optional
