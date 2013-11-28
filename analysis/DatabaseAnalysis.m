@@ -249,6 +249,12 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             
             da.database.markSourceLoaded(da);
         end
+        
+        function runDebug(da, varargin)
+            % wraps .run with common params for debugging, i.e. don't
+            % saveCache, loadCache, catchErrors, but do rerunFailed
+            da.run('loadCache', false, 'saveCache', false, 'catchErrors', false, 'rerunFailed', true);
+        end
 
         function run(da, varargin)
             p = inputParser();
@@ -595,10 +601,16 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                         description = description{1};
                         progressStr = sprintf('[%5.1f %%]', (iAnalyze-1)/nAnalyze*100);
                         fprintf('\n');
-                        line = [repmat('_', 1, 79) '\n'];
-                        tcprintf('bright yellow', line);
-                        tcprintf('bright yellow', '%s Running analysis on %s\n', progressStr, description);
-                        tcprintf('bright yellow', line);
+                        if isunix && ~ismac
+                            line = [repmat(char(hex2dec('2500')), 1, 79) '\n'];
+                        else
+                            line = [repmat('-', 1, 79) '\n'];
+                        end
+                            
+                        color = 'bright blue';
+                        tcprintf(color, line);
+                        tcprintf(color, '%s Running analysis on %s\n', progressStr, description);
+                        tcprintf(color, line);
                         fprintf('\n');
                         
                         % for saveFigure to look at 
@@ -674,7 +686,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
 
                         
                         if success
-                            tcprintf('bright green', '\nAnalysis ran successfully on this entry\n');
+                            tcprintf('bright green', 'Analysis ran successfully on this entry\n');
                             
                             % Copy only fieldsAnalysis that were returned.
                             % Fields in dt.fieldsAnalysis but not fieldsAnalysis are okay

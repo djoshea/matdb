@@ -1015,7 +1015,7 @@ classdef DataTable < DynamicClass & Cacheable
         function printTable(db, varargin)
             % get the dimensions of the terminal we're in to size the printout
             % appropriately
-            [termRows termCols] = getTerminalSize();
+            [termRows, termCols] = getTerminalSize();
 
             % determine if we are in a data tip
             inDataTip = calledViaDataTip();
@@ -2171,7 +2171,6 @@ classdef DataTable < DynamicClass & Cacheable
                 end
                 strCell{iEntry} = strjoin(fieldValueStrings, '.');
             end
-
         end
 
         function refs = get.relationshipReferences(db)
