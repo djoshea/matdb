@@ -219,6 +219,28 @@ classdef DataTable < DynamicClass & Cacheable
             fields = db.fieldsCache;
         end
         
+        % Allows tab completion after dot to suggest variables
+        function p = properties(dt)
+            % This will be called for properties of an instance, but the
+            % built-in will be still be called for the class name.
+            pp = makecol(dt.fields);
+            
+            if ~isempty(dt.database)
+                % include relationships as well
+                relNames = dt.database.listRelationshipsWith(dt.entryName);
+                pp = [pp; makecol(relNames)];
+            end
+            
+            if nargout == 0
+                fprintf('%s\n',getString(message('MATLAB:ClassText:PROPERTIES_FUNCTION_LABEL',class(dt))));
+                fprintf('    %s\n',pp{:});
+            else
+                p = pp;
+            end
+        end
+        
+        function f = fieldnames(t), f = properties(t); end
+        
         function nFields = get.nFields(db)
             db.checkAppliedFields(); 
             nFields = length(db.fieldsCache);

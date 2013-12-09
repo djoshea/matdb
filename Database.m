@@ -28,7 +28,21 @@ classdef Database < DynamicClass & handle
     end
 
     methods % Tables
-
+       % Allows tab completion after dot to suggest variables
+        function p = properties(dt)
+            % This will be called for properties of an instance, but the
+            % built-in will be still be called for the class name.
+            pp = dt.tableEntryNameList;
+            if nargout == 0
+                fprintf('%s\n',getString(message('MATLAB:ClassText:PROPERTIES_FUNCTION_LABEL',class(dt))));
+                fprintf('    %s\n',pp{:});
+            else
+                p = pp;
+            end
+        end
+        
+        function f = fieldnames(t), f = properties(t); end
+        
         function disp(db)
             tcprintf('light blue', 'Database with %d tables, %d relationships\n\n', ...
                 db.nTables, db.nRelationships);
@@ -216,6 +230,7 @@ classdef Database < DynamicClass & handle
                     referenceNames = [referenceNames referenceName];
                 end
             end
+            referenceNames = makecol(referenceNames);
         end
 
         function [matchRel leftToRight] = findRelationship(db, entryName, referenceName)
