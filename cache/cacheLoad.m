@@ -9,6 +9,10 @@ function data = cacheLoad(key, varargin)
 
     % simple save cache value with a string name
     cm = MatdbSettingsStore.getDefaultCacheManager();
-    data = cm.loadData(cacheName, cacheParam);
+    if ~cm.cacheExists(cacheName, cacheParam);
+        error('Cached value %s not found', key);
+    else
+        data = cm.loadData(cacheName, cacheParam);
+    end
 
 end
