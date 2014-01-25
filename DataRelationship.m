@@ -919,6 +919,11 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             % whether entriesLeft(i) matches entriesRight(j)
             matchMat = true(numel(entriesLeft), numel(entriesRight));
             
+            if isempty(matchMat)
+                matchMat = false(size(matchMat));
+                return;
+            end
+            
             for i = 1:length(keyFieldsLeft)
                 dfd = dfdMap(keyFieldsLeft{i});
                 valuesLeft = {entriesLeft.(keyFieldsLeft{i})}';
