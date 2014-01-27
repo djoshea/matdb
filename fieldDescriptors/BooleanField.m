@@ -116,6 +116,10 @@ classdef BooleanField < DataFieldDescriptor
 
     methods(Static) % Static utility methods
         function [tf dfd] = canDescribeValues(cellValues)
+            if ~iscell(cellValues)
+                cellValues = num2cell(cellValues);
+            end
+            
             % swap out Y/N y/n with true/false
             yMask = strcmpi(cellValues, 'y'); 
             [cellValues{yMask}] = deal(true);
