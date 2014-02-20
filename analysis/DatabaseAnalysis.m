@@ -599,7 +599,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
 
                         description = entry.getKeyFieldValueDescriptors();
                         description = description{1};
-                        progressStr = sprintf('[%5.1f %%]', (iAnalyze-1)/nAnalyze*100);
+                        progressStr = sprintf('[%5.1f %% - entry %d ]', (iAnalyze-1)/nAnalyze*100, iResult);
                         fprintf('\n');
                         if isunix && ~ismac
                             line = [repmat(char(hex2dec('2500')), 1, 79) '\n'];

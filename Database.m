@@ -491,7 +491,12 @@ classdef Database < DynamicClass & handle
     end
 
     methods % Views
-        function applyView(db, dv)
+        function applyView(db, dv, varargin)
+            p = inputParser;
+            p.addParamValue('reapply', false, @islogical);
+            p.parse(varargin{:});
+            reapply = p.Results.reapply;
+            
             if isa(dv, 'DatabaseView')
                 dvCell = {dv};
             elseif iscell(dv)
@@ -506,9 +511,17 @@ classdef Database < DynamicClass & handle
             for iDv = 1:length(dvCell)
                 dv = dvCell{iDv};
 
+                apply = true;
                 if db.hasViewApplied(dv)
-                    debug('Already applied DatabaseView : %s\n', dv.describe());
-                else
+                    if reapply
+                        debug('Reapplyling DatabaseView : %s\n', dv.describe());
+                        apply = true;
+                    else
+                        apply = false;
+                        debug('Already applied DatabaseView : %s\n', dv.describe());
+                    end
+                end
+                if apply
                     % load required sources
                     db.loadSource(dv.getRequiredSources());
 
@@ -563,7 +576,7 @@ classdef Database < DynamicClass & handle
 
                 if db.hasSourceLoaded(src)
                     if ~reload
-                        debug('Already loaded source %s, skipping\n', src.describe());
+                        %debug('Already loaded source %s, skipping\n', src.describe());
                         continue;
                     else
                         debug('Reloading source %s\n', src.describe());
