@@ -142,8 +142,9 @@ classdef ValueMap < DynamicClass
                 else
                     keyHash = genvarname(key);
                 end 
-            elseif isnumeric(key)
-                keyHash = genvarname(num2str(key));
+                % removing since doesn't work for vectors
+            %elseif isnumeric(key)
+            %    keyHash = genvarname(num2str(key));
             else
                 %map.assertKeyValid(key);  
                 %opts.Method = 'MD5';
