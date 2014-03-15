@@ -463,14 +463,45 @@ classdef DataTable < DynamicClass & Cacheable
             db = db.removeSort();
             assert(isempty(idx) || isvector(idx), 'Selection must be a vector');
             if islogical(idx)
+                % simple logical mask
                 assert(numel(idx) == db.nEntries, 'Logical mask must match table size');
+                db = db.selectSortEntries(idx);
+                
             else
-                assert(all(idx >= 1) && all(idx <= db.nEntries), 'Index out of range');
+                assert(all(isnan(idx) | idx >= 1 | idx <= db.nEntries), 'Index invalid or out of range');
+                
+                % deal with NaN values: remove them to select the "valid
+                % trials"
+                nanMask = isnan(idx);
+                idxFilt = removenan(idx);
+                dbFiltered = db.selectSortEntries(idxFilt);
+                
+                if any(nanMask)
+                    % add in an empty row to substitute where nans were
+                    % found
+                    dbFiltered.pendingApplyEntryMask = true;
+                    dbFiltered = dbFiltered.autoApplyEntryMask();
+                    % get the empty row to fill with nan
+                    emptyStruct = db.getEmptyEntryAsStruct();
+
+                    % add one empty row at the end of this table
+                    dbFiltered = dbFiltered.addEntry(emptyStruct);
+                    indOfEmpty = dbFiltered.nEntries;
+
+                    % now rebuild the full table by selecting the right entries
+                    % from dbFiltered
+                    idxFull = nan(numel(idx), 1);
+                    idxFull(~nanMask) = 1:nnz(~nanMask);
+                    idxFull(nanMask) = indOfEmpty;
+                    db = dbFiltered.selectSortEntries(idxFull);
+                else
+                    % no nans, don't bother
+                    db = dbFiltered;
+                end
             end
-            db = db.selectSortEntries(idx);
+             
             db.pendingApplyEntryMask = true;
             db = db.autoApplyEntryMask();
-            %db = db.filterEntries(filt);
         end
 
         function db = exclude(db, idx)
@@ -2206,10 +2237,16 @@ classdef DataTable < DynamicClass & Cacheable
         function tf = isReference(db, name)
             tf = ismember(name, db.relationshipReferences);
         end
+        
+        function names = getReferenceNames(db)
+            % list all relationships in the database that this table can access via
+            db.checkHasDatabase();
+            names = db.database.listRelationshipsWith(db.entryName);
+        end
 
         function count = getRelatedCount(db, entryName, varargin)
             db.checkHasDatabase();
-            relatedCell = db.getRelatedIdx(entryName, 'combine', false);
+            relatedCell = db.getRelatedIdx(entryName, 'combine', false, 'fillMissingWithNaN', false);
             count = cellfun(@numel, relatedCell);
         end
 

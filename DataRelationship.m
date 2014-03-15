@@ -238,7 +238,7 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                     % generate default field names based on the fields that exist
                     % in the left table
                     if rel.isJunction
-                        [rel.keyFieldsLeftInRight foundReferenceLeftInRight] = DataRelationship.defaultFieldReference(...
+                        [rel.keyFieldsLeftInRight, foundReferenceLeftInRight] = DataRelationship.defaultFieldReference(...
                             tableJunction, tableLeft);
                         % all references must be found for a junction table
                         % reference
@@ -246,7 +246,7 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                             error('Could not locate any keyFieldsLeft in junction table. Provide keyFieldsLeftInRight to manually specify the mapping.');
                         end
                     else
-                        [rel.keyFieldsLeftInRight foundReferenceLeftInRight] = DataRelationship.defaultFieldReference(...
+                        [rel.keyFieldsLeftInRight, foundReferenceLeftInRight] = DataRelationship.defaultFieldReference(...
                             tableRight, tableLeft, 'fields', rel.keyFieldsLeft);
                         if ~any(foundReferenceLeftInRight)
                             rel.keyFieldsLeftInRight = {};
@@ -280,7 +280,7 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                     % generate default field names based on the fields that exist
                     % in the left table
                     if rel.isJunction
-                        [rel.keyFieldsRightInLeft foundReferenceRightInLeft] = DataRelationship.defaultFieldReference(...
+                        [rel.keyFieldsRightInLeft, foundReferenceRightInLeft] = DataRelationship.defaultFieldReference(...
                             tableJunction, tableRight);
                         if ~any(foundReferenceRightInLeft)
                             error('Could not locate any keyFieldsRight in junction table. Provide keyFieldsRightInLeft to manually specify the mapping.');
@@ -440,12 +440,12 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                     rightName = rel.entryNameRight;
                 end
                 leftWidth = colWidth;
-                rightWidth = colWidth;
+                %rightWidth = colWidth;
                 leftField = sprintf('%s.%s', rel.entryNameLeft, rel.keyFieldsLeft{iField});
                 rightField = sprintf('%s.%s', rightName, rel.keyFieldsLeftInRight{iField});
 
                 desc = sprintf('%*s == %s\n', leftWidth, leftField, rightField);
-                str = [str desc];
+                str = [str desc]; %#ok<AGROW>
             end
 
             % the links pointing in the other direction are unnecessary if
@@ -464,7 +464,7 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                     rightField = sprintf('%s.%s', rel.entryNameRight, rel.keyFieldsRight{iField});
 
                     desc = sprintf('%*s == %s\n', leftWidth, leftField, rightField);
-                    str = [str desc];
+                    str = [str desc]; %#ok<AGROW>
                 end
             end
         end
@@ -550,7 +550,7 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                     rel.entryNamesPlural{ind} = table.entryNamePlural;
                 end
             else
-                db.entryNamesPlural{ind} = p.Results.entryNamePlural;
+                rel.entryNamesPlural{ind} = p.Results.entryNamePlural;
             end
         end
     end
@@ -564,7 +564,7 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             rel.setTable(2, varargin{:});
         end
 
-        function [tf referenceName] = involvesEntryName(rel, entryName)
+        function [tf, referenceName] = involvesEntryName(rel, entryName)
             idx = rel.mapEntryNameToIdx(entryName); 
             tf = ~isempty(idx);
             if tf
@@ -582,7 +582,7 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             idx = unique([idxS idxP]);
         end
 
-        function [tf leftToRight] = matchesEntryNameAndReference(rel, entryName, referenceName)
+        function [tf, leftToRight] = matchesEntryNameAndReference(rel, entryName, referenceName)
             % check whether this relationship involves an entryName(Plural) which
             % refers to referenceName, either left to right or right to left
             if ismember(entryName, [rel.entryNames(1) rel.entryNamesPlural(1)]) && ...
@@ -673,6 +673,11 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             % if parameter 'combine' true is passed
             %     a list of idx containing all matching idx in the right
             %     table
+            % parameter fillMissingWithNaN [default true] (meaningful only when combine = true)
+            %   when no match is found, substitute a NaN idx keep the indices matched 
+            %   for *toOne relationships. if false, no match idx will be
+            %   included and the list of idx may be shorter than the original
+            %   tableLeft
 
             p = inputParser;
             p.addRequired('tableLeft', @(x) isa(x, 'DataTable'));
@@ -682,7 +687,7 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             p.addParamValue('keepFirst', false, @isscalar); % keep first N matches
             p.addParamValue('warnIfMissing', false, @islogical);
             p.addParamValue('uniquify', true, @islogical);
-            p.addParamValue('fillMissingWithEmpty', false, @islogical); % when no match is found, substitute an empty row to keep the indices matched for *toOne relationships
+            p.addParamValue('fillMissingWithNaN', false, @islogical); 
             p.parse(tableLeft, tableRight, varargin{:});
 
             tableJunction = p.Results.tableJunction;
@@ -690,7 +695,7 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             keepFirst = double(p.Results.keepFirst);
             warnIfMissing = p.Results.warnIfMissing;
             uniquify = p.Results.uniquify;
-            fillMissingWithEmpty = p.Results.fillMissingWithEmpty;
+            fillMissingWithNaN = p.Results.fillMissingWithNaN;
             
             % check entry names match
             assert(strcmp(tableLeft.entryName, rel.entryNameLeft));
@@ -700,12 +705,12 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             keyFieldsRightInLeft = rel.keyFieldsRightInLeft;
 
             nEntriesLeft = tableLeft.nEntries;
-            nEntriesRight = tableRight.nEntries;
+           % nEntriesRight = tableRight.nEntries;
 
             keyFieldsLeft = rel.keyFieldsLeft;
             keyFieldsRight = rel.keyFieldsRight;
-            nKeyFieldsRight = length(keyFieldsRight);
-            nKeyFieldsLeft = length(keyFieldsLeft);
+            %nKeyFieldsRight = length(keyFieldsRight);
+            %nKeyFieldsLeft = length(keyFieldsLeft);
             
             entriesLeft = tableLeft.getAllEntriesAsStruct(rel.keyFieldsLeft);
             entriesRight = tableRight.getAllEntriesAsStruct(rel.keyFieldsRight);
@@ -758,8 +763,13 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             end
 
             if ~rel.isManyRight
+                % ensure that multiple matches are NEVER returned for
+                % *toOne relationships. When fillMissingWithNaN is also
+                % true, this ensures that the match table returned will be
+                % matched entry for entry to the left table
                 if any(counts > 1)
-                    debug('WARNING: Found unexpected multiple matches for %d %s entries, truncating.\n', nnz(counts > 1), tableLeft.entryName);
+                    debug('WARNING: Found unexpected multiple matches for %d %s entries, truncating.\n', ...
+                        nnz(counts > 1), tableLeft.entryName);
                 end
                 keepFirst = 1;
             end
@@ -775,9 +785,8 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                 if ~rel.isManyRight
                     % this is a *toOne rel, so the list should be the exact
                     % same length as nEntriesLeft, i.e. empty slots will be
-                    % replaced with NaNs.
-                    
-                    if fillMissingWithEmpty
+                    % replaced with NaNs, if fillMissingWithEmpty is true        
+                    if fillMissingWithNaN
                         [matchIdx{counts == 0}] = deal(NaN);
                     end
                     matchIdx = cell2mat(matchIdx);
@@ -786,11 +795,10 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                     if uniquify
                         matchIdx = unique(matchIdx, 'stable');
                     end
-                    result = matchIdx;
                 end
             else
                 % keep as cell
-                result = matchIdx;
+                %result = matchIdx;
             end
         end
 
@@ -950,7 +958,7 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             name = strcat(entryName, upper(field(1)), field(2:end));
         end
 
-        function [namesReference foundReference] = defaultFieldReference(tableWithFields, tableReferenced, varargin)
+        function [namesReference, foundReference] = defaultFieldReference(tableWithFields, tableReferenced, varargin)
             % return the names of fields within tableWithFields that would be used to 
             % reference the keyFields of tableReferenced from within tableWithFields
             p = inputParser;
@@ -1001,7 +1009,8 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             oddList(1:2:end) = list;
         end
 
-        function [jTbl, relManyToMany, relLeftToJunction, relJunctionToRight] = buildEmptyJunctionTable(tbl1, tbl2, varargin)
+        function [jTbl, relManyToMany, relLeftToJunction, relJunctionToRight] = ...
+                buildEmptyJunctionTable(tbl1, tbl2, varargin)
             % builds a junction table and related DataRelationships to join
             % tbl1 to tbl2 via a junction table
             p = inputParser;
@@ -1027,11 +1036,11 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             
             keyName1 = p.Results.referenceJunctionForLeft;
             keyName2 = p.Results.referenceJunctionForRight;
-            entryName1 = tbl1.entryName;
-            entryNamePlural1 = tbl1.entryNamePlural;
+            %entryName1 = tbl1.entryName;
+            %entryNamePlural1 = tbl1.entryNamePlural;
             keyFields1 = tbl1.keyFields;
-            entryName2 = tbl2.entryName;
-            entryNamePlural2 = tbl2.entryNamePlural;
+            %entryName2 = tbl2.entryName;
+            %entryNamePlural2 = tbl2.entryNamePlural;
             keyFields2 = tbl2.keyFields;
 
             % default entryName junction12

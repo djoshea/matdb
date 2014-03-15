@@ -413,13 +413,31 @@ classdef Database < DynamicClass & handle
             end
         end
 
-        function [matchIdx tableReference] = getRelatedIdx(db, table, referenceName, varargin)
-            % return a cell of matches to 
-            % return a list of matches for each 
-            %[rel leftToRight]  = db.findRelationship(table.entryName, referenceName);
-            % optional param combine = true or false
-            % if true, matchIdx will be a vector of idx
-            % if false, matchIdx be a cell array of idx for each row
+        function [matchIdx, tableReference] = getRelatedIdx(db, table, referenceName, varargin)
+            % return a cell of matches in the referenced table for each
+            % entry in table.
+            % matchIdx is a table.nEntries x 1 cell array or variably sized vector 
+            % of entry idx into tableReference
+            % tableReference the table in the database referenced by the
+            % referenceName
+            %
+            % optional param/values:
+            % combine = true [default] or false
+            %   if true, matchIdx will be a vector of idx
+            %   if false, matchIdx be a cell array of idx for each row
+            % fillMissingWithNan = true [ default] or false. meaningful
+            %   only for combine == true and *toOne relationships.
+            % If true, a NaN will be substituted when no match is found in the referenced
+            % table, which ensures 1:1 correspondence between rows in table
+            % and matchIdx
+            p = inputParser;
+            p.addParamValue('combine', true, @islogical);
+            p.addParamValue('fillMissingWithNaN', true, @islogical);
+            p.parse(varargin{:});
+            
+            combine = p.Results.combine;
+            fillMissingWithNaN = p.Results.fillMissingWithNaN;
+         
             relCell = db.findAllRelationships(table.entryName, referenceName);
             
             if isempty(relCell)
@@ -436,7 +454,8 @@ classdef Database < DynamicClass & handle
                 end
 
                 newMatchIdx = rel.match(table, tableReference, ...
-                    'tableJunction', tableJunction, varargin{:});
+                    'tableJunction', tableJunction, 'combine', combine, ...
+                    'fillMissingWithNaN', fillMissingWithNaN);
                 
                 if i == 1
                     matchIdx = newMatchIdx;
@@ -462,7 +481,22 @@ classdef Database < DynamicClass & handle
         end
         
         function result = matchRelated(db, table, referenceName, varargin)
-            [matchIdx, tableReference] = db.getRelatedIdx(table, referenceName, varargin{:});
+            % notable optional param values:
+            % combine = boolean (default true)
+            %  if false, returns a cell array of match-tables for each entry
+            %  in table. if true, returns one table containing all of the
+            %  matched rows.
+            % fillMissingWithEmpty = boolean (default true). relevant only
+            % for combine == true and *toOne relationships. If true, insert
+            % an "empty" row into the match table when no matches are
+            % found. This ensures that the matched table will correspond
+            % 1:1 to the lookup table.
+            p = inputParser();
+            p.addParamValue('combine', true, @islogical);
+            p.addParamValue('fillMissingWithEmpty', true, @islogical);
+            p.parse(varargin{:});
+            [matchIdx, tableReference] = db.getRelatedIdx(table, referenceName, ...
+                'combine', p.Results.combine, 'fillMissingWithNaN', p.Results.fillMissingWithEmpty);
             
             if iscell(matchIdx)
                 result = cellfun(@(idx) tableReference.select(idx), matchIdx, 'UniformOutput', false);

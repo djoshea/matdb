@@ -360,11 +360,11 @@ classdef LoadOnDemandMappedTable < StructTable
                 % assume that this doesn't come from a LoadOnDemandMappedTable
                 % and therefore all of the values are "loaded" already
                 loadedByEntry = dt.generateLoadedByEntry('fieldsLoaded', fieldnames(S), 'nEntries', length(S));
-                S = structMerge(S, loadedByEntry);
+                S = assignIntoStructArray(S, 'loadedByEntry', loadedByEntry);
             end
             if isempty(S(1).cacheTimestampsByEntry)
                 cacheTimestampsByEntry = dt.generateCacheTimestampsByEntry('nEntries', length(S));
-                S = structMerge(S, cacheTimestampsByEntry);
+                S = assignIntoStructArray(S, 'cacheTimestampsByEntry', cacheTimestampsByEntry);
             end
             dt = subclassAddEntry@StructTable(dt, S);
         end
