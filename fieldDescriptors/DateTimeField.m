@@ -59,10 +59,10 @@ classdef DateTimeField < DataFieldDescriptor
             
             if ~isempty(dfd.dateFormat)
                 datenumFn = @(values) datenum(values, dfd.dateFormat);
-                defaultValue = datestr(0, dfd.dateFormat);
+                %defaultValue = datestr(0, dfd.dateFormat);
             else
                 datenumFn = @(values) datenum(values);
-                defaultValue = datestr(0);
+                %defaultValue = datestr(0);
             end
             
             % replace empty or nan entries with the default value
@@ -73,12 +73,17 @@ classdef DateTimeField < DataFieldDescriptor
             else
                 defaultMask = arrayfun(invalidFn, values);
             end
-            if any(defaultMask)
-                %debug('Warning: using default date value during conversion\n');
-                [values{defaultMask}] = deal(defaultValue);
-            end
+%             if any(defaultMask)
+%                 %debug('Warning: using default date value during conversion\n');
+%                 [values{defaultMask}] = deal(defaultValue);
+%             end
             
-            num = datenumFn(values);
+            % better default value handling
+            num = zeros(numel(values), 1);
+            if any(~defaultMask)
+                num(~defaultMask) = datenumFn(values(~defaultMask));
+            end
+            %num = datenumFn(values);
         end
 
         function strCell = getAsDateStr(dfd, values, format)
@@ -88,7 +93,7 @@ classdef DateTimeField < DataFieldDescriptor
             strCell = cell(length(values), 1);
             for i = 1:length(values)
                 value = values{i};
-                if isempty(value)
+                if isempty(value) || value == 0
                     strCell{i} = '';
                 else
                     num = dfd.getAsDateNum(value);
@@ -165,7 +170,7 @@ classdef DateTimeField < DataFieldDescriptor
           
             convValues = cell(length(nums), 1);
             for i = 1:length(nums)
-                if isnan(nums(i))
+                if isnan(nums(i)) || nums(i) == 0
                     convValues{i} = '';
                 else
                     convValues{i} = datestr(nums(i), ...

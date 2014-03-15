@@ -54,10 +54,10 @@ classdef DateField < DataFieldDescriptor
             
             if ~isempty(dfd.dateFormat)
                 datenumFn = @(values) datenum(values, dfd.dateFormat);
-                defaultValue = datestr(0, dfd.dateFormat);
+                %defaultValue = datestr(0, dfd.dateFormat);
             else
                 datenumFn = @(values) datenum(values);
-                defaultValue = datestr(0);
+                %defaultValue = datestr(0);
             end
             
             % replace empty or nan entries with the default value
@@ -68,12 +68,18 @@ classdef DateField < DataFieldDescriptor
             else
                 defaultMask = arrayfun(invalidFn, values);
             end
-            if any(defaultMask)
-                %debug('Warning: using default date value during conversion\n');
-                [values{defaultMask}] = deal(defaultValue);
+%             if any(defaultMask)
+%                 %debug('Warning: using default date value during conversion\n');
+%                 [values{defaultMask}] = deal({defaultValue});
+%             end
+            
+            % better default value handling
+            num = zeros(numel(values), 1);
+            if any(~defaultMask)
+                num(~defaultMask) = datenumFn(values(~defaultMask));
             end
             
-            num = datenumFn(values);
+        %    num = datenumFn(values);
             num = floor(num);
         end
 
@@ -84,6 +90,12 @@ classdef DateField < DataFieldDescriptor
             num = dfd.getAsDateNum(values);
             strCell = arrayfun(@(num) datestr(num, format), num, ...
                 'UniformOutput', false);
+            % consider values == 0 as ''
+            if iscellstr(values)
+                strCell(strcmp(values, '')) = {''};
+            elseif isnumeric(values)
+                strCell(values == 0) = {''};
+            end
         end
 
         % indicates whether this field should be displayed or not
@@ -154,10 +166,11 @@ classdef DateField < DataFieldDescriptor
                 % since we only care about the date component, drop the decimal
                 nums = floor(nums);
 
-                convValues = arrayfun(@(num) datestr(num, ...
-                    DateField.standardDateFormat), nums, ...
-                    'UniformOutput', false);
+%                 convValues = arrayfun(@(num) datestr(num, ...
+%                     DateField.standardDateFormat), nums, ...
+%                     'UniformOutput', false);
                 dfd.dateFormat = DateField.standardDateFormat;
+                convValues = dfd.getAsDateStr(nums);
 
                 convValues = makecol(convValues);
             end
