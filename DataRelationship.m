@@ -759,7 +759,7 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             
             counts = cellfun(@numel, matchIdx);
             if warnIfMissing && any(counts < 0)
-                debug('WARNING: No match found for %d %s entries\n', nnz(counts==0), tableLeft.entryName);
+                warning('No match found for %d %s entries\n', nnz(counts==0), tableLeft.entryName);
             end
 
             if ~rel.isManyRight
@@ -768,7 +768,7 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                 % true, this ensures that the match table returned will be
                 % matched entry for entry to the left table
                 if any(counts > 1)
-                    debug('WARNING: Found unexpected multiple matches for %d %s entries, truncating.\n', ...
+                    warning('Found unexpected multiple matches for %d %s entries, truncating.\n', ...
                         nnz(counts > 1), tableLeft.entryName);
                 end
                 keepFirst = 1;
