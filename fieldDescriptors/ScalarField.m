@@ -1,11 +1,7 @@
 classdef ScalarField < DataFieldDescriptor 
 
-    properties(Dependent)
-        matrix % returned as a matrix if true, returned as cell array if false
-    end
-
     methods
-        function matrix = get.matrix(dfd)
+        function matrix = isScalar(dfd)
             matrix = true;
         end
 
@@ -19,8 +15,11 @@ classdef ScalarField < DataFieldDescriptor
             tf = true;
         end
         
-        function emptyValue = getEmptyValueElement(dfd)
-            emptyValue = NaN;
+        function emptyValue = getEmptyValue(dfd, nValues)
+            if nargin < 2
+                nValues = 1;
+            end
+            emptyValue = nan(nValues, 1);
         end
 
         % converts field values to a string
@@ -120,7 +119,13 @@ classdef ScalarField < DataFieldDescriptor
 
     methods(Static) % Static utility methods
         function [tf dfd] = canDescribeValues(cellValues)
-            tf = isScalarCell(cellValues);
+            if isnumeric(cellValues) || islogical(cellValues)
+                tf = true;
+            elseif iscell(cellValues)
+                tf = isScalarCell(cellValues);
+            else
+                error('Unknown input');
+            end
            
             if tf
                 % all values can be converted to strings --> string field

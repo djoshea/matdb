@@ -1,12 +1,16 @@
 classdef DataFieldDescriptor < handle
 
-    properties(Abstract, Dependent)
+    properties(Dependent)
         matrix % returned as a matrix if true, returned as cell array if false
     end
 
     methods
         function dfd = DataFieldDescriptor(varargin)
 
+        end
+        
+        function tf = get.matrix(dfd)
+            tf = dfd.isScalar();
         end
     end
 
@@ -15,6 +19,10 @@ classdef DataFieldDescriptor < handle
         
         % indicates whether this field should be displayed or not
         tf = isDisplayable(dfd);
+        
+        % returns true if this field's values are stored as scalars or
+        % elements of a cell array
+        tf = isScalar(dfd);
 
         % convert the values of this field into a cell array of strings
         % typically used by getAsDisplayStrings
@@ -48,7 +56,7 @@ classdef DataFieldDescriptor < handle
         % displays .describe()
         function disp(dfd)
             if dfd.matrix
-                as = 'matrix';
+                as = 'scalar';
             else
                 as = 'cell';
             end
@@ -125,7 +133,7 @@ classdef DataFieldDescriptor < handle
             for iClass = 1:length(classesToTry)
                 className = classesToTry{iClass};
                 fn = str2func([className '.canDescribeValues']);
-                [tf dfd] = fn(cellValues);
+                [tf, dfd] = fn(cellValues);
                 if tf
                     return;
                 end

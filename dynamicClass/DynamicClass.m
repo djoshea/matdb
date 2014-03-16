@@ -23,13 +23,13 @@ classdef (HandleCompatible) DynamicClass
         % allow mapDynamicPropertyAccess to handle accessing of declared properties
         % allow mapDynamicPropertyAssign to handle assiging declared properties
         % if false, declared properties will always be accessed/assigned directly
-        function tf = allowDynamicPropertyOverride(obj)
+        function tf = allowDynamicPropertyOverride(obj) %#ok<MANU>
             tf = false;
         end
 
         % allow mapDynamicMethod to handle calling of declared methods
         % if false, declared methods will always be called directly
-        function tf = allowDynamicMethodOverride(obj)
+        function tf = allowDynamicMethodOverride(obj) %#ok<MANU>
             tf = false;
         end
     end
@@ -56,7 +56,7 @@ classdef (HandleCompatible) DynamicClass
         % and then selecting the idx to return. includeIndexing indicates whether
         % the method has opted to use this ability itself or ignore the idx and
         % defer indexing to our subsref implementation
-        function [value appliedNext] = mapDynamicPropertyAccess(obj, name, typeNext, subsNext)
+        function [value, appliedNext] = mapDynamicPropertyAccess(obj, name, typeNext, subsNext) %#ok<INUSD>
             value = DynamicClass.NotSupported;
             appliedNext = false;
         end
@@ -69,7 +69,7 @@ classdef (HandleCompatible) DynamicClass
         %
         % varargout{:} = obj.name(varargin{:}) --> varargout{:} = fn(name, varargin{:})
         %
-        function fn = mapDynamicMethod(obj, name)
+        function fn = mapDynamicMethod(obj, name) %#ok<INUSD>
             fn = DynamicClass.NotSupported;
         end
 
@@ -83,7 +83,7 @@ classdef (HandleCompatible) DynamicClass
         % typeNext = '.' and subsNext = someFieldName. If you would like to process
         % the field reference (e.g. obj(idx).field) for efficiency, use the list of
         % subscripts {idx1, idx2, ...} in subsNext and set appliedNext = true;
-        function [result appliedNext] = parenIndex(obj, subs, typeNext, subsNext)
+        function [result, appliedNext] = parenIndex(obj, subs, typeNext, subsNext) %#ok<INUSD>
             result = DynamicClass.NotSupported;
             appliedNext = false;
         end
@@ -95,7 +95,7 @@ classdef (HandleCompatible) DynamicClass
         % You must fill one entry of resultCell for each index requested (i.e. 
         % the size must be as specified by subs), otherwise subsref will throw
         % an error
-        function [resultCell appliedNext] = cellIndex(obj, subs, typeNext, subsNext)
+        function [result, appliedNext] = cellIndex(obj, subs, typeNext, subsNext) %#ok<INUSD>
             result = DynamicClass.NotSupported;
             appliedNext = false;
         end
@@ -103,22 +103,22 @@ classdef (HandleCompatible) DynamicClass
 
     % Override as many as you'd like for various forms of dynamic assignment
     methods(Hidden) % Methods for assignment (via subsasgn)
-        function obj = dynamicPropertyAssign(obj, name, value, s)
+        function obj = dynamicPropertyAssign(obj, name, value, s) %#ok<INUSD>
             obj = DynamicClass.NotSupported;
         end
 
-        function obj = parenAssign(obj, subs, value, s)
+        function obj = parenAssign(obj, subs, value, s) %#ok<INUSD>
             obj = DynamicClass.NotSupported;
         end
 
-        function obj = cellAssign(obj, subs, value, s)
+        function obj = cellAssign(obj, subs, value, s) %#ok<INUSD>
             obj = DynamicClass.NotSupported;
         end
     end
 
     % Internal Implementation
     methods(Sealed)
-        function [result s] = mapDeclaredPropertyAccess(obj, name, meta, s)
+        function [result, s] = mapDeclaredPropertyAccess(obj, name, meta, s)
             propInfo = meta.PropertyList;
             idx = find(strcmp(name, {propInfo.Name}));
             assert(~isempty(idx), 'Could not find property info for %s', name);
@@ -131,7 +131,7 @@ classdef (HandleCompatible) DynamicClass
             end
         end
 
-        function [result s returnImmediately] = mapDeclaredMethodCall(obj, name, meta, s, nargout)
+        function [result, s, returnImmediately] = mapDeclaredMethodCall(obj, name, meta, s, nargout)
             returnImmediately = false;
             methodInfo = meta.MethodList;
             idx = find(strcmp(name, {methodInfo.Name}));
@@ -197,12 +197,13 @@ classdef (HandleCompatible) DynamicClass
                     % is this a defined property?
                     if ~obj.allowDynamicPropertyOverride() && isProp
                         % is it a public property
-                        [result s] = obj.mapDeclaredPropertyAccess(name, meta, s);
+                        [result, s] = obj.mapDeclaredPropertyAccess(name, meta, s);
 
                     % is it a defined method?
                     elseif ~obj.allowDynamicMethodOverride() && isMethod
                         % is it a public method?
-                        [result s returnImmediately] = obj.mapDeclaredMethodCall(name, meta, s, nargout);
+                        [result, s, returnImmediately] = ...
+                            obj.mapDeclaredMethodCall(name, meta, s, nargout);
                         if returnImmediately
                             varargout = result;
                             return;
@@ -223,7 +224,8 @@ classdef (HandleCompatible) DynamicClass
                         end
 
                         % request the property value
-                        [value indexingApplied] = obj.mapDynamicPropertyAccess(name, ...
+                        [value, indexingApplied] = ...
+                            obj.mapDynamicPropertyAccess(name, ...
                             type, subs);
 
                         if ~isequal(value, DynamicClass.NotSupported)
@@ -276,10 +278,11 @@ classdef (HandleCompatible) DynamicClass
                         if ~foundSupported
                             % now try the static property and method access again
                             if obj.allowDynamicPropertyOverride() && isProp 
-                                [result s] = obj.mapDeclaredPropertyAccess(name, meta, s);
+                                [result, s] = obj.mapDeclaredPropertyAccess(name, meta, s);
                                 
                             elseif obj.allowDynamicMethodOverride() && isMethod
-                                [result s returnImmediately] = obj.mapDeclaredMethodCall(name, meta, s)
+                                [result, s, returnImmediately] = ...
+                                    obj.mapDeclaredMethodCall(name, meta, s);
                                 if returnImmediately
                                     varargout = result;
                                     return;
@@ -306,10 +309,10 @@ classdef (HandleCompatible) DynamicClass
                     end
                         
                     if strcmp(type, '()')
-                        [result appliedNext] = obj.parenIndex(subs, typeNext, subsNext);
+                        [result, appliedNext] = obj.parenIndex(subs, typeNext, subsNext);
                         typeStr = 'Parenthetical';
                     else
-                        [result appliedNext] = obj.cellIndex(subs, typeNext, subsNext);
+                        [result, appliedNext] = obj.cellIndex(subs, typeNext, subsNext);
                         typeStr = 'Cell array';
                         expandResultAsCell = true;
                     end
@@ -350,7 +353,7 @@ classdef (HandleCompatible) DynamicClass
                 return;
             end
             if ~obj.dynamicClassActive
-                [varargout{1:nargout}] = builtin('subsasgn', obj, s, value);
+                obj = builtin('subsasgn', obj, s, value);
                 return;
             end
             

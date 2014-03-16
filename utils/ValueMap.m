@@ -44,7 +44,7 @@ classdef ValueMap < DynamicClass
             map.ValueType = p.Results.ValueType;
             map.storeKeys = p.Results.StoreKeys;
             uniformValues = p.Results.UniformValues;
-            keySet = p.Results.KeySet;
+            keySet = p.Results.KeySet; %#ok<*PROP>
             valueSet = p.Results.ValueSet;
 
             % infer KeyType if necessary
@@ -135,7 +135,7 @@ classdef ValueMap < DynamicClass
             assert(map.valueValidator(value), 'Value is invalid for ValueType %s', map.ValueType); 
         end
 
-        function keyHash = hashKey(map, key)
+        function keyHash = hashKey(map, key) %#ok<INUSL>
             if ischar(key)
                 if isvarname(key)
                     keyHash = key;
@@ -147,7 +147,7 @@ classdef ValueMap < DynamicClass
             %    keyHash = genvarname(num2str(key));
             else
                 %map.assertKeyValid(key);  
-                %opts.Method = 'MD5';
+                opts.Method = 'MD5';
                 opts.format = 'hex';
                 keyHash = ['s' DataHash(key, opts)];
             end
@@ -249,7 +249,7 @@ classdef ValueMap < DynamicClass
     end
 
     methods % Dynamic property access
-        function [result appliedNext] = parenIndex(map, subs, typeNext, subsNext)
+        function [result, appliedNext] = parenIndex(map, subs, typeNext, subsNext) %#ok<INUSD>
             if length(subs) ~= 1;
                 result = DynamicClass.NotSupported;
                 appliedNext = false;

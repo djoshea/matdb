@@ -1,11 +1,7 @@
 classdef StringField < DataFieldDescriptor
 
-    properties(Dependent)
-        matrix % returned as a matrix if true, returned as cell array if false
-    end
-
     methods
-        function matrix = get.matrix(dfd)
+        function matrix = isScalar(dfd)
             matrix = false;
         end
 

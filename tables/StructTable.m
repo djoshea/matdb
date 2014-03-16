@@ -99,7 +99,6 @@ classdef StructTable < DataTable
         function map = getFieldToValuesMap(db, fields, idx)
             map = ValueMap('KeyType', 'char', 'ValueType', 'any');
             
-
             for iField = 1:length(fields)
                 field = fields{iField};
                 cellValues = {db.table.(field)};

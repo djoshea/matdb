@@ -1,16 +1,9 @@
 classdef DateTimeField < DataFieldDescriptor
 
-    properties(Dependent)
-        matrix % returned as a matrix if true, returned as cell array if false
-    end
-
     properties
         dateFormat % used mainly for DataTimeFieldType.Date
-    end
-
-    properties(Constant)
-        standardDateFormat = 'yyyy-mm-dd HH:MM:SS';
-        standardDisplayFormat = 'ddd dd mmm yyyy HH:MM:SS';
+        standardDateFormat
+        standardDisplayFormat
     end
 
     methods
@@ -22,8 +15,24 @@ classdef DateTimeField < DataFieldDescriptor
             dfd.dateFormat = p.Results.dateFormat;
         end
 
-        function matrix = get.matrix(dfd)
-            matrix = false;
+        function str = getStandardDateFormat(dfd) %#ok<MANU>
+            str = 'yyyy-mm-dd HH:MM:SS';
+        end
+        
+        function str = getStandardDisplayFormat(dfd) %#ok<MANU>
+            str = 'ddd dd mmm yyyy HH:MM:SS';
+        end
+        
+        function f = get.standardDateFormat(dfd)
+            f = dfd.getStandardDateFormat();
+        end
+        
+        function f = get.standardDisplayFormat(dfd)
+            f = dfd.getStandardDisplayFormat();
+        end
+            
+        function matrix = isScalar(dfd) %#ok<MANU>
+            matrix = true;
         end
 
         % return a string representation of this field's data type
@@ -33,16 +42,12 @@ classdef DateTimeField < DataFieldDescriptor
             else
                 format = '';
             end
-            str = sprintf('DateTimeField%s', format);
+            str = sprintf('%s%s', class(dfd), format);
         end
 
         % converts DataFieldType.DateField values to a 1x6 datevec
-        function vec = getAsDateVec(dfd, values)
-            if isempty(dfd.dateFormat)
-                vec = datevec(values, dfd.dateFormat);
-            else
-                vec = datevec(values);
-            end
+        function vec = getAsDateVec(dfd, values) %#ok<INUSL>
+            vec = datevec(values);
         end
 
         % converts DataFieldType.DateField values to a scalar datenum
@@ -51,71 +56,62 @@ classdef DateTimeField < DataFieldDescriptor
                 num = [];
                 return;
             end
-            
-            if isnumeric(values)
+            if isnumeric(values) && ~ischar(values)
                 num = values;
                 return;
             end
             
+            % handle cellstr case
             if ~isempty(dfd.dateFormat)
                 datenumFn = @(values) datenum(values, dfd.dateFormat);
-                %defaultValue = datestr(0, dfd.dateFormat);
             else
                 datenumFn = @(values) datenum(values);
-                %defaultValue = datestr(0);
             end
             
             % replace empty or nan entries with the default value
             % pre conversion
-            invalidFn = @(v) isempty(v) || ~isscalar(v) || isnan(v);
+            invalidFn = @(v) isempty(v) || (~ischar(v) && (~isscalar(v) || isnan(v)));
             if iscell(values)
                 defaultMask = cellfun(invalidFn, values);
             else
                 defaultMask = arrayfun(invalidFn, values);
             end
-%             if any(defaultMask)
-%                 %debug('Warning: using default date value during conversion\n');
-%                 [values{defaultMask}] = deal(defaultValue);
-%             end
-            
             % better default value handling
             num = zeros(numel(values), 1);
             if any(~defaultMask)
                 num(~defaultMask) = datenumFn(values(~defaultMask));
             end
-            %num = datenumFn(values);
         end
 
         function strCell = getAsDateStr(dfd, values, format)
             if nargin < 3
-                format = DateTimeField.standardDateFormat;
+                format = dfd.standardDateFormat;
             end
             strCell = cell(length(values), 1);
-            for i = 1:length(values)
-                value = values{i};
-                if isempty(value) || value == 0
+            nums = dfd.getAsDateNum(values);
+            for i = 1:length(nums)
+                value = nums(i);
+                if value == 0 || isnan(value)
                     strCell{i} = '';
                 else
-                    num = dfd.getAsDateNum(value);
-                    strCell{i} = datestr(num, format);
+                    strCell{i} = datestr(value, format);
                 end
             end
         end
 
         % indicates whether this field should be displayed or not
-        function tf = isDisplayable(dfd)
+        function tf = isDisplayable(dfd) %#ok<MANU>
             tf = true;
         end
 
         % converts field values to a string
         function strCell = getAsStrings(dfd, values) 
-            strCell = dfd.getAsDateStr(values, DateTimeField.standardDisplayFormat);
+            strCell = dfd.getAsDateStr(values, dfd.standardDisplayFormat);
         end
         
         function strCell = getAsDisplayStrings(dfd, values) 
             strCell = dfd.getAsStrings(values);
         end
-
 
         function strCell = getAsFilenameStrings(dfd, values)
             strCell = dfd.getAsDateStr(values, 'yyyy-mm-dd HH-MM-SS');
@@ -149,39 +145,47 @@ classdef DateTimeField < DataFieldDescriptor
         function convValues = convertValues(dfd, values) 
             % converts the set of field values in values to a format appropriate
             % for this DataFieldDescriptor.
-           
+            
             % convert these to string cell array
             if isempty(values)
-                nums = NaN;
+                nums = NaN; 
+              
+            elseif isnumeric(values) && isempty(dfd.format)
+                % keep numeric values as is only if our format string is
+                % blank, otherwise we convert
+                nums = values;
+                
             elseif iscell(values) || ischar(values)
+                % convert cells using getAsDateNum even if already numeric
+                % to handle field values like [20120404] for 'yyyymmdd'
+                % format
                 if ischar(values)
                     values = {values};
                 end
-                [valid convValues] = isStringCell(values, 'convertVector', true);
+                [valid, convValues] = isStringCell(values, 'convertVector', true);
                 assert(valid, 'Cannot convert values into string cell array');
                 % furthermore, convert the date to a standard date format
                 nums = dfd.getAsDateNum(convValues);
-            elseif isnumeric(values)
-                % use directly as datenums
-                nums = values;
+                
+            elseif iscell(values)
+                % convert from cell array of numbers to cell
+                nums = cell2mat(values);
             else
                 error('Cannot convert values into DateTimeField');
             end
-          
-            convValues = cell(length(nums), 1);
-            for i = 1:length(nums)
-                if isnan(nums(i)) || nums(i) == 0
-                    convValues{i} = '';
-                else
-                    convValues{i} = datestr(nums(i), ...
-                        DateTimeField.standardDateFormat);
-                end
+            
+            convValues = nums;
+        end
+        
+        function emp = getEmptyValue(dfd, nValues) %#ok<INUSL>
+            if nargin < 2
+                nValues = 1;
             end
-            dfd.dateFormat = DateTimeField.standardDateFormat;
+            emp = nan(nValues, 1);
         end
 
         % uniquifies field values
-        function uniqueValues = uniqueValues(dfd, values)
+        function uniqueValues = uniqueValues(dfd, values) %#ok<INUSL>
             % finds the unique values within values according to the data type 
             % specified by this DataFieldDescriptor. Automatically removes empty
             % values and NaN values
@@ -238,8 +242,9 @@ classdef DateTimeField < DataFieldDescriptor
     end
 
     methods(Static) % Static utility methods
-        function [tf dfd] = canDescribeValues(cellValues)
-            [tf format num] = isDateStrCell(cellValues, 'allowMultipleFormats', false);
+        function [tf, dfd] = canDescribeValues(cellValues)
+            [tf, format, num] = ...
+                isDateStrCell(cellValues, 'allowMultipleFormats', false); %#ok<NASGU>
 
             if tf
                 % all values work with datevec --> date field

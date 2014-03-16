@@ -67,7 +67,7 @@ classdef DataTable < DynamicClass & Cacheable
         
         % fields: a cell array of names of fields in the data table
         % fieldDescriptorMap : ValueMap ( fieldName -> DataFieldDescriptor )
-        [fields fieldDescriptorMap] = getFields(db)
+        [fields, fieldDescriptorMap] = getFields(db)
 
         % returns the number of entries currently selected by the current filter 
         nEntries = getEntryCount(db)
@@ -348,7 +348,7 @@ classdef DataTable < DynamicClass & Cacheable
             end
             %debug('Applying fields\n');
 
-            [db.fieldsCache db.fieldDescriptorMapCache] = db.getFields(); 
+            [db.fieldsCache, db.fieldDescriptorMapCache] = db.getFields(); 
             assert(iscellstr(db.fieldsCache) && isvector(db.fieldsCache), ...
                 'Fields returned by .getFields() must be a cell vector of strings');
             db.pendingApplyFields = false;
@@ -395,7 +395,7 @@ classdef DataTable < DynamicClass & Cacheable
             if isa(filterOrKeyword, 'DataFilter')
                 % DataFilter passed directly
                 filt = filterOrKeyword;
-                if length(varargin) > 0
+                if ~isempty(varargin)
                     error('Extra arguments passed to .filterEntries with DataFilter specified');
                 end
             else
@@ -419,7 +419,7 @@ classdef DataTable < DynamicClass & Cacheable
             if isa(filterOrKeyword, 'DataFilter')
                 % DataFilter passed directly
                 filt = filterOrKeyword;
-                if length(varargin) > 0
+                if ~isempty(varargin)
                     error('Extra arguments passed to .filterEntries with DataFilter specified');
                 end
             else
@@ -583,13 +583,13 @@ classdef DataTable < DynamicClass & Cacheable
             db.checkAppliedFields();
 
             % build list of fields from arguments
-            sortByList = {};
+            sortByList = {}; %#ok<*PROP>
             for iArg = 1:length(varargin)
                 arg = varargin{iArg};
                 if iscell(arg)
-                    sortByList = [sortByList; makecol(arg)];
+                    sortByList = [sortByList; makecol(arg)];  %#ok<AGROW>
                 else
-                    sortByList = [sortByList; arg];
+                    sortByList = [sortByList; arg]; %#ok<AGROW>
                 end
             end
 
@@ -692,7 +692,7 @@ classdef DataTable < DynamicClass & Cacheable
                     %debug('Sorting entries\n');
 
                     % build list of sort fields 
-                    [sortFields reverse] = getFieldsRequiredBySorting(db);
+                    [sortFields, reverse] = getFieldsRequiredBySorting(db);
                     uniqueSortFields = unique(sortFields);
                     %debug('%d fields required for filtering: %s\n', ...
                     %    length(uniqueSortFields), strjoin(uniqueSortFields));
@@ -1319,6 +1319,8 @@ classdef DataTable < DynamicClass & Cacheable
                 %                     appliedNext = true;
                 %                 else
                 value = db.getValues(name);
+                
+                % THIS IS ERROR PRONE, USE {1} INDEXING FOR THIS
                 % The following line removes the unnecessary cell array around
                 % a singular value when there is only one entry
                 % This is nice for the extremely common case of t(1).field
@@ -1327,9 +1329,9 @@ classdef DataTable < DynamicClass & Cacheable
                 % there are better ways to do this (i.e. call .select) and then
                 % loop through the entries. Note that this makes the common case
                 % more convenient but can cause confusion in the less common case
-                if db.nEntries == 1 && iscell(value) 
-                    value = value{1};
-                end
+                %if db.nEntries == 1 && iscell(value) 
+                %    value = value{1};
+                %end
                 appliedNext = false;
                 %                 end
 
@@ -1344,7 +1346,7 @@ classdef DataTable < DynamicClass & Cacheable
             end
         end
 
-        function [value appliedNext] = parenIndex(db, subs, typeNext, subsNext)
+        function [value, appliedNext] = parenIndex(db, subs, typeNext, subsNext)
             assert(length(subs) == 1, 'Only vector entry indexing is allowed');
             idx = subs{1};
             value = db.select(idx);
@@ -1465,6 +1467,10 @@ classdef DataTable < DynamicClass & Cacheable
             dfd = p.Results.fieldDescriptor;
             position = p.Results.position;
             keyField = p.Results.keyField;
+            
+            if ischar(values)
+                values = {values};
+            end
 
             if isempty(dfd) 
                 % no field descriptor provided, infer from values
