@@ -150,15 +150,15 @@ classdef DateTimeField < DataFieldDescriptor
             if isempty(values)
                 nums = NaN; 
               
-            elseif isnumeric(values) && isempty(dfd.format)
-                % keep numeric values as is only if our format string is
-                % blank, otherwise we convert
+            elseif isnumeric(values)
+                % keep numeric values as is always. you must manually
+                % convert to strings before passing in pure numeric formats
+                % like 20120303, since otherwise we can't keep datenums and
+                % formatted numbers straight
                 nums = values;
                 
-            elseif iscell(values) || ischar(values)
-                % convert cells using getAsDateNum even if already numeric
-                % to handle field values like [20120404] for 'yyyymmdd'
-                % format
+            elseif iscellstr(values) || ischar(values)
+                % convert cells using getAsDateNum
                 if ischar(values)
                     values = {values};
                 end

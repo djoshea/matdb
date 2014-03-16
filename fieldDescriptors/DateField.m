@@ -43,6 +43,7 @@ classdef DateField < DateTimeField
         % converts field values to an appropriate format
         function convValues = convertValues(dfd, values) 
             convValues = convertValues@DateTimeField(dfd, values);
+            convValues = floor(convValues);
         end
 
         % uniquifies field values
