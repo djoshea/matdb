@@ -33,6 +33,10 @@ classdef DateField < DateTimeField
             values = floor(values);
             strCell = getAsDateStr@DateTimeField(dfd, values, format);
         end
+        
+        function strCell = getAsFilenameStrings(dfd, values)
+            strCell = dfd.getAsDateStr(values, 'yyyy-mm-dd');
+        end
 
         % sorts the values in either ascending or descending order
         function sortIdx = sortValues(dfd, values, ascendingOrder)

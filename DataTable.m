@@ -311,11 +311,20 @@ classdef DataTable < DynamicClass & Cacheable
 
             % pass this along as values to other.addField()
             p.addParamValue('values', []);
+            
+            % copy the values 1:1 from db to other
+            p.addParamValue('copyValues', false, @islogical);
+            
             p.parse(field, other, varargin{:});
 
             as = p.Results.as;
             values = p.Results.values;
             keyField = p.Results.keyField;
+            
+            if p.Results.copyValues
+                assert(isempty(values), 'Do not specify values param when copyValues is true');
+                values = db.getValues(field);
+            end
 
             db.warnIfNoArgOut(nargout);
 
@@ -2253,7 +2262,7 @@ classdef DataTable < DynamicClass & Cacheable
         function count = getRelatedCount(db, entryName, varargin)
             db.checkHasDatabase();
             relatedCell = db.getRelatedIdx(entryName, 'combine', false, 'fillMissingWithNaN', false);
-            count = cellfun(@numel, relatedCell);
+            count = makecol(cellfun(@numel, relatedCell));
         end
 
         function match = getRelated(db, entryName, varargin)

@@ -433,10 +433,12 @@ classdef Database < DynamicClass & handle
             p = inputParser;
             p.addParamValue('combine', true, @islogical);
             p.addParamValue('fillMissingWithNaN', true, @islogical);
+            p.addParamValue('forceOneToOne', false, @islogical);
             p.parse(varargin{:});
             
-            combine = p.Results.combine;
-            fillMissingWithNaN = p.Results.fillMissingWithNaN;
+            forceOneToOne = p.Results.forceOneToOne;
+            combine = p.Results.combine | forceOneToOne;
+            fillMissingWithNaN = p.Results.fillMissingWithNaN | forceOneToOne;
          
             relCell = db.findAllRelationships(table.entryName, referenceName);
             
@@ -455,7 +457,8 @@ classdef Database < DynamicClass & handle
 
                 newMatchIdx = rel.match(table, tableReference, ...
                     'tableJunction', tableJunction, 'combine', combine, ...
-                    'fillMissingWithNaN', fillMissingWithNaN);
+                    'fillMissingWithNaN', fillMissingWithNaN, ...
+                    'forceOneToOne', forceOneToOne);
                 
                 if i == 1
                     matchIdx = newMatchIdx;
@@ -474,7 +477,9 @@ classdef Database < DynamicClass & handle
                     else
                         % if 'combine' is true (passed to matchLeftInRight
                         % above)
-                        matchIdx = unique(matchIdx, newMatchIdx);
+                        if ~forceOneToOne
+                            matchIdx = unique(matchIdx, newMatchIdx);
+                        end
                     end
                 end
             end
@@ -494,9 +499,11 @@ classdef Database < DynamicClass & handle
             p = inputParser();
             p.addParamValue('combine', true, @islogical);
             p.addParamValue('fillMissingWithEmpty', true, @islogical);
+            p.addParamValue('forceOneToOne', false, @islogical);
             p.parse(varargin{:});
             [matchIdx, tableReference] = db.getRelatedIdx(table, referenceName, ...
-                'combine', p.Results.combine, 'fillMissingWithNaN', p.Results.fillMissingWithEmpty);
+                'combine', p.Results.combine, 'fillMissingWithNaN', p.Results.fillMissingWithEmpty, ...
+                'forceOneToOne', p.Results.forceOneToOne);
             
             if iscell(matchIdx)
                 result = cellfun(@(idx) tableReference.select(idx), matchIdx, 'UniformOutput', false);

@@ -684,18 +684,20 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             p.addRequired('tableRight', @(x) isa(x, 'DataTable'));
             p.addParamValue('tableJunction', [], @(x) isempty(x) || isa(x, 'DataTable')); 
             p.addParamValue('combine', true, @islogical);
-            p.addParamValue('keepFirst', false, @isscalar); % keep first N matches
+            p.addParamValue('keepFirst', false, @(x) islogical(x) | isscalar(x)); % keep first N matches
             p.addParamValue('warnIfMissing', false, @islogical);
+            p.addParamValue('forceOneToOne', false, @islogical);
             p.addParamValue('uniquify', true, @islogical);
             p.addParamValue('fillMissingWithNaN', false, @islogical); 
             p.parse(tableLeft, tableRight, varargin{:});
 
             tableJunction = p.Results.tableJunction;
-            combine = p.Results.combine;
-            keepFirst = double(p.Results.keepFirst);
+            forceOneToOne = p.Results.forceOneToOne;
+            combine = p.Results.combine | forceOneToOne;
+            keepFirst = p.Results.keepFirst | forceOneToOne;
             warnIfMissing = p.Results.warnIfMissing;
-            uniquify = p.Results.uniquify;
-            fillMissingWithNaN = p.Results.fillMissingWithNaN;
+            uniquify = p.Results.uniquify & ~forceOneToOne;
+            fillMissingWithNaN = p.Results.fillMissingWithNaN | forceOneToOne;
             
             % check entry names match
             assert(strcmp(tableLeft.entryName, rel.entryNameLeft));
@@ -776,9 +778,15 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                         
             if keepFirst > 0 
                 % truncate to first N matches
+                keepFirst = double(keepFirst);
                 matchIdx(counts > keepFirst) = ...
                     cellfun(@(idx) idx(1:keepFirst), matchIdx(counts > keepFirst), ...
                     'UniformOutput', false);
+            end
+            
+            if forceOneToOne
+                % replace empty cells with NaN
+                matchIdx(counts == 0) = deal({NaN});
             end
             
             if combine
