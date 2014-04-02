@@ -1040,7 +1040,7 @@ classdef DataTable < DynamicClass & Cacheable
             uniqueValsCell = cell(length(fields), 1);
             for iField = 1:length(fields)
                 field = fields{iField};
-                [uniqueIdxMat(:, iField) uniqueVals] = db.getValuesAsIdxIntoUnique(field);
+                [uniqueIdxMat(:, iField), uniqueVals] = db.getValuesAsIdxIntoUnique(field);
 
                 if ~iscell(uniqueVals)
                     uniqueVals = num2cell(uniqueVals);
@@ -1048,7 +1048,7 @@ classdef DataTable < DynamicClass & Cacheable
                 uniqueValsCell{iField} = uniqueVals;
             end
 
-            [tupleLookups ia uniqueTupleIdx] = unique(uniqueIdxMat, 'rows'); 
+            [tupleLookups, ia, uniqueTupleIdx] = unique(uniqueIdxMat, 'rows'); 
 
             % build a struct where uniqueTuples(i).field is the value of field in the ith unique tuple
             nTuples = size(tupleLookups, 1);
@@ -1056,7 +1056,9 @@ classdef DataTable < DynamicClass & Cacheable
                 for iField = 1:length(fields)
                     field = fields{iField};
                     valueIdx = tupleLookups(iTuple, iField);
-                    uniqueTuples(iTuple).(field) = uniqueValsCell{iField}{valueIdx};
+                    if valueIdx > 0 % 0 happens when the value was NaN
+                        uniqueTuples(iTuple).(field) = uniqueValsCell{iField}{valueIdx};
+                    end
                 end
             end
 
