@@ -253,7 +253,10 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
         function runDebug(da, varargin)
             % wraps .run with common params for debugging, i.e. don't
             % saveCache, loadCache, catchErrors, but do rerunFailed
-            da.run('loadCache', false, 'saveCache', false, 'catchErrors', false, 'rerunFailed', true);
+            
+            da.run('keepCurrentValues', false, 'loadCache', false, ...
+                'saveCache', false, 'catchErrors', false, 'rerunFailed', true, ...
+                'maxToRun', 10);
         end
 
         function run(da, varargin)
@@ -287,6 +290,9 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             % if true, otherwise will merge it in
             p.addParamValue('keepCurrentValues', false, @islogical);
             
+            % for debug purposes mainly, run only on this many entries
+            p.addParamValue('maxToRun', Inf, @isscalar);
+            
             % for new entries that run, they will be unloaded from the table immediately
             % if this is false so as to prevent memory overflows for large analyses
             % if true, new analysis results will be kept in the table, 
@@ -305,6 +311,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             forceReport = p.Results.forceReport;
             storeInTable = p.Results.storeInTable;
             keepCurrentValues = p.Results.keepCurrentValues;
+            maxToRun = p.Results.maxToRun;
             db = p.Results.database;
 
             % get analysis name
@@ -358,6 +365,11 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             % keep track of whether we need to re-cache the result table 
             resultTableChanged = false;
 
+            if maxToRun < resultTable.nEntries
+                debug('Selecting only first %d entries to run on\n', maxToRun);
+                resultTable = resultTable.select(1:maxToRun);
+            end
+            
             % mask by entry of which entries must be run
             maskAlreadyRun = false(resultTable.nEntries, 1);
             maskFailed = false(resultTable.nEntries, 1);
@@ -778,7 +790,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                 if ~isempty(timeRunList)
                     da.timeRun = max(timeRunList);
                 end
-            else
+            elseif saveCache
                 debug('Generating analysis report: loading displayable fields for all entries\n');
                 % here we're writing the report
                 % before we do this, we need to load the values of all displayable fields
