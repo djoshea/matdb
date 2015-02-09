@@ -594,7 +594,7 @@ classdef Database < DynamicClass & handle
         function loadSource(db, src, varargin)
             p = inputParser;
             p.addRequired('source', @(s) iscell(s) || isa(s, 'DataSource'));
-            p.addParamValue('reload', false, @islogical);
+            p.addParameter('reload', false, @islogical);
             p.parse(src, varargin{:});
             src = p.Results.source;
             reload = p.Results.reload;

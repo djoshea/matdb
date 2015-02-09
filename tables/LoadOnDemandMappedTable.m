@@ -137,16 +137,18 @@ classdef LoadOnDemandMappedTable < StructTable
             
             % specify either a database (which we can use to find the table this table
             % maps to in order to build the one to one relationship)
-            p.addParamValue('database', '', @(db) isa(db, 'Database'));
+            p.addParameter('database', '', @(db) isa(db, 'Database'));
             % or specify a table directly
-            p.addParamValue('table', '', @(db) isa(db, 'DataTable'));
+            p.addParameter('table', '', @(db) isa(db, 'DataTable'));
             % if specifying table directly, rely on user to specify which fields are loaded
-            p.addParamValue('fieldsLoaded', {}, @iscellstr);
-            p.addParamValue('entryName', '', @ischar);
-            p.addParamValue('entryNamePlural', '', @ischar);
+            p.addParameter('fieldsLoaded', {}, @iscellstr);
+            p.addParameter('entryName', '', @ischar);
+            p.addParameter('entryNamePlural', '', @ischar);
             
             % if true, keep any field values that are currently loaded in the database
-            p.addParamValue('keepCurrentValues', false, @islogical);
+            p.addParameter('keepCurrentValues', false, @islogical);
+            
+            p.addParameter('maxRows', Inf, @isscalar); % used mainly for debugging, when we'd like to keep only to map over the first N rows
             p.parse(varargin{:});
             
             db = p.Results.database;
@@ -155,6 +157,7 @@ classdef LoadOnDemandMappedTable < StructTable
             entryName = p.Results.entryName;
             entryNamePlural = p.Results.entryNamePlural;
             keepCurrentValues = p.Results.keepCurrentValues;
+            maxRows = p.Results.maxRows;
             
             if isempty(db) && isempty(table)
                 if isempty(dt.database)
@@ -184,6 +187,11 @@ classdef LoadOnDemandMappedTable < StructTable
                 else
                     debug('Mapping LoadOnDemand table off table %s\n', entryNameMap);
                     table = db.getTable(entryNameMap).keyFieldsTable;
+                end
+                
+                % limit the row count when debugging!
+                if table.nEntries > maxRows
+                    table = table.select(1:maxRows);
                 end
                 
                 table = table.setEntryName(entryName, entryNamePlural);
@@ -394,8 +402,8 @@ classdef LoadOnDemandMappedTable < StructTable
             % for which loadedByEntry(iEntry).field is .NotLoaded for all fields
             % unless field is a member of param fieldsLoaded 
             p = inputParser;
-            p.addParamValue('fieldsLoaded', {}, @iscellstr);
-            p.addParamValue('nEntries', dt.nEntries, @isscalar);
+            p.addParameter('fieldsLoaded', {}, @iscellstr);
+            p.addParameter('nEntries', dt.nEntries, @isscalar);
             p.parse(varargin{:});
             fieldsLoaded = p.Results.fieldsLoaded;
             nEntries = p.Results.nEntries;
@@ -412,8 +420,8 @@ classdef LoadOnDemandMappedTable < StructTable
             % for which loadedByEntry(iEntry).field is .NotLoaded for all fields
             % unless field is a member of param fieldsLoaded 
             p = inputParser;
-            p.addParamValue('fieldsLoaded', {}, @iscellstr);
-            p.addParamValue('nEntries', dt.nEntries, @isscalar);
+            p.addParameter('fieldsLoaded', {}, @iscellstr);
+            p.addParameter('nEntries', dt.nEntries, @isscalar);
             p.parse(varargin{:});
             fieldsLoaded = p.Results.fieldsLoaded;
             nEntries = p.Results.nEntries;
@@ -450,26 +458,26 @@ classdef LoadOnDemandMappedTable < StructTable
             p.addOptional('fields', dt.fieldsLoadOnDemand, @iscellstr);
 
             % if true, force reload of ALL fields
-            p.addParamValue('reload', false, @islogical);
+            p.addParameter('reload', false, @islogical);
 
             % if false, ignore cached values for fieldsCacheable
-            p.addParamValue('loadCache', true, @islogical);
+            p.addParameter('loadCache', true, @islogical);
 
             % if true, only load values from a saved cache, don't call load method
-            p.addParamValue('loadCacheOnly', false, @islogical);
+            p.addParameter('loadCacheOnly', false, @islogical);
 
             % if true, don't load cache values, just populate cacheTimestamps with timestamps 
-            p.addParamValue('loadCacheTimestampsOnly', false, @islogical);
+            p.addParameter('loadCacheTimestampsOnly', false, @islogical);
             
             % only load for selected entries
-            p.addParamValue('entryMask', true(dt.nEntries, 1), @(x) true);
+            p.addParameter('entryMask', true(dt.nEntries, 1), @(x) true);
 
             % if false, don't save newly loaded values in the cache
-            p.addParamValue('saveCache', true, @islogical);
+            p.addParameter('saveCache', true, @islogical);
 
             % if false, don't actually hold onto the value in the table
             % just return the values
-            p.addParamValue('storeInTable', true, @islogical);
+            p.addParameter('storeInTable', true, @islogical);
             p.parse(varargin{:});
             
             fields = p.Results.fields;
@@ -602,8 +610,16 @@ classdef LoadOnDemandMappedTable < StructTable
                                     end
                                 end
                             end
+                        else
+                            % no need to load any values, store each field and mark as loaded
+                            for iField = 1:length(fieldsCacheable)
+                                field = fieldsCacheable{iField};
+                                if isfield(table, field)
+                                    loadedValues.(field) = table(iEntry).(field);
+                                    loaded.(field) = true;
+                                end
+                            end
                         end
-                        
                     end
 
                 elseif loadCacheTimestampsOnly
@@ -806,14 +822,14 @@ classdef LoadOnDemandMappedTable < StructTable
             dt.warnIfNoArgOut(nargout);
             p = inputParser;
             % write-down this value to the cache for this field value
-            p.addParamValue('saveCache', true, @islogical);
+            p.addParameter('saveCache', true, @islogical);
             % if false, doesn't store the result in table, useful in conjuction
             % with saveCache
-            p.addParamValue('storeInTable', true, @islogical);
+            p.addParameter('storeInTable', true, @islogical);
             % mark the entry loaded in .loadedByEntry
-            p.addParamValue('markLoaded', true, @islogical);
+            p.addParameter('markLoaded', true, @islogical);
             % mark the entry unloaded in .loadedByEntry
-            p.addParamValue('markUnloaded', false, @islogical);
+            p.addParameter('markUnloaded', false, @islogical);
             p.parse(varargin{:});
             saveCache = p.Results.saveCache;
             storeInTable = p.Results.storeInTable;
@@ -851,14 +867,14 @@ classdef LoadOnDemandMappedTable < StructTable
                 % cache the whole row at once
                 p = inputParser;
                 % write-down this value to the cache for this field value
-                p.addParamValue('saveCache', true, @islogical);
+                p.addParameter('saveCache', true, @islogical);
                 % if false, doesn't store the result in table, useful in conjuction
                 % with saveCache
-                p.addParamValue('storeInTable', true, @islogical);
+                p.addParameter('storeInTable', true, @islogical);
                 % mark the entry loaded in .loadedByEntry
-                p.addParamValue('markLoaded', true, @islogical);
+                p.addParameter('markLoaded', true, @islogical);
                 % mark the entry unloaded in .loadedByEntry
-                p.addParamValue('markUnloaded', false, @islogical);
+                p.addParameter('markUnloaded', false, @islogical);
                 p.parse(varargin{:});
                 saveCache = p.Results.saveCache;
                 storeInTable = p.Results.storeInTable;
@@ -1095,7 +1111,7 @@ classdef LoadOnDemandMappedTable < StructTable
 %             param.table = dt.getCacheParam();
 %         end
 
-        function [validCache values timestamp] = retrieveCachedValuesForEntry(dt, iEntry, fields)
+        function [validCache, values, timestamp] = retrieveCachedValuesForEntry(dt, iEntry, fields)
             assert(~dt.cacheFieldsIndividually,  'This should only be called when not caching fields individually');
             if nargin < 3
                 % default to grabbing all fields at once
@@ -1121,14 +1137,14 @@ classdef LoadOnDemandMappedTable < StructTable
             end
         end
         
-        function [validCache timestamp] = retrieveCachedTimestampForEntry(dt, iEntry)
+        function [validCache, timestamp] = retrieveCachedTimestampForEntry(dt, iEntry)
             cacheName = dt.getCacheNameForEntryAllFields();
             %cacheParam = dt.getCacheParamForEntryAllFields(iEntry);
             hash = dt.table(iEntry).keyFieldHash;
             cacheTimestamp = dt.cacheValidTimestampAllFields();
 
             cm = dt.getFieldValueCacheManager();
-            [validCache timestamp] = cm.hasCacheNewerThan(cacheName, [], cacheTimestamp, 'hash', hash);
+            [validCache, timestamp] = cm.hasCacheNewerThan(cacheName, [], cacheTimestamp, 'hash', hash);
         end
         
         function dt = cacheEntryAllFields(dt, iEntry, row)
@@ -1180,7 +1196,7 @@ classdef LoadOnDemandMappedTable < StructTable
     methods % Cacheable overrides
         function dt = prepareForCache(dt, varargin)
             p = inputParser;
-            p.addParamValue('snapshot', false, @islogical);  
+            p.addParameter('snapshot', false, @islogical);  
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             snapshot = p.Results.snapshot;
@@ -1208,7 +1224,7 @@ classdef LoadOnDemandMappedTable < StructTable
             % mergeEntriesWith
             
             p = inputParser;
-            p.addParamValue('snapshot', false, @islogical);  
+            p.addParameter('snapshot', false, @islogical);  
             p.parse(varargin{:});
             snapshot = p.Results.snapshot;
 

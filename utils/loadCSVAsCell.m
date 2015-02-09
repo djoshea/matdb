@@ -75,13 +75,18 @@ function cellMat = loadCSVAsCell(varargin)
     % split into cell array of line contents
     indLineBreak = find(nonQuotedLineBreakMask);
     lineCell = splitVectorAtIndices(text, indLineBreak, 1);
+    
     nonQuotedDelimMaskCell = splitVectorAtIndices(nonQuotedDelimMask, indLineBreak, 1);
-    nRows = numel(lineCell);
 
     % split lines into individual elements
     cellOfCells = cellfun(@(line, mask) splitVectorAtIndices(line, find(mask), 1), ...
         lineCell, nonQuotedDelimMaskCell, 'UniformOutput', false);
 
+    % filter blank lines
+    lineMask = cellfun(@numel, lineCell) > 0;
+    cellOfCells = cellOfCells(lineMask);
+    nRows = numel(cellOfCells);
+    
     % split into row/column cell matrix
     nColsPerLine = cellfun(@numel, cellOfCells);
     nCols = max(nColsPerLine);
@@ -117,6 +122,15 @@ function tokens = splitVectorAtIndices(vec, idx, delimSize)
 
     if nargin < 3
         delimSize = 3;
+    end
+    
+    if isempty(idx)
+        if isempty(vec)
+            tokens = {};
+        else
+            tokens = {vec};
+        end
+        return;
     end
 
     nDelim = numel(idx);

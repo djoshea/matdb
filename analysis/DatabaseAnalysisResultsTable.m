@@ -31,6 +31,7 @@ classdef DatabaseAnalysisResultsTable < LoadOnDemandMappedTable
             p = inputParser;
             p.KeepUnmatched = true;
             p.addRequired('da', @(da) isa(da, 'DatabaseAnalysis'));
+            p.addParameter('maxRows', Inf, @isscalar);
 
             p.parse(da, varargin{:});
             
@@ -49,12 +50,12 @@ classdef DatabaseAnalysisResultsTable < LoadOnDemandMappedTable
             dt.entryNamePlural = dt.entryName;
             dt.analysisCacheFieldsIndividually = da.getCacheFieldsIndividually();
             
-            dt = initialize@LoadOnDemandMappedTable(dt, 'database', da.database);
+            dt = initialize@LoadOnDemandMappedTable(dt, 'database', da.database, 'maxRows', p.Results.maxRows);
         end
     end
 
     methods
-        function [entryName entryNamePlural] = getEntryName(dt)
+        function [entryName, entryNamePlural] = getEntryName(dt)
             entryName = dt.analysisName;
             entryNamePlural = entryName;
         end
@@ -64,17 +65,17 @@ classdef DatabaseAnalysisResultsTable < LoadOnDemandMappedTable
         end
 
         % load on demand fields = {additional fields, analysis fields}
-        function [fields fieldDescriptorMap] = getFieldsLoadOnDemand(dt)
+        function [fields, fieldDescriptorMap] = getFieldsLoadOnDemand(dt)
             fieldDescriptorMap = dt.fieldsAdditionalDescriptorMap.add(dt.fieldsAnalysisDescriptorMap);
             fields = fieldDescriptorMap.keys;
         end
 
-        function [fields fieldDescriptorMap] = getFieldsAdditional(dt)
+        function [fields, fieldDescriptorMap] = getFieldsAdditional(dt)
             fieldDescriptorMap = dt.fieldsAdditionalDescriptorMap;
             fields = fieldDescriptorMap.keys;
         end
 
-        function [fields fieldDescriptorMap] = getFieldsNotLoadOnDemand(dt)
+        function [fields, fieldDescriptorMap] = getFieldsNotLoadOnDemand(dt)
             fieldDescriptorMap = ValueMap(); 
             fields = {};
         end
