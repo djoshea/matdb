@@ -953,7 +953,7 @@ classdef DataTable < DynamicClass & Cacheable
                         stringMap(field) = dfd.getAsDisplayStrings(valueMap(field));
                     end
                     if ~iscellstr(stringMap(field))
-                        error('getAsDisplayStrings failed to return a string');
+                        error('getAsDisplayStrings failed to return a cellstr');
                     end
                 end
             end
@@ -2320,10 +2320,9 @@ classdef DataTable < DynamicClass & Cacheable
     methods % Utility methods
         function warnIfNoArgOut(db, nargOut)
             if nargOut == 0
-                message = sprintf('WARNING: %s is not a handle class. If the instance handle returned by this method is not stored, this call has no effect.\\n', ...
+                message = sprintf('%s is not a handle class. If the instance handle returned by this method is not stored, this call has no effect.\\n', ...
                     class(db));
-                expr = sprintf('debug(''%s'')', message);
-                evalin('caller', expr); 
+                warning(message);
             end
         end
     end
