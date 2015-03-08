@@ -187,6 +187,22 @@ classdef CacheManager < handle
                 data = contents.data;
             end
             
+            % check the contents of data (or the fields itself) for
+            % CacheCustomSaveLoadPlaceholder
+            if isstruct(data)
+                flds = fieldnames(data);
+                for iFld = 1:numel(flds)
+                    val = data.(flds{iFld});
+                    if isa(val, 'CacheCustomSaveLoadPlaceholder')
+                        location = cm.getPathCustomFromHashFileName(file, flds{iFld});
+                        data.(flds{iFld}) = val.doCustomLoadFromLocation(location);
+                    end
+                end
+            elseif isa(data, 'CacheCustomSaveLoadPlaceholder')
+                location = cm.getPathCustomFromHashFileName(file);
+                data = data.doCustomLoadFromLocation(location);
+            end
+            
             % restore warning
             warning(warnStatus);
         end 
@@ -223,16 +239,48 @@ classdef CacheManager < handle
             %debug('Saving cache meta %s\n', fileMeta);
             save(fileMeta, 'param', 'timestamp', 'separateFields', 'fields');
 
+            % now we respect objects which inherit the interface
+            % CacheSaveLoad. we check each value to determine if this
+            % is the case (or if the methods of CacheCustomSaveLoad are
+            % implemented directly, so that classes need not explicitly
+            % inherit from CacheCustomSaveLoad). Then we poll each object
+            % to see whether custom saving is active. Then we custom save
+            % each object, and replace it with a CacheCustomSavePlaceholder
+            % that will tell us what to do when loading
+            
+            if isstruct(data)
+                flds = fieldnames(data);
+                for iFld = 1:numel(flds)
+                    val = data.(flds{iFld});
+                    if CacheCustomSaveLoad.checkIfCustomSaveLoadOkay(val)
+                        customLocation = cm.getPathCustomFromHashFileName(fileMeta, flds{iFld});
+                        token = val.saveCustomToLocation(customLocation);
+                        
+                        % replace original with placeholder
+                        data.(flds{iFld}) = CacheCustomSaveLoadPlaceholder(val, token);
+                    end
+                end
+            else
+                % check the main value itself
+                if CacheCustomSaveLoad.checkIfCustomSaveLoadOkay(data)
+                    customLocation = cm.getPathCustomFromHashFileName(fileMeta);
+                    token = data.saveCustomToLocation(customLocation);
+                    
+                    % replace original with placeholder
+                    data = CacheCustomSaveLoadPlaceholder(data, token);
+                end
+            end
+                
             % save cache data file
             %debug('Saving cache data %s\n', fileData);
             if separateFields
                 assert(isstruct(data) && isscalar(data), 'Data must be a scalar struct in order to save fields');
                 % save each field separately and include a variable
-                %saveLarge(fileData, '-struct', 'data');
-                save(fileData, '-struct', 'data');
+                saveLarge(fileData, '-struct', 'data');
+                %save(fileData, '-struct', 'data');
             else
-                %saveLarge(fileData, 'data');
-                save(fileData, 'data');
+                saveLarge(fileData, 'data');
+                %save(fileData, 'data');
             end 
         end
     end
@@ -248,6 +296,25 @@ classdef CacheManager < handle
                 if exist(file, 'file')
                     debug('Deleting cache file %s\n', file);
                     delete(file);
+                end
+            end
+            
+            % delete all custom locations for any possible fields
+            fileListFull = cm.getFileListMeta(cacheName, param, '', varargin{:});
+            for iLoc = 1:length(fileListFull)
+                pathCustom = cm.getPathCustomFromHashFileName(fileListFull{iLoc});
+                if exist(pathCustom, 'dir')
+                    debug('Deleting custom save/load directory %s\n', pathCustom);
+                    rmdir(pathCustom, 's');
+                end
+                
+                pathCustomWildcardAllFields = cm.getPathCustomFromHashFileName(fileListFull{iLoc}, '*');
+                searchResults = dir(pathCustomWildcardAllFields);
+                
+                for iR = 1:numel(searchResults)
+                    pathCustom = fullfile(fileparts(fileListFull{1}), searchResults(iR).name);
+                    debug('Deleting custom save/load directory %s\n', pathCustom);
+                    rmdir(pathCustom, 's');
                 end
             end
         end
@@ -297,6 +364,17 @@ classdef CacheManager < handle
             end
             file = cm.getFileListData(cacheName, param, root, varargin{:});
             file = file{1};
+        end
+        
+        function pathCustom = getPathCustomFromHashFileName(cm, metaFile, field)
+             % strip off the .data.mat and add _custom_FIELD
+            [root, name] = fileparts(metaFile);
+            [root, name] = fileparts(fullfile(root, name));
+            if nargin < 3 || isempty(field)
+                pathCustom = fullfile(root, sprintf([name '.custom']));
+            else
+                pathCustom = fullfile(root, sprintf([name '.custom_%s'], field));
+            end
         end
         
         function fileList = getFileListMeta(cm, cacheName, param, varargin) 

@@ -4,6 +4,8 @@ classdef DatabaseAnalysisResultsTable < LoadOnDemandMappedTable
         analysisParam
         analysisParamDesc
         
+        analysis % handle to the database analysis instance that created me
+        
         databaseAnalysisClass 
         analysisName 
         mapsEntryName
@@ -38,6 +40,7 @@ classdef DatabaseAnalysisResultsTable < LoadOnDemandMappedTable
             assert(~isempty(da.database), 'Associate the DatabaseAnalysis with a Database first using .setDatabase(db)');
             
             % store parameter info and description info
+            dt.analysis = da;
             dt.analysisParam = da.getCacheParam();
             dt.analysisParamDesc = da.getDescriptionParam();
             
@@ -81,8 +84,8 @@ classdef DatabaseAnalysisResultsTable < LoadOnDemandMappedTable
         end
 
         function fields = getFieldsRequestable(dt)
-            % enforce that we never generate field values here, we only load from cache
-            fields = {};
+            % here we allow direct request of custom save load
+            fields = dt.analysis.getFieldsCustomSaveLoad();
         end
 
         function fields = getFieldsCacheable(dt)
@@ -94,7 +97,11 @@ classdef DatabaseAnalysisResultsTable < LoadOnDemandMappedTable
         % or load the values of those fields for a specific entry in the mapped table
         % and return a struct containing those field values.
         function valueStruct = loadValuesForEntry(dt, entry, fields)
-            error('Request for value of field %s unsupported, should have been loaded already or found in cache');
+            % not quite fully implemented yet, need saveValuesForEntry too
+            inCustom = ismember(fields, dt.da.getFieldsCustomSaveLoad());
+            assert(all(inCustom), 'Fields to load for entry must be listed within custom save load');
+            
+            valueStruct = dt.analysis.loadValuesCustomForEntry(entry, fields);
         end
 
         % if true, cacheable fields are written to the cache individually

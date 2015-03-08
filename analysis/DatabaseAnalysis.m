@@ -86,10 +86,24 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
         % run this analysis on one entry, entryTable will be a DataTable instance
         % filtered down to one entry
         resultStruct = runOnEntry(da, entry, fields)
-
     end
 
     methods % not necessary to override if the defaults are okay
+        % return fields here that you wish to have custom control over the
+        % save load process
+        function fields = getFieldsCustomSaveLoad(da, other)
+            fields = {};
+        end
+        
+        function data = loadValuesCustomForEntry(da, entry, fields, extraInfo)
+            % here entry will be the mapped entry, not the 
+            error('Please override loadValuesCustomForEntry if you wish to use getFieldsCustomSaveLoad');
+        end
+        
+        function saveValuesCustomForEntry(da, entry, data, extraInfo)
+            error('Please override saveValuesCustomForEntry if you wish to use getFieldsCustomSaveLoad');
+        end
+        
         % determine if this DatabaseAnalysis instance is equivalent to other,
         % an instance which has already been loaded in the Database.
         function tf = isequal(da, other)
@@ -176,6 +190,19 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             fieldDescriptorMap('figureInfo') = UnspecifiedField();
             fields = fieldDescriptorMap.keys;
         end
+        
+        % return the list of fields to load when the analysis is loaded
+        % into the database as a DataSource via .loadSource()
+        function fieldsToLoad = getFieldsToLoadOnDataSourceLoad(da)
+            % by default load all displayable fields
+            fieldsToLoad = {'success', 'runTimestamp', 'output', 'exception'};
+                
+            if ~isempty(da.resultTable)
+                fieldsToLoad = union(fieldsToLoad, ...
+                    intersect(da.resultTable.fieldsLoadOnDemand, da.resultTable.fieldsDisplayable));
+            end
+        end
+            
     end
 
     methods % Constructor
@@ -1185,6 +1212,12 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
         function loadInDatabase(da, database)
             da.database = database;
             da.initialize();
+            
+            % load success and run fields
+            debug('%s: Loading specified analysis results fields\n', da.getName());
+            fieldsToLoad = da.getFieldsToLoadOnDataSourceLoad();
+            
+            da.resultTable.loadFields(fieldsToLoad).updateInDatabase();
         end
 
         function useAsResultTable(da, resultTable)

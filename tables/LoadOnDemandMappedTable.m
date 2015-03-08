@@ -292,6 +292,9 @@ classdef LoadOnDemandMappedTable < StructTable
             keyFieldsStruct = dt.keyFieldsTable.table;
             hashes = cell(table.nEntries, 1);
             
+            % this is where the unique properties of the analysis come into
+            % play in the hashing, the keyfield has for each row
+            % incorporates the getCacheParam returns in param.additional
             param = struct();
             param.additional = dt.getCacheParam();
 
@@ -760,7 +763,8 @@ classdef LoadOnDemandMappedTable < StructTable
 %             fprintf('\r%s Finished loading field values for %d entries            \n', ...
 %                             progressStr, length(entryList));
             if ~isempty(prog)
-                prog.finish('Finished loading field values for %d entries', length(entryList));
+                prog.finish();
+                debug('Finished loading field values for %d entries\n', length(entryList));
             end
 
             %dt = dt.apply();
@@ -1018,7 +1022,7 @@ classdef LoadOnDemandMappedTable < StructTable
                 timestamp = cm.saveData(cacheName, [], value, 'hash', hash);
                 dt.table(iEntry).cacheTimestampsByEntry.(field) = timestamp;
             else
-                debug('WARNING: Attempting to cache individual field value when fields are cached by entry\n');
+                warning('Attempting to cache individual field value when fields are cached by entry\n');
                 values = dt.table(iEntry);
                 if ~ismember('value', p.UsingDefaults)
                     values.(field) = p.Results.value;
@@ -1168,7 +1172,7 @@ classdef LoadOnDemandMappedTable < StructTable
                     fields = fieldnames(loaded);
                     fieldsNotLoaded = fieldsLoaded(~maskLoaded);
 
-                    debug('WARNING: Caching entry with fields %s not loaded. Loading now', ...
+                    warning('Caching entry with fields %s not loaded. Loading now', ...
                         strjoin(fieldsNotLoaded, ','));
                     dt = dt.loadFields('entryMask', iEntry, 'fields', fieldsNotLoaded); 
                  end
@@ -1245,7 +1249,7 @@ classdef LoadOnDemandMappedTable < StructTable
         end
 
         function dt = deleteCache(dt)
-            dt.warnIfNoArgOut(nargout);
+            % dt.warnIfNoArgOut(nargout);
             
             % delete caches for individual fields as well
             dt = dt.deleteCachedFieldValues();
