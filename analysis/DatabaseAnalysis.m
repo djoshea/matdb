@@ -70,10 +70,6 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
         % return the param to be used when caching
         param = getCacheParam(da);
         
-        % return a string used to describe the params used for this analysis
-        % should encompass whatever is returned by getCacheParam()
-        str = getDescriptionParam(da);
-
         % return the entryName corresponding to the table in the database which this
         % analysis runs on. The DataTable with this entry name will run this analysis
         % once on each entry and map the results via a 1-1 relationship 
@@ -89,6 +85,12 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
     end
 
     methods % not necessary to override if the defaults are okay
+        % return a string used to describe the params used for this analysis
+        % should encompass whatever is returned by getCacheParam()
+        function str = getDescriptionParam(da)
+            str = structToString(da.getCacheParam());
+        end
+        
         % return fields here that you wish to have custom control over the
         % save load process
         function fields = getFieldsCustomSaveLoad(da, other)
@@ -289,7 +291,14 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             % saveCache, loadCache, catchErrors, but do rerunFailed
             da.run('keepCurrentValues', false, 'loadCache', false, ...
                 'saveCache', false, 'catchErrors', false, 'rerunFailed', true, ...
-                'maxToRun', 10);
+                'maxToRun', p.Results.maxRows);
+        end
+        
+        function rerun(da, varargin)
+            % wraps .run with common params for debugging, i.e. don't
+            % saveCache, loadCache, catchErrors, but do rerunFailed
+            da.run('keepCurrentValues', false, 'loadCache', false, ...
+                'rerunFailed', true, varargin{:});
         end
 
         function run(da, varargin)
@@ -672,6 +681,10 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                         % for saveFigure to look at 
                         da.currentEntry = entry;
 
+                        % clear debug's last caller info to get a fresh
+                        % debug header
+                        debug();
+                        
                         % open a temporary file to use as a diary to capture all output
                         diary off;
                         diaryFile = tempname(); 
@@ -712,7 +725,6 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                             end
                         end
 
-                        
                         % warn if not all fields requested were returned
                         % use the requested list fieldsAnalysis, a subset of dt.fieldsAnalysis
                         if success
@@ -917,7 +929,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             end
 
             % let saveFigure do all of the work!
-            saveFigure(figh, fileList, exts);
+            saveFigure(fileList, figh);
             
             chmod(MatdbSettingsStore.settings.permissionsAnalysisFiles, fileList);
 
