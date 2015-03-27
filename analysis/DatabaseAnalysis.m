@@ -289,6 +289,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             p.parse(varargin{:});
             % wraps .run with common params for debugging, i.e. don't
             % saveCache, loadCache, catchErrors, but do rerunFailed
+            dbstop if error;
             da.run('keepCurrentValues', false, 'loadCache', false, ...
                 'saveCache', false, 'catchErrors', false, 'rerunFailed', true, ...
                 'maxToRun', p.Results.maxRows);
@@ -1079,7 +1080,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
         end
 
         function viewAsHtml(da)
-            da.checkHasRun();
+            % da.checkHasRun(); % defer to current when not run yet
             fileName = da.htmlFile; 
             if ~exist(fileName, 'file')
                 html = da.saveAsHtml();
@@ -1184,14 +1185,15 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             if ~da.getIsRunning()
                 return;
             else
-                if isempty(da.timeRun)
-                    return;
+                if isempty(da.timeRun) || isnan(da.timeRun)
+                    timestr = 'current';
                 else
-                    root = getFirstExisting(MatdbSettingsStore.settings.pathListAnalysis);
-                    name = da.getName();
                     timestr = datestr(da.timeRun, 'yyyy-mm-dd HH.MM.SS');
-                    path = GetFullPath(fullfile(root, name, timestr));
                 end
+                
+                root = getFirstExisting(MatdbSettingsStore.settings.pathListAnalysis);
+                name = da.getName();
+                path = GetFullPath(fullfile(root, name, timestr));
             end
         end
         

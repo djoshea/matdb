@@ -875,6 +875,16 @@ classdef DataTable < DynamicClass & Cacheable
             str = dfd.getAsDateStr(value, fmat);
             value = str{1};
         end
+        
+        function str = getValueAsString(db, field, varargin)
+            db.checkAppliedEntryData();
+            db.assertIsField(field);
+            value = db.getValue(field);
+
+            dfd = db.fieldDescriptorMap(field);
+            strCell = dfd.getAsStrings(value);
+            str = strCell{1};
+        end
 
         function valueMap = getValuesMap(db, fields, varargin)
             assert(iscellstr(fields), 'fields must be a cell array of field names');

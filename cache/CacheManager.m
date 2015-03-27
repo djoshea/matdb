@@ -156,6 +156,13 @@ classdef CacheManager < handle
 
             % load the data file with the newest timestamp
             [indexNewest, timestamp, separateFields] = cm.retrieveMeta(cacheName, param, p.Unmatched);
+            if isempty(indexNewest)
+                % must have data but not meta
+                warning('Data file found without corresponding meta file: %s', strjoin(fileList));
+                data = [];
+                timestamp = NaN;
+                return;
+            end
             file = fileList{indexNewest};
             
             % turn off value not found warnings
