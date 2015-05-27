@@ -497,7 +497,7 @@ classdef Database < DynamicClass & handle
             % found. This ensures that the matched table will correspond
             % 1:1 to the lookup table.
             p = inputParser();
-            p.addParamValue('combine', true, @islogical);
+            p.addParamValue('combine', true, @islogical); % true - return single table, false - cell array of tables with matches for each entry in table
             p.addParamValue('fillMissingWithEmpty', true, @islogical);
             p.addParamValue('forceOneToOne', false, @islogical);
             p.parse(varargin{:});
@@ -617,7 +617,7 @@ classdef Database < DynamicClass & handle
 
                 if db.hasSourceLoaded(src)
                     if ~reload
-                        %debug('Already loaded source %s, skipping\n', src.describe());
+                        debug('Already loaded source %s, skipping\n', src.describe());
                         continue;
                     else
                         debug('Reloading source %s\n', src.describe());
@@ -648,19 +648,23 @@ classdef Database < DynamicClass & handle
             assert(all(cellfun(@(src) isa(src, 'DataSource'), srcCell)), ...
                 'Must be a DataSource instance');
 
-            if ~db.hasSourceLoaded(src)
+            [loaded, ~, ind] = db.hasSourceLoaded(src);
+            if ~loaded
                 db.sourcesLoaded{end+1} = src;
+            else
+                db.sourcesLoaded{ind} = src;
             end
         end
         
-        function [tf srcLoaded] = hasSourceLoaded(db, src)
-            matches = cellfun(@(s) isequal(src, s), db.sourcesLoaded);
+        function [tf, srcLoaded, ind] = hasSourceLoaded(db, src)
+            matches = cellfun(@(s) src.isEquivalent(s), db.sourcesLoaded);
             tf = any(matches);
             if tf
                 ind = find(matches, 1, 'first');
                 srcLoaded = db.sourcesLoaded{ind};
             else
                 srcLoaded = [];
+                ind = [];
             end
         end
         

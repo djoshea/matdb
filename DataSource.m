@@ -9,10 +9,25 @@ classdef DataSource < handle
     end
 
     methods
+        function name = getName(src)
+            name = class(src);
+        end
+        
         % return a cell array of other DataSources which must be loaded before
         % this source may be loaded
         function sources = getRequiredSources(src)
             sources = {};
+        end
+        
+        % used by Database to determine whether a specific DataSource is
+        % already loaded. by default require class names and class params
+        % to be equal
+        function tf = isEquivalent(src, otherSrc)
+            tf = isequal(class(src), class(otherSrc));
+            tf = tf && isequal(src.getName(), otherSrc.getName());
+            if tf && isa(src, 'DatabaseAnalysis') && isa(otherSrc, 'DatabaseAnalysis')
+                tf = isequal(src.getCacheParam(), otherSrc.getCacheParam());
+            end
         end
     end
 
