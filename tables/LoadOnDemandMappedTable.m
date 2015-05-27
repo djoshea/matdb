@@ -665,7 +665,7 @@ classdef LoadOnDemandMappedTable < StructTable
                             prog.update(iEntryInList, 'Retrieving cache timestamps for entry %d', iEntryInList);
                         end
                         
-                        [validCache timestamp] = dt.retrieveCachedTimestampForEntry(iEntry);
+                        [validCache, timestamp] = dt.retrieveCachedTimestampForEntry(iEntry);
                         for iField = 1:length(fieldsCacheable)
                             field = fieldsCacheable{iField};
                             table(iEntry).cacheTimestampsByEntry.(field) = timestamp;
