@@ -88,7 +88,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
         % return a string used to describe the params used for this analysis
         % should encompass whatever is returned by getCacheParam()
         function str = getDescriptionParam(da)
-            str = structToString(da.getCacheParam());
+            str = structToString(da.getCacheParam(), '; ');
         end
         
         % return fields here that you wish to have custom control over the
@@ -668,10 +668,13 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                         fprintf('\n');
                         [~, width] = getTerminalSize();
                         if isunix && ~ismac
-                            line = [repmat(char(hex2dec('2500')), 1, width-1) '\n'];
+                            cdash = char(hex2dec('2500'));
+                        elseif ismac
+                            cdash = char(hex2dec({'e2', '94', '80'}))';
                         else
-                            line = [repmat('-', 1, width-1) '\n'];
+                            cdash = '-';
                         end
+                        line = [repmat(cdash, 1, width-1) '\n'];
                             
                         color = 'bright blue';
                         tcprintf(color, line);
@@ -1099,7 +1102,8 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
         end
 
         function disp(da)
-            tcprintf('inline', '{bright blue}DatabaseAnalysis {none}: {bright white}%s{none} maps {bright white}%s\n\n', da.getName(), da.getMapsEntryName());
+            tcprintf('inline', '{bright blue}DatabaseAnalysis {none}: {bright white}%s{none} maps {bright white}%s\n', da.getName(), da.getMapsEntryName());
+            tcprintf('inline', ['Parameters: ' da.getDescriptionParam() '\n\n']);
             builtin('disp', da);
         end
     end
@@ -1275,8 +1279,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
     
     methods(Static) % Diary file related statics
         function setOutputLogStatus(varargin)
-            persistent currentDiaryFile;
-            
+            persistent currentDiaryFile;      
             p = inputParser;
             p.addParameter('file', '', @ischar);
             p.addParameter('paused', [], @islogical);
