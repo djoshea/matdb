@@ -792,6 +792,10 @@ classdef DataTable < DynamicClass & Cacheable
             s = db.getEntriesAsStruct(true(db.nEntries, 1), db.fields);
         end
         
+        function s = getKeyFieldValuesAsStruct(db)
+            s = db.getEntriesAsStruct(true(db.nEntries, 1), db.keyFields);
+        end
+        
         function db = addEmptyEntry(db)
             % add a new [default] empty entry
             warnIfNoArgOut(db, nargout);
@@ -962,9 +966,9 @@ classdef DataTable < DynamicClass & Cacheable
                     else
                         stringMap(field) = dfd.getAsDisplayStrings(valueMap(field));
                     end
-                    if ~iscellstr(stringMap(field))
-                        error('getAsDisplayStrings failed to return a cellstr');
-                    end
+                    %if ~iscellstr(stringMap(field))
+                    %    error('getAsDisplayStrings failed to return a cellstr');
+                    %end
                 end
             end
         end
@@ -1078,7 +1082,30 @@ classdef DataTable < DynamicClass & Cacheable
                 entryCount(iTuple) = nnz(uniqueTupleIdx == iTuple);
             end
         end
-
+        
+        function [counts, uniqueVals, uniqueIdx] = getUniqueCounts(db, fld, varargin)
+            [uniqueIdx, uniqueVals] = db.getValuesAsIdxIntoUnique(fld, varargin{:});
+            
+            counts = histc(uniqueIdx, 1:numel(uniqueVals));
+        end
+        
+        function utbl = getUniqueCountsTable(db, fld, varargin)
+            [counts, uniqueVals] = db.getUniqueCounts(fld, varargin{:});
+            
+            for iS = 1:numel(uniqueVals)
+                S(iS).count = counts(iS);
+                if iscell(uniqueVals)
+                    S(iS).value = uniqueVals{iS};
+                else
+                    S(iS).value = uniqueVals(iS);
+                end 
+            end
+            
+            utbl = StructTable(S, 'entryName', 'uniqueValueCount');
+            utbl = utbl.setFieldDescriptor('count', ScalarField());
+            utbl = utbl.setKeyFields('value');
+            utbl = utbl.sort('-count');
+        end
     end
 
     methods % Display / visualization
@@ -1107,6 +1134,7 @@ classdef DataTable < DynamicClass & Cacheable
             p.addParamValue('padding', 0, @(x) isscalar(x) && x >= 0);
             p.addParamValue('maxEntries', termRows-9, @(x) isscalar(x) && x >= 0);
             p.addParamValue('maxWidth', termCols, @(x) isscalar(x) && x >= 0);
+            p.addParamValue('maxWidthPerField', 25, @isscalar);
             p.parse(varargin{:});
 
             grid = p.Results.grid;
@@ -1123,7 +1151,7 @@ classdef DataTable < DynamicClass & Cacheable
             useUTF32 = isunix && ~ismac && ~inDataTip;
             useUTF8 = ~useUTF32 && isunix && ~inDataTip;
             if ismac % temporary hack because newer iTerm is messing up double width characters
-                useUTF8 = false;
+                %useUTF8 = false;
             end
 
             % determine utf bytecodes for + - | characters
@@ -1133,9 +1161,9 @@ classdef DataTable < DynamicClass & Cacheable
                     vline = char(hex2dec('2502'));
                     hlineHeader = char(hex2dec('2501'));
                 elseif useUTF8
-                    crossHeader = char(hex2dec({'e2', '94', 'bf'})); 
-                    hlineHeader = char(hex2dec({'e2', '94', '81'}));
-                    vline = char(hex2dec({'e2', '94', '82'}));
+                    crossHeader = char(hex2dec({'e2', '94', 'bc'}))'; 
+                    hlineHeader = char(hex2dec({'e2', '94', '80'}))';
+                    vline = char(hex2dec({'e2', '94', '82'}))';
                 else
                     crossHeader = '+';
                     hlineHeader = '-';
@@ -1160,10 +1188,10 @@ classdef DataTable < DynamicClass & Cacheable
                 keyFieldHeaderColor = 'bright blue underline';
                 keyFieldColor = 'bright blue';
             end
-            idxColor = 'darkGray';
+            idxColor = '';
             messageColor = 'darkGray';
-            gridColor = 'white';
-            valueColor = 'white';
+            gridColor = '';
+            valueColor = 'none';
 
             % build divider between columns
             paddingStr = repmat(' ', 1, padding);
@@ -1195,7 +1223,7 @@ classdef DataTable < DynamicClass & Cacheable
             % and figure out how wide to make each column
             if db.nEntries > 0
                 valueMap = db.getValueMapAsDisplayStrings(fields); 
-                valueWidths = cellfun(@(field) max(cellfun(@length, valueMap(field))), fields);
+                valueWidths = min(p.Results.maxWidthPerField, cellfun(@(field) max(cellfun(@length, valueMap(field))), fields));
             else
                 valueWidths = zeros(length(fields), 1);
             end
@@ -1217,6 +1245,12 @@ classdef DataTable < DynamicClass & Cacheable
             else
                 truncatedFields = {};
             end
+            
+            function str = truncateStr(str, l)
+                if numel(str) > l
+                    str = [str(1:l-2), '..'];
+                end
+            end
 
             % print header row
             printf(idxColor, '%-*s', idxColWidth, 'idx');
@@ -1228,7 +1262,7 @@ classdef DataTable < DynamicClass & Cacheable
                 else
                     color = fieldColor;
                 end
-                printf(color, '%-*s', colWidths(iField), field);
+                printf(color, '%-*s', colWidths(iField), truncateStr(field, colWidths(iField)));
                 if iField < nFields
                     printf(gridColor, divider);
                 end
@@ -1262,7 +1296,7 @@ classdef DataTable < DynamicClass & Cacheable
                         color = valueColor;
                     end
                     values = valueMap(field);
-                    printf(color, '%*s', colWidths(iField), values{iEntry});
+                    printf(color, '%*s', colWidths(iField), truncateStr(values{iEntry}, colWidths(iField)));
                     if iField < nFields
                         printf(gridColor, '%s', divider);
                     end
