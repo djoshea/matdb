@@ -192,7 +192,7 @@ classdef StructTable < DataTable
 
     methods
         function entries = getEntriesAsStruct(db, idx, fields)
-            entries = db.table(idx);
+            entries = keepfields(db.table(idx), fields);
         end
     end
 
@@ -226,7 +226,7 @@ classdef StructTable < DataTable
                 dfd = dfdMap(field);
                 
                 % extract values as cell
-                cellValues = {db.table.(field)};
+                cellValues = arrayfun(@(v) v.(field), db.table, 'UniformOutput', false);
                 if ~isempty(cellValues)
                     % don't want to accidentally add an entry when its
                     % empty
