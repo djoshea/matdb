@@ -255,7 +255,7 @@ classdef CacheManager < handle
             % each object, and replace it with a CacheCustomSavePlaceholder
             % that will tell us what to do when loading
             
-            if isstruct(data)
+            if isstruct(data) && ~isempty(data)
                 flds = fieldnames(data);
                 for iFld = 1:numel(flds)
                     val = data.(flds{iFld});
