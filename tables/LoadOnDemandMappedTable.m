@@ -132,6 +132,8 @@ classdef LoadOnDemandMappedTable < StructTable
             % to the database table. All entries will initially be empty for fields
             % that are loaded on demand.
 
+            dt.warnIfNoArgOut(nargout);
+            
             p = inputParser;
             p.KeepUnmatched = true;
             
@@ -165,6 +167,8 @@ classdef LoadOnDemandMappedTable < StructTable
                 else
                     db = dt.database;
                 end
+            else
+                dt.database = db;
             end
 
             if isempty(entryName)
