@@ -192,6 +192,9 @@ classdef StructTable < DataTable
 
     methods
         function entries = getEntriesAsStruct(db, idx, fields)
+            if nargin < 3
+                fields = db.fields;
+            end
             entries = keepfields(db.table(idx), fields);
         end
     end
