@@ -58,7 +58,7 @@ classdef Database < DynamicClass & handle
 
             tcprintf('light blue', '\nRelationships: \n');
             relationships = db.relationships;
-            for i = 1:length(relationships)
+            for i = 1:length(relationships) %#ok<*PROP>
                 fprintf('\t%s\n', relationships{i}.describeLink());
             end
 
@@ -186,7 +186,7 @@ classdef Database < DynamicClass & handle
             table = db.tableMap(entryName);
         end
 
-        function [tf entryName] = hasTable(db, entryName)
+        function [tf, entryName] = hasTable(db, entryName)
             % look for singular
             if db.tableMap.isKey(entryName)
                 tf = true;
@@ -225,9 +225,9 @@ classdef Database < DynamicClass & handle
             referenceNames = {};
             for iRel = 1:db.nRelationships
                 rel = db.relationships{iRel};
-                [tf referenceName] = rel.involvesEntryName(entryName);
+                [tf, referenceName] = rel.involvesEntryName(entryName);
                 if tf
-                    referenceNames = [referenceNames referenceName];
+                    referenceNames = [referenceNames referenceName]; %#ok<AGROW>
                 end
             end
             referenceNames = makecol(referenceNames);
@@ -683,6 +683,12 @@ classdef Database < DynamicClass & handle
             names = cellfun(@(src) src.describe(), db.sourcesLoaded, ...
                 'UniformOutput', false);
             str = strjoin(names, ', ');
+        end
+        
+        function run(db, da, varargin)
+            % run analysis
+            da.setDatabase(db);
+            da.run(varargin{:});
         end
     end
 
