@@ -17,14 +17,14 @@ classdef CacheManager < handle
     end
 
     methods % methods a subclass might wish to override
-        function [tf reason] = isParamValid(cm, param)
+        function [tf, reason] = isParamValid(cm, param) %#ok<INUSD>
             % determine whether the provided param is acceptable
             tf = true;
             reason = '';
         end
 
         function assertParamValid(cm, param)
-            [tf reason] = cm.isParamValid(param);
+            [tf, reason] = cm.isParamValid(param);
             assert(tf, 'Cache param invalid: %s', reason);
         end
 
@@ -58,20 +58,35 @@ classdef CacheManager < handle
     end
 
     methods % methods that should remain public
+        function printDebugHashMessage(cm, message, cacheName, param)
+            debug('%s name = %s:\n', message, cacheName);
+            if isstruct(param)
+                structdisp(param);
+            elseif iscell(param)
+                celldisp(param);
+            else
+                display(param);
+            end
+        end
+        
         function tf = cacheExists(cm, cacheName, param, varargin)
             data = cm.getFileListDataForRead(cacheName, param, varargin{:});
             meta = cm.getFileListMetaForRead(cacheName, param, varargin{:});
-
             tf = ~isempty(data) && ~isempty(meta);
         end
 
         % retrieve the timestamp from the newest meta file
-        function [timestamp indexNewest] = retrieveTimestamp(cm, cacheName, param, varargin)
-            [indexNewest, timestamp, isSeparate] = retrieveMeta(cm, cacheName, param, varargin{:});
+        function [timestamp, indexNewest] = retrieveTimestamp(cm, cacheName, param, varargin)
+            [indexNewest, timestamp, ~] = cm.retrieveMeta(cacheName, param, varargin{:});
         end
 
         % retrieve all meta info from the newest meta file
-        function [indexNewest timestamp separateFields] = retrieveMeta(cm, cacheName, param, varargin)
+        function [indexNewest, timestamp, separateFields] = retrieveMeta(cm, cacheName, param, varargin)
+            p = inputParser();
+            p.addParamValue('verbose', false, @isscalar);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
             fileList = cm.getFileListMetaForRead(cacheName, param, varargin{:});
             if isempty(fileList)
                 indexNewest = [];
@@ -99,6 +114,9 @@ classdef CacheManager < handle
                 varsToLoad = {'timestamp', 'param', 'separateFields'};
                 varsRequired = {'timestamp', 'param'};
 
+                if p.Results.verbose
+                    debug('Loading meta file %s\n', file);
+                end
                 contents = load(file, varsToLoad{:});
 
                 % check has contents 
@@ -111,7 +129,10 @@ classdef CacheManager < handle
                     warning('Cache param in %s does not match', file);
                     continue;
                 end
-
+                
+                if p.Results.verbose
+                    debug('Meta file has timestamp %s\n', datestr(contents.timestamp));
+                end
                 if isempty(timestamp) || contents.timestamp > timestamp
                     % this is the current newest meta file
                     timestamp = contents.timestamp;
@@ -130,35 +151,47 @@ classdef CacheManager < handle
             warning(warnStatus);
         end
 
-        function [tf timestamp] = hasCacheNewerThan(cm, cacheName, param, refTimestamp, varargin)
+        function [tf, timestamp] = hasCacheNewerThan(cm, cacheName, param, refTimestamp, varargin)
             timestamp = cm.retrieveTimestamp(cacheName, param, varargin{:});
             tf = ~isempty(timestamp) && timestamp > refTimestamp;
         end
 
-        function [data timestamp] = loadData(cm, cacheName, param, varargin)
+        function [data, timestamp] = loadData(cm, cacheName, param, varargin)
             p = inputParser;
             p.addRequired('cacheName', @ischar);
             p.addRequired('param', @(x) true);
             p.addParamValue('fields', {}, @iscellstr);
-            p.KeepUnmatched = true;
+            p.addParamValue('verbose', false, @isscalar);
+            p.addParamValue('hash', '', @ischar);
             p.parse(cacheName, param, varargin{:});
             
             fields = p.Results.fields;
+            
+            if p.Results.verbose
+                if isempty(p.Results.hash)
+                    cm.printDebugHashMessage('LoadData with', cacheName, param);
+                else
+                    debug('LoadData with manual hash %s\n', p.Results.hash);
+                end
+            end
 
-            fileList = cm.getFileListDataForRead(cacheName, param, p.Unmatched);
+            fileList = cm.getFileListDataForRead(cacheName, param, 'hash', p.Results.hash);
             if isempty(fileList)
                 % no cache files found
                 data = [];
                 timestamp = NaN;
+                if p.Results.verbose
+                    debug('No cache files found to read\n');
+                end
                 return;
                 % error('No cache files found');
             end
 
             % load the data file with the newest timestamp
-            [indexNewest, timestamp, separateFields] = cm.retrieveMeta(cacheName, param, p.Unmatched);
+            [indexNewest, timestamp, separateFields] = cm.retrieveMeta(cacheName, param, 'verbose', p.Results.verbose, 'hash', p.Results.hash, p.Unmatched);
             if isempty(indexNewest)
                 % must have data but not meta
-                warning('Data file found without corresponding meta file: %s', strjoin(fileList));
+                warning('Data file found without corresponding meta file: \n%s\n', strjoin(fileList, '\n'));
                 data = [];
                 timestamp = NaN;
                 return;
@@ -179,6 +212,9 @@ classdef CacheManager < handle
                     varsToLoad = {};
                 end
 
+                if p.Results.verbose
+                    debug('Loading data file with separated fields %s\n', file);
+                end
                 data = load(file, varsToLoad{:});
 
             else
@@ -201,11 +237,17 @@ classdef CacheManager < handle
                 for iFld = 1:numel(flds)
                     val = data.(flds{iFld});
                     if isa(val, 'CacheCustomSaveLoadPlaceholder')
+                        if p.Results.verbose
+                            debug('Loading using CacheCustomSaveLoad on field %s\n', flds{iFld});
+                        end
                         location = cm.getPathCustomFromHashFileName(file, flds{iFld});
                         data.(flds{iFld}) = val.doCustomLoadFromLocation(location);
                     end
                 end
             elseif isa(data, 'CacheCustomSaveLoadPlaceholder')
+                if p.Results.verbose
+                    debug('Loading using CacheCustomSaveLoad\n');
+                end
                 location = cm.getPathCustomFromHashFileName(file);
                 data = data.doCustomLoadFromLocation(location);
             end
@@ -219,31 +261,41 @@ classdef CacheManager < handle
             p.addRequired('cacheName', @ischar); 
             p.addRequired('param', @(x) true);
             p.addRequired('data', @(x) true);
-
-            % default timestamp is now, but can be overridden 
-            p.addParamValue('timestamp', now, @isscalar);
+            p.addParamValue('verbose', false, @isscalar);
+            p.addParamValue('hash', '', @ischar);
+            p.addParamValue('timestamp', now, @isscalar); % default timestamp is now, but can be overridden 
             
             % optional means of saving a struct array's fields as separate variables
             % within the same mat file, allowing for individual fields to be
             % selectively loaded easily
             p.addParamValue('separateFields', false, @islogical);
-            p.KeepUnmatched = true;
             p.parse(cacheName, param, data, varargin{:});
+            
+            if p.Results.verbose
+                if isempty(p.Results.hash)
+                    cm.printDebugHashMessage('SaveData with ', cacheName, param);
+                else
+                    debug('Saving data using manual hash %s\n', p.Results.hash);
+                end
+            end
+            
             timestamp = p.Results.timestamp;
             separateFields = p.Results.separateFields;
 
-            fileMeta = cm.getFileMetaForWrite(cacheName, param, p.Unmatched);
-            fileData = cm.getFileDataForWrite(cacheName, param, p.Unmatched);
+            fileMeta = cm.getFileMetaForWrite(cacheName, param, 'hash', p.Results.hash);
+            fileData = cm.getFileDataForWrite(cacheName, param, 'hash', p.Results.hash);
             mkdirRecursive(fileparts(fileMeta));
 
             if separateFields
-                fields = fieldnames(data);
+                fields = fieldnames(data); %#ok<NASGU>
             else
-                fields = {};
+                fields = {}; %#ok<NASGU>
             end
             
             % Save cache meta file
-            %debug('Saving cache meta %s\n', fileMeta);
+            if p.Results.verbose
+                debug('Saving cache meta %s\n', fileMeta);
+            end
             save(fileMeta, 'param', 'timestamp', 'separateFields', 'fields');
 
             % now we respect objects which inherit the interface
@@ -259,22 +311,37 @@ classdef CacheManager < handle
                 flds = fieldnames(data);
                 for iFld = 1:numel(flds)
                     val = data.(flds{iFld});
+                    
                     if CacheCustomSaveLoad.checkIfCustomSaveLoadOkay(val)
+                        if p.Results.verbose
+                            debug('Deferring to CacheCustomSaveLoad for save on field %s\n', flds{iFld});
+                        end
                         customLocation = cm.getPathCustomFromHashFileName(fileMeta, flds{iFld});
                         token = val.saveCustomToLocation(customLocation);
                         
                         % replace original with placeholder
                         data.(flds{iFld}) = CacheCustomSaveLoadPlaceholder(val, token);
+                    else
+%                         if p.Results.verbose
+%                             debug('Not using CacheCustomSaveLoad for save on field %s, checkIfCustomSaveLoadOkay returned false\n', flds{iFld});
+%                         end
                     end
                 end
             else
                 % check the main value itself
                 if CacheCustomSaveLoad.checkIfCustomSaveLoadOkay(data)
+                    if p.Results.verbose
+                        debug('Deferring to CacheCustomSaveLoad for save\n');
+                    end
                     customLocation = cm.getPathCustomFromHashFileName(fileMeta);
                     token = data.saveCustomToLocation(customLocation);
                     
                     % replace original with placeholder
                     data = CacheCustomSaveLoadPlaceholder(data, token);
+                else
+%                     if p.Results.verbose
+%                         debug('Not using CacheCustomSaveLoad for save, checkIfCustomSaveLoadOkay returned false\n');
+%                     end
                 end
             end
                 
@@ -283,9 +350,15 @@ classdef CacheManager < handle
             if separateFields
                 assert(isstruct(data) && isscalar(data), 'Data must be a scalar struct in order to save fields');
                 % save each field separately and include a variable
+                if p.Results.verbose
+                    debug('Saving data file with struct fields %s\n', fileData);
+                end
                 saveLarge(fileData, '-struct', 'data');
                 %save(fileData, '-struct', 'data');
             else
+                if p.Results.verbose
+                    debug('Saving data file %s\n', fileData);
+                end
                 saveLarge(fileData, 'data');
                 %save(fileData, 'data');
             end 
@@ -334,6 +407,7 @@ classdef CacheManager < handle
             p = inputParser;
             p.addOptional('root', '', @(x) ischar(x) || iscell(x));
             p.addParamValue('hash', '', @ischar);
+            p.addParamValue('verbose', false, @isscalar);
             p.parse(varargin{:});
             rootList = p.Results.root;
 
@@ -356,11 +430,22 @@ classdef CacheManager < handle
             else
                 fileList = fullfileMulti(rootList, cacheName, fileName);
             end
+            
+            if p.Results.verbose
+                debug('File list data candidates:\n%s\n', strjoin(fileList, '\n'));
+            end
         end
 
         function fileList = getFileListDataForRead(cm, cacheName, param, varargin)
+            p = inputParser;
+            p.addParamValue('verbose', false, @isscalar);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
             fileList = cm.getFileListData(cacheName, param, '', varargin{:});
             fileList = cm.filterExisting(fileList);
+            if p.Results.verbose
+                debug('File list data for read:\n%s\n', strjoin(fileList, '\n'));
+            end
         end
 
         function file = getFileDataForWrite(cm, cacheName, param, varargin)
@@ -388,6 +473,8 @@ classdef CacheManager < handle
             p = inputParser;
             p.addOptional('root', '', @(x) ischar(x) || iscell(x));
             p.addParamValue('hash', '', @ischar);
+            p.addParamValue('verbose', false, @isscalar);
+            
             p.parse(varargin{:});
             rootList = p.Results.root;
 
@@ -413,6 +500,10 @@ classdef CacheManager < handle
             else
                 fileList = fullfileMulti(rootList, cacheName, fileName);
             end
+            
+            if p.Results.verbose
+                debug('File list meta candidates:\n%s\n', strjoin(fileList, '\n'));
+            end
         end
 
         function fileList = getFileListMetaForRead(cm, cacheName, param, varargin)
@@ -425,7 +516,7 @@ classdef CacheManager < handle
             % meta cache file in the first root folder that exists
             root = getFirstExisting(cm.cacheRootList);
             if isempty(root)
-                error('No cacheRoot in cacheRootList {%s} exists', strjoin(cm.cacheRootList));
+                error('No cacheRoot in cacheRootList exists\n%s\n', strjoin(cm.cacheRootList, '\n'));
             end
             file = cm.getFileListMeta(cacheName, param, root, varargin{:});
             file = file{1};
@@ -438,31 +529,31 @@ classdef CacheManager < handle
     end
     
     methods % Cache operations operating on all entries: indexing, delete all, etc. 
-        function [names info] = getListMetaFiles(cm, cacheName)
+        function [names, info] = getListMetaFiles(cm, cacheName)
             rootList = cm.cacheRootList;
-            filePattern = ['cache_*.meta.mat'];
+            filePattern = 'cache_*.meta.mat';
             fileList = fullfileMulti(rootList, cacheName, filePattern);
             
             info = multiDir(fileList);
             names = {info.name};
         end
         
-        function [param timestamp] = loadFromMetaFile(cm, fileName)
+        function [param, timestamp] = loadFromMetaFile(cm, fileName)
             meta = load(fileName, 'param', 'timestamp');
             param = meta.param;
             timestamp = meta.timestamp;
         end
         
-        function [names info] = getListDataFiles(cm, cacheName)
+        function [names, info] = getListDataFiles(cm, cacheName)
             rootList = cm.cacheRootList;
-            filePattern = ['cache_*.data.mat'];
+            filePattern = 'cache_*.data.mat';
             fileList = fullfileMulti(rootList, cacheName, filePattern);
             
             info = multiDir(fileList);
             names = {info.name};
         end
         
-        function [paramList timestampList] = getListEntries(cm, cacheName)
+        function [paramList, timestampList] = getListEntries(cm, cacheName)
             % load the params stored in every entry in the cache by loading
             % every meta file
             names = cm.getListMetaFiles(cacheName);
