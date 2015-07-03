@@ -714,8 +714,12 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             %nKeyFieldsRight = length(keyFieldsRight);
             %nKeyFieldsLeft = length(keyFieldsLeft);
             
-            entriesLeft = tableLeft.getAllEntriesAsStruct(rel.keyFieldsLeft);
-            entriesRight = tableRight.getAllEntriesAsStruct(rel.keyFieldsRight);
+%             entriesLeft = tableLeft.getAllEntriesAsStruct(rel.keyFieldsLeft);
+%             entriesRight = tableRight.getAllEntriesAsStruct(rel.keyFieldsRight);
+            
+            entriesLeft = tableLeft.getAllEntriesAsStruct();
+            entriesRight = tableRight.getAllEntriesAsStruct();
+            
             
             if rel.isJunction
                 %debug('Performing junction table lookup\n');
