@@ -43,9 +43,10 @@ classdef DatabaseAnalysisResultsTable < LoadOnDemandMappedTable
             dt.analysis = da;
             dt.analysisParam = da.getCacheParam();
             dt.analysisParamDesc = da.getDescriptionParam();
-            
-            [dt.fieldsAnalysis dt.fieldsAnalysisDescriptorMap] = da.getFieldsAnalysis();
-            [dt.fieldsAdditional dt.fieldsAdditionalDescriptorMap] = da.getFieldsAdditional();
+
+            [dt.fieldsAnalysis, dt.fieldsAnalysisDescriptorMap] = da.getFieldsAnalysisAsValueMap();            
+            [dt.fieldsAdditional, dt.fieldsAdditionalDescriptorMap] = da.getFieldsAdditional();
+
             dt.mapsEntryName = da.getMapsEntryName();
             dt.cacheParam = da.getCacheParam();
             dt.analysisName = da.getName();
