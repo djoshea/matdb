@@ -230,6 +230,16 @@ classdef CacheManager < handle
                 data = contents.data;
             end
             
+            if isempty(data)
+                % no cache files found
+                data = [];
+                timestamp = NaN;
+                if p.Results.verbose
+                    debug('Data read from cache data file is empty\n');
+                end
+                return;
+            end
+
             % check the contents of data (or the fields itself) for
             % CacheCustomSaveLoadPlaceholder
             if isstruct(data)
