@@ -33,10 +33,13 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
         % if cacheResultsIndividually is false, the results will be saved with
         % the table, ,,j
         %cacheResultsIndividually = false;
+       
     end
 
     properties
         figureExtensions = {'fig', 'png', 'svg', 'pdf'};
+        
+        runDescription = ''; % added to the top of each report
     end
     
     properties(SetAccess=protected, Transient) 
@@ -184,8 +187,9 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
         % 
         % If the filtering pattern is a common one, consider turning it into a 
         % DatabaseView class and returning an instance from getDatabaseViewsToApply()
-        function table = preFilterTable(da, table) %#ok<*INUSL>
+        function [table, changed] = preFilterTable(da, table) %#ok<*INUSL>
             % default does nothing
+            changed = false;
         end
 
         % return a list of additional meta fields that resultTable will contain
@@ -292,7 +296,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                 resultTable = resultTable.mergeEntriesWith(currentResultTable, 'keyFieldMatchesOnly', true);
             end
             
-            da.resultTable = resultTable.setDatabase(da.database).updateInDatabase();
+            da.resultTable = resultTable.setDatabase(da.database).updateInDatabase('filterOneToRelationships', false);
             entryName = da.getMapsEntryName();
            
             % empty entry name means runs once on entire database
@@ -357,6 +361,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
 
         function run(da, varargin)
             p = inputParser();
+            p.addParameter('desc', '', @ischar);
             p.addParameter('database', [], @(db) isempty(db) || isa(db, 'Database'));
             % optionally select subset of fields for analysis
             p.addParameter('fields', da.fieldsAnalysis, @iscellstr); 
@@ -424,7 +429,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             if ~saveCache
                 storeInTable = true;
             end
-
+            
             % get analysis name
             name = da.getName();
             debug('Preparing for analysis : %s\n', name);
@@ -448,8 +453,10 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                 
                 % prefilter the table further if requested (database views also do this)
                 debug('Filtering mapped table %s via preFilterTable\n', entryName);
-                table = da.preFilterTable(table).updateInDatabase();
-                table.updateInDatabase();
+                [table, changed] = da.preFilterTable(table);
+                if changed
+                    table = table.updateInDatabase();
+                end
             end
             
             % load required source/views, re-map the result table, etc.
@@ -575,7 +582,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                 % they exist) for all fields for successful entries
                 resultTable = resultTable.loadFields('fields', fieldsToLoad, 'loadCacheTimestampsOnly', true, ...
                     'entryMask', resultTable.success, 'verbose', verbose);
-                resultTable.updateInDatabase();
+                resultTable.updateInDatabase('filterOneToRelationships', false);
 
                 timestampsByEntry = cell2mat(resultTable.getValues('cacheTimestampsByEntry'));
                 
@@ -583,7 +590,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                     % now we search for field values in fieldsAnalysis in the cache
                     debug('Checking cached field timestamps against dependencies\n');
 
-                    resultTable = resultTable.updateInDatabase(); %#ok<*PROP>
+                    resultTable = resultTable.updateInDatabase('filterOneToRelationships', false); %#ok<*PROP>
                     % get the most recent update for each table list
                     cacheWarningReference = db.getLastUpdated(tableListCacheWarning);
                     cacheInvalidateReference = db.getLastUpdated(tableListCacheInvalidate);
@@ -893,7 +900,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                 debug('Finishing analysis run\n');
             end
             
-            resultTable.updateInDatabase();
+            resultTable.updateInDatabase('filterOneToRelationships', false);
 
             % now fill in all of the info fields of this class with the full table data
             % these are mainly used by the DatabaseAnalysisHTMLWriter class
@@ -906,6 +913,10 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             % mark loaded in database
             da.database.markSourceLoaded(da);
             da.hasRun = true;
+            
+            if ~isempty(p.Results.desc)
+                da.runDescription = p.Results.desc;
+            end
 
             if ~resultTableChanged && ~forceReport
                 % if we haven't run new analysis, no need to build a report
@@ -923,7 +934,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                 fieldsToLoad = intersect(da.resultTable.fieldsLoadOnDemand, da.resultTable.fieldsDisplayable);
                 fieldsToLoad = union(fieldsToLoad, fieldsAdditional);
                 da.resultTable = da.resultTable.loadFields('fields', fieldsToLoad, 'loadCacheOnly', true, 'verbose', verbose);
-                da.resultTable.updateInDatabase();
+                da.resultTable.updateInDatabase('filterOneToRelationships', false);
                 
                 % make sure analysis path exists
                 mkdirRecursive(da.pathAnalysis);

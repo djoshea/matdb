@@ -358,8 +358,8 @@ classdef HTMLDatabaseAnalysisWriter < HTMLDataTableWriter
             entryName = da.getMapsEntryName();
             html.pageTitle = name;
             html.mainHeader = html.table.entryNamePlural; 
-            html.subHeader = sprintf('DatabaseAnalysis run on %s with %d entries.<br/><strong>Parameters</strong> : %s <br/><br/>', ...
-                entryName, html.table.nEntries, desc);
+            html.subHeader = sprintf('DatabaseAnalysis run on %s with %d entries.<br/><strong>Run Description</strong>: %s<br/><strong>Parameters</strong>: %s <br/><br/>', ...
+                entryName, html.table.nEntries, da.runDescription, desc);
             html.navTitle = 'Database Analysis';
             html.navSubTitle = name;
 
