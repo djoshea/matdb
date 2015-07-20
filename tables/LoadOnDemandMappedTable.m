@@ -1017,6 +1017,7 @@ classdef LoadOnDemandMappedTable < StructTable
             p.addRequired('iEntry', @(x) true); % @(x) isscalar(x) && x > 0 && x <= dt.nEntries);
             p.addRequired('field', @ischar); % @(x) ischar(x) && dt.isField(field));
             p.addOptional('value', '', @(x) true); 
+            p.addParamValue('verbose', false, @islogical);
             p.parse(iEntry, field, varargin{:});
             
             cm = dt.getFieldValueCacheManager();
@@ -1034,7 +1035,7 @@ classdef LoadOnDemandMappedTable < StructTable
                 end
 
                 %debug('Saving cache for entry %d field %s \n', iEntry, field);
-                timestamp = cm.saveData(cacheName, [], value, 'hash', hash);
+                timestamp = cm.saveData(cacheName, [], value, 'hash', hash, 'verbose', p.Results.verbose);
                 dt.table(iEntry).cacheTimestampsByEntry.(field) = timestamp;
             else
                 warning('Attempting to cache individual field value when fields are cached by entry\n');
