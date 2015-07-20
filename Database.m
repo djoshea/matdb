@@ -1,4 +1,4 @@
-classdef Database < DynamicClass & handle
+classdef Database < DynamicClass & handle & matlab.mixin.Copyable
 
     properties(Hidden)
         tableMap % ValueMap mapping :entryName --> Table
@@ -136,6 +136,12 @@ classdef Database < DynamicClass & handle
         end
 
         function table = updateTable(db, table, varargin)
+            p = inputParser();
+            p.addParameter('filterOneToRelationships', true, @islogical); % filter tables that refer to a single unit across a relationships as well
+            p.addParameter('recursive', true, @islogical);
+            p.addParameter('excludeEntryNames', {}, @iscellstr); % mostly used internally to prevent infinite recursion
+            p.parse(varargin{:});
+            
             % replace the current table with 
             assert(isa(table, 'DataTable'), 'table must be a DataTable instance');
             entryName = table.entryName;
@@ -149,6 +155,44 @@ classdef Database < DynamicClass & handle
 
                 table = table.setDatabase(db);
                 db.tableMap(entryName) = table;
+                
+                if p.Results.filterOneToRelationships && ~ismember(table.entryName, p.Results.excludeEntryNames)
+                    % update recursively across one to relationships
+                    excludeEntryNames = union(p.Results.excludeEntryNames, table.entryName);
+                    db.filterOneToRelationships(table.entryName, 'recursive', p.Results.recursive, 'excludeEntryNames', excludeEntryNames);
+                end
+            end
+        end
+        
+        function filterOneToRelationships(db, entryName, varargin)
+            % look at all tables that are connected to table entryName by a
+            % one/many to one relationships, i.e. one entryName for ? other
+            % and remove entries in those tables that refer to a now
+            % filtered out entryName.
+            p = inputParser();
+            p.addParameter('recursive', true, @islogical);
+            p.addParameter('excludeEntryNames', {}, @iscellstr); % mostly used internally to prevent infinite recursion
+            p.parse(varargin{:});
+            
+            db.assertHasTable(entryName);
+            
+            [refNames, referredToAsCell] = db.listRelationshipsWithAsOneTo(entryName);
+            
+            for iRef = 1:numel(refNames)
+                debug('Filtering %s entries for those that have corresponding %s entry\n', refNames{iRef}, entryName);
+                t = db.getTable(refNames{iRef}).filterHasRelated(referredToAsCell{iRef});
+                if p.Results.recursive
+                    % update recursively across one to relationships
+                    excludeEntryNames = union(p.Results.excludeEntryNames, {entryName; refNames{iRef}});
+                    db.updateTable(t, 'recursive', true, 'excludeEntryNames', excludeEntryNames);
+                end
+            end
+        end
+        
+        function filterAllOneToRelationships(db)
+            entryNames = db.tableEntryNameList();
+            for iE = 1:numel(entryNames)
+                db.filterOneToRelationships(entryNames{iE}, 'recursive', false); % no need for recursive since we're doing this over all tables already
             end
         end
 
@@ -164,10 +208,25 @@ classdef Database < DynamicClass & handle
             db.pluralToSingularMap.remove(entryNamePlural);
             db.singularToPluralMap.remove(entryName);
         end
+        
+        function deduplicateAllTables(db, varargin)
+            p = inputParser();
+            p.addParameter('filterOneToRelationships', true, @islogical);
+            p.parse(varargin{:});
+            
+            entryNames = db.tableEntryNameList();
+            for iE = 1:numel(entryNames)
+                dt = db.getTable(entryNames{iE}).deduplicateBasedOnKeyFields();
+                db.tableMap(dt.entryName) = dt; % update relationships once at the end
+            end
 
+            if p.Results.filterOneToRelationships
+                db.filterAllOneToRelationships();
+            end
+        end
         
         function tableEntryNameList = get.tableEntryNameList(db)
-            tableEntryNameList = db.tableMap.keys;
+            tableEntryNameList = makecol(db.tableMap.keys);
         end
 
         function nTables = get.nTables(db)
@@ -221,19 +280,59 @@ classdef Database < DynamicClass & handle
     end
 
     methods % Relationships
-        function [referenceNames] = listRelationshipsWith(db, entryName)
+        function [referenceNames, refIdx] = listRelationshipsWith(db, entryName)
             referenceNames = {};
+            refIdx = [];
             for iRel = 1:db.nRelationships
                 rel = db.relationships{iRel};
                 [tf, referenceName] = rel.involvesEntryName(entryName);
                 if tf
                     referenceNames = [referenceNames referenceName]; %#ok<AGROW>
+                    refIdx = [refIdx; iRel]; %#ok<AGROW>
                 end
             end
             referenceNames = makecol(referenceNames);
         end
+        
+        function [referenceNames, referredToAsCell, refIdx] = listRelationshipsWithAsOneTo(db, entryName)
+            % finds referneces where one entryName is related to one/many
+            % referenceNames. referredToAs is the name of the entryName on
+            % the one side of the relationship. 
+            referenceNames = {};
+            referredToAsCell = {};
+            refIdx = [];
+            for iRel = 1:db.nRelationships
+                rel = db.relationships{iRel};
+                [tf, referenceName, referredToAs] = rel.involvesEntryNameAsOneTo(entryName);
+                if tf
+                    referenceNames = [referenceNames referenceName]; %#ok<AGROW>
+                    referredToAsCell{end+1} = referredToAs;
+                    refIdx = [refIdx; iRel]; %#ok<AGROW>
+                end
+            end
+            referenceNames = makecol(referenceNames);
+            referredToAsCell = makecol(referredToAsCell);
+        end
 
-        function [matchRel leftToRight] = findRelationship(db, entryName, referenceName)
+        function [referenceNames, referredToAsCell, refIdx] = listRelationshipsWithAsManyTo(db, entryName)
+            referenceNames = {};
+            referredToAsCell = {};
+            refIdx = [];
+            for iRel = 1:db.nRelationships
+                rel = db.relationships{iRel};
+                [tf, referenceName] = rel.involvesEntryNameAsManyTo(entryName);
+                if tf
+                    referenceNames = [referenceNames referenceName]; %#ok<AGROW>
+                    referredToAsCell{end+1} = referredToAs;
+                    refIdx = [refIdx; iRel]; %#ok<AGROW>
+                end
+            end
+            referenceNames = makecol(referenceNames);
+            referredToAsCell = makecol(referredToAsCell);
+        end
+
+
+        function [matchRel, leftToRight] = findRelationship(db, entryName, referenceName)
             % determine whether a relationship from table with entryName referring
             % to the other table as referenceName is found within db.relationships
             % Return the relationship if found or [] if not found
@@ -570,7 +669,9 @@ classdef Database < DynamicClass & handle
                     db.applyView(dv.getRequiredViews());
 
                     % apply this view
-                    debug('Applying DatabaseView : %s\n', dv.describe());
+                    if ~reapply
+                        debug('Applying DatabaseView : %s\n', dv.describe());
+                    end
                     dv.applyToDatabase(db);
                     db.viewsApplied{end+1} = dv;
                 end
@@ -624,7 +725,9 @@ classdef Database < DynamicClass & handle
                     end
                 end
 
-                debug('Loading DataSource : %s\n', src.describe());
+                if ~reload
+                    debug('Loading DataSource : %s\n', src.describe());
+                end
                 % load required sources
                 db.loadSource(src.getRequiredSources());
 
@@ -689,6 +792,12 @@ classdef Database < DynamicClass & handle
             % run analysis
             da.setDatabase(db);
             da.run(varargin{:});
+        end
+        
+        function rerun(db, da, varargin)
+            % run analysis
+            da.setDatabase(db);
+            da.rerun(varargin{:});
         end
     end
 

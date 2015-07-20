@@ -432,19 +432,23 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
 
         function str = describeKeyFields(rel)
             str = '';
-            colWidth = 20;
+            
+            leftWidth = 0;
+            [leftField, rightField] = cellvec(length(rel.keyFieldsLeftInRight));
             for iField = 1:length(rel.keyFieldsLeftInRight)
                 if rel.isJunction
                     rightName = rel.entryNameJunction;
                 else
                     rightName = rel.entryNameRight;
                 end
-                leftWidth = colWidth;
-                %rightWidth = colWidth;
-                leftField = sprintf('%s.%s', rel.entryNameLeft, rel.keyFieldsLeft{iField});
-                rightField = sprintf('%s.%s', rightName, rel.keyFieldsLeftInRight{iField});
-
-                desc = sprintf('%*s == %s\n', leftWidth, leftField, rightField);
+                leftField{iField} = sprintf('%s.%s', rel.entryNameLeft, rel.keyFieldsLeft{iField});
+                rightField{iField} = sprintf('%s.%s', rightName, rel.keyFieldsLeftInRight{iField});
+                
+                leftWidth = max(leftWidth, numel(leftField{iField}));
+            end
+            
+            for iField = 1:length(rel.keyFieldsLeftInRight)
+                desc = sprintf('%*s == %s\n', leftWidth, leftField{iField}, rightField{iField});
                 str = [str desc]; %#ok<AGROW>
             end
 
@@ -459,7 +463,6 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                     else
                         leftName = rel.entryNameLeft;
                     end
-                    leftWidth = colWidth;
                     leftField = sprintf('%s.%s', leftName, rel.keyFieldsRightInLeft{iField});
                     rightField = sprintf('%s.%s', rel.entryNameRight, rel.keyFieldsRight{iField});
 
@@ -571,6 +574,43 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                 referenceName = rel.referenceNames{idx};
             else
                 referenceName = '';
+            end
+        end
+        
+        function [tf, referenceName, referredToAs] = involvesEntryNameAsOneTo(rel, entryName)
+            % same as involvesEntryName, except demands relationship must
+            % be one to on the side of the relationship referencing
+            % entryName
+            idx = rel.mapEntryNameToIdx(entryName); 
+            tf = false;
+            referenceName = '';
+            referredToAs = '';
+            if ~isempty(idx) && ~rel.isMany(idx)
+                tf = true;
+                referenceName = rel.referenceNames{idx};
+                if idx==1
+                    referredToAs = rel.referenceNames{2};
+                else
+                    referredToAs = rel.referenceNames{1};
+                end
+            end
+        end
+        
+        function [tf, referenceName, referredToAs] = involvesEntryNameAsManyTo(rel, entryName)
+            % same as involvesEntryName, except demands relationship must
+            % be one to on the side of the relationship referencing
+            % entryName
+            idx = rel.mapEntryNameToIdx(entryName); 
+            tf = false;
+            referenceName = '';
+            if ~isempty(idx) && rel.isMany(idx)
+                tf = true;
+                referenceName = rel.referenceNames{idx};
+                if idx==1
+                    referredToAs = rel.referenceNames{2};
+                else
+                    referredToAs = rel.referenceNames{1};
+                end
             end
         end
     end

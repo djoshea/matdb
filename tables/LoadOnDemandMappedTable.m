@@ -336,7 +336,7 @@ classdef LoadOnDemandMappedTable < StructTable
             end
             dt.initialized = true;
             
-            dt.updateInDatabase();
+            dt.updateInDatabase('filterOneToRelationships', false); % not necessary since we j
         end
 
         function dt = reinitialize(dt, varargin)

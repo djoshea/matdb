@@ -796,6 +796,25 @@ classdef DataTable < DynamicClass & Cacheable
             s = db.getEntriesAsStruct(true(db.nEntries, 1), db.keyFields);
         end
         
+        function [db, maskRemoved] = deduplicateBasedOnKeyFields(db, varargin)
+            p = inputParser();
+            p.addParamValue('verbose', true, @islogical);
+            p.parse(varargin{:});
+            
+            warnIfNoArgOut(db, nargout);
+            
+            kf = db.getKeyFieldValuesAsStruct();
+            [~, idxUnique] = uniqueStruct(kf);
+            
+            db = db.select(idxUnique);
+            maskRemoved = truevec(db.nEntries);
+            maskRemoved(idxUnique) = false;
+            
+            if any(maskRemoved) && p.Results.verbose
+                debug('Removing %d %s entries using key field deduplication\n', nnz(maskRemoved), db.entryName);
+            end
+        end
+        
         function db = addEmptyEntry(db)
             % add a new [default] empty entry
             warnIfNoArgOut(db, nargout);
@@ -2310,6 +2329,12 @@ classdef DataTable < DynamicClass & Cacheable
             relatedCell = db.getRelatedIdx(entryName, 'combine', false, 'fillMissingWithNaN', false);
             count = makecol(cellfun(@numel, relatedCell));
         end
+        
+        function [db, mask] = filterHasRelated(db, entryName)
+            db.warnIfNoArgOut(nargout);
+            mask = db.getRelatedCount(entryName) > 0;
+            db = db.select(mask);
+        end
 
         function match = getRelated(db, entryName, varargin)
             % one param value useful is combine = true/false
@@ -2325,8 +2350,8 @@ classdef DataTable < DynamicClass & Cacheable
         % update the table stored in the database with this version of it,
         % thereby making any filtering done here also affect database queries
         % from related tables
-        function db = updateInDatabase(db)
-            db.database.updateTable(db);
+        function db = updateInDatabase(db, varargin)
+            db.database.updateTable(db, varargin{:});
         end
     end
 
