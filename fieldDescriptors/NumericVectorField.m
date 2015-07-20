@@ -109,14 +109,39 @@ classdef NumericVectorField < DataFieldDescriptor
         
         function maskMat = valueCompareMulti(dfd, valuesLeft, valuesRight)
             % maskMat(i,j) is true iff valuesLeft(i) == valuesRight(j)
+            % this is optimized for the case where either cell is a scalar
             
             % assumes valuesLeft and valuesRight are both column cell vectors
+            maskMat = false(numel(valuesLeft), numel(valuesRight));
             
-            % build matrix of values like ndgrid
-            mLeft = repmat(valuesLeft, 1, numel(valuesRight));
-            mRight = repmat(valuesRight', numel(valuesLeft), 1);
+            % first try comparing the cross-terms where both are scalar
+            numelLeft = cellfun(@numel, valuesLeft);
+            numelRight = cellfun(@numel, valuesRight);
+            scalarLeft = numelLeft==1;
+            scalarRight = numelRight==1;
+            maskMat(bsxfun(@and, scalarLeft, scalarRight')) = bsxfun(@eq, cell2mat(valuesLeft(scalarLeft)),  cell2mat(valuesRight(scalarRight))');
             
-            maskMat = cellfun(@isequal, mLeft, mRight);
+%           % and then compare the terms where neither is scalar but both
+%           have the same length
+            notScalarLeft = find(~scalarLeft);
+            for iiLeft = 1:numel(notScalarLeft)
+                idxLeft = notScalarLeft(iiLeft);
+                nLeft = numelLeft(idxLeft);
+                vLeft = valuesLeft{idxLeft};
+                
+                possibleRight = find(numelRight == nLeft);
+                maskMat(idxLeft, possibleRight) = cellfun(@(vRight) isequal(vLeft, vRight), valuesRight(possibleRight));
+            end
+            
+            % old way of doing this
+%             mLeft = repmat(valuesLeft(~maskScalarLeft), 1, numel(valuesRight));
+%             mRight = repmat(valuesRight(~maskScalarRight)', numel(valuesLeft), 1);
+%             
+%             maskMat = cellfun(@isequal, mLeft, mRight);
+%             maskMat(bsxfun(@and, ~maskScalarLeft, ~maskScalarRight)) = isequalNeither;
+
+%             maskMat(bsxfun(@and, maskScalarLeft, maskScalarRight)
+
         end
     end
 
