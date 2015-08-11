@@ -49,7 +49,9 @@ classdef StructTable < DataTable
 
             if isempty(db.table)
                 if isempty(table) 
-                    table = struct([]);
+                    if ~isstruct(table)
+                        table = struct([]);
+                    end
                 end
 
                 if isa(table, 'DataTable')

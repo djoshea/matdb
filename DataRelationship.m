@@ -463,6 +463,7 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                     else
                         leftName = rel.entryNameLeft;
                     end
+  
                     leftField = sprintf('%s.%s', leftName, rel.keyFieldsRightInLeft{iField});
                     rightField = sprintf('%s.%s', rel.entryNameRight, rel.keyFieldsRight{iField});
 

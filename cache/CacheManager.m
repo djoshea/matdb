@@ -125,7 +125,9 @@ classdef CacheManager < handle
                     continue;
                 end
 
-                if ~cm.checkParamMatch(contents.param, param)
+                if ~isempty(param) && ~isempty(contents.param) && ~cm.checkParamMatch(contents.param, param)
+                    % earlier versions wouldn't save the params if
+                    % precomputed
                     warning('Cache param in %s does not match', file);
                     continue;
                 end

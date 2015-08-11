@@ -50,7 +50,7 @@ classdef Database < DynamicClass & handle & matlab.mixin.Copyable
             tables = db.tableEntryNameList;
             tcprintf('light blue', 'Tables: ');
             for i = 1:length(tables)
-                fprintf('%s', tables{i});
+                tcprintf('inline', '%s({yellow}%d{none})', tables{i}, db.tableMap(tables{i}).nEntries);
                 if i < length(tables)
                     fprintf(', ');
                 end

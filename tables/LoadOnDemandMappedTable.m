@@ -275,6 +275,7 @@ classdef LoadOnDemandMappedTable < StructTable
             % add a keyFieldHash field for precomputed entry hashes,
             % populate this after merging with current values
             dt = dt.addField('keyFieldHash', {}, 'fieldDescriptor', UnspecifiedField());
+            dt = dt.addField('keyFieldHashParam', {}, 'fieldDescriptor', UnspecifiedField());
             
             if keepCurrentValues
                 if isempty(mapsEntryName)
@@ -312,7 +313,10 @@ classdef LoadOnDemandMappedTable < StructTable
                         for field = fieldsCacheable
                             cacheName= dt.getCacheNameForFieldValue(field{1});
                             dt.table(iEntry).keyFieldHash.(field{1}) = cm.hashParam(param, cacheName);
-                        end 
+                        end
+                        % hold onto the params used to generate the hash to save into the
+                        % meta file later
+                        dt.table(iEntry).keyFieldHashParam = param;
                     end
                 end    
             else
@@ -323,6 +327,9 @@ classdef LoadOnDemandMappedTable < StructTable
                         prog.update(iEntry, sprintf('Precomputing hash for entry %d', iEntry));
                         param.keyFields = keyFieldsStruct(iEntry);
                         dt.table(iEntry).keyFieldHash = cm.hashParam(cacheName, param);
+                        % hold onto the params used to generate the hash to save into the
+                        % meta file later
+                        dt.table(iEntry).keyFieldHashParam = param;
                     end
                 end
             end
@@ -973,9 +980,10 @@ classdef LoadOnDemandMappedTable < StructTable
                 cacheName = dt.getCacheNameForFieldValue(field);
                 %cacheParam = dt.getCacheParamForFieldValue(iEntry, field);
                 hash = dt.table(iEntry).keyFieldHash.(field);
+                param = dt.table(iEntry).keyFieldHashParam;
                 cacheTimestamp = dt.cacheValidTimestampForField.(field);
                 
-                [value, timestamp] = cm.loadData(cacheName, [], 'hash', hash, 'verbose', p.Results.verbose);
+                [value, timestamp] = cm.loadData(cacheName, param, 'hash', hash, 'verbose', p.Results.verbose);
                 
                 if ~isnan(timestamp) && timestamp >= cacheTimestamp
                     %debug('Loading cached value for entry %d field %s\n', iEntry, field);
@@ -1001,10 +1009,11 @@ classdef LoadOnDemandMappedTable < StructTable
                 cacheName = dt.getCacheNameForFieldValue(field);
                 %cacheParam = dt.getCacheParamForFieldValue(iEntry, field);
                 hash = dt.table(iEntry).keyFieldHash.(field);
+                param = dt.table(iEntry).keyFieldHashParam;
                 cacheTimestamp = dt.cacheValidTimestampForField.(field);
 
                 cm = dt.getFieldValueCacheManager();
-                [validCache, timestamp] = cm.hasCacheNewerThan(cacheName, [], cacheTimestamp, 'hash', hash);
+                [validCache, timestamp] = cm.hasCacheNewerThan(cacheName, param, cacheTimestamp, 'hash', hash);
             else
                 [validCache, timestamp] = dt.retrieveCachedTimestampForEntry(iEntry);
             end
@@ -1025,6 +1034,7 @@ classdef LoadOnDemandMappedTable < StructTable
                 cacheName = dt.getCacheNameForFieldValue(field);
                 %cacheParam = dt.getCacheParamForFieldValue(iEntry, field);
                 hash = dt.table(iEntry).keyFieldHash.(field);
+                param = dt.table(iEntry).keyFieldHashParam;
                 
                 if ismember('value', p.UsingDefaults)
                     % use actual field value as default
@@ -1035,7 +1045,7 @@ classdef LoadOnDemandMappedTable < StructTable
                 end
 
                 %debug('Saving cache for entry %d field %s \n', iEntry, field);
-                timestamp = cm.saveData(cacheName, [], value, 'hash', hash, 'verbose', p.Results.verbose);
+                timestamp = cm.saveData(cacheName, param, value, 'hash', hash, 'verbose', p.Results.verbose);
                 dt.table(iEntry).cacheTimestampsByEntry.(field) = timestamp;
             else
                 warning('Attempting to cache individual field value when fields are cached by entry\n');
@@ -1147,10 +1157,11 @@ classdef LoadOnDemandMappedTable < StructTable
             cacheName = dt.getCacheNameForEntryAllFields();
             %cacheParam = dt.getCacheParamForEntryAllFields(iEntry);
             hash = dt.table(iEntry).keyFieldHash;
+            param = dt.table(iEntry).keyFieldHashParam;
             cacheTimestamp = dt.cacheValidTimestampAllFields;
 
             cm = dt.getFieldValueCacheManager();
-            [values, timestamp] = cm.loadData(cacheName, [], 'fields', fields, 'hash', hash, 'verbose', p.Results.verbose);
+            [values, timestamp] = cm.loadData(cacheName, param, 'fields', fields, 'hash', hash, 'verbose', p.Results.verbose);
             if ~isnan(timestamp) && timestamp >= cacheTimestamp
                 validCache = true;
                 %debug('Loading cached value for entry %d field %s\n', iEntry, field);
@@ -1191,10 +1202,11 @@ classdef LoadOnDemandMappedTable < StructTable
             cacheName = dt.getCacheNameForEntryAllFields();
             %cacheParam = dt.getCacheParamForEntryAllFields(iEntry);
             hash = dt.table(iEntry).keyFieldHash;
+            param = dt.table(iEntry).keyFieldHashParam;
             cacheTimestamp = dt.cacheValidTimestampAllFields();
 
             cm = dt.getFieldValueCacheManager();
-            [validCache, timestamp] = cm.hasCacheNewerThan(cacheName, [], cacheTimestamp, 'hash', hash, varargin{:});
+            [validCache, timestamp] = cm.hasCacheNewerThan(cacheName, param, cacheTimestamp, 'hash', hash, varargin{:});
         end
         
         function dt = cacheEntryAllFields(dt, iEntry, row, varargin)
@@ -1236,10 +1248,11 @@ classdef LoadOnDemandMappedTable < StructTable
             cacheName = dt.getCacheNameForEntryAllFields();
             %cacheParam = dt.getCacheParamForEntryAllFields(iEntry);
             hash = dt.table(iEntry).keyFieldHash;
+            param = dt.table(iEntry).keyFieldHashParam;
             
             % save the values as separate fields in the .mat file, to facilitate
             % easy partial loading of specific fields
-            timestamp = cm.saveData(cacheName, [], row, 'separateFields', true, 'hash', hash, 'verbose', verbose);
+            timestamp = cm.saveData(cacheName, param, row, 'separateFields', true, 'hash', hash, 'verbose', verbose);
             
             % update cache timestamps
             for iField = 1:length(fieldsCacheable)
