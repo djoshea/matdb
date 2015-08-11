@@ -119,7 +119,9 @@ classdef NumericVectorField < DataFieldDescriptor
             numelRight = cellfun(@numel, valuesRight);
             scalarLeft = numelLeft==1;
             scalarRight = numelRight==1;
-            maskMat(bsxfun(@and, scalarLeft, scalarRight')) = bsxfun(@eq, cell2mat(valuesLeft(scalarLeft)),  cell2mat(valuesRight(scalarRight))');
+            if any(scalarLeft) && any(scalarRight)
+                maskMat(bsxfun(@and, scalarLeft, scalarRight')) = bsxfun(@eq, cell2mat(valuesLeft(scalarLeft)),  cell2mat(valuesRight(scalarRight))');
+            end
             
 %           % and then compare the terms where neither is scalar but both
 %           have the same length
