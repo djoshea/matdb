@@ -312,12 +312,13 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             % actually do any saving
             p = inputParser();
             p.addParameter('maxRows', 10, @isscalar);
+            p.KeepUnmatched = true;
             p.parse(varargin{:});
             
             dbstop if error;
             da.run('keepCurrentValues', false, 'loadCache', false, ...
                 'saveCache', false, 'catchErrors', false, 'rerunFailed', true, ...
-                'maxToRun', p.Results.maxRows);
+                'maxToRun', p.Results.maxRows, p.Unmatched);
         end
         
         function runDebugErrors(da, varargin)
@@ -357,6 +358,10 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
         function rerunFailedDebug(da, varargin)
             dbstop if error;
             da.run('rerunFailed', true, 'catchErrors', false, 'saveCache', false, varargin{:});
+        end
+        
+        function runDebugOnIdx(da, idx, varargin);
+            da.runDebug('idx', idx, varargin{:});
         end
 
         function run(da, varargin)
