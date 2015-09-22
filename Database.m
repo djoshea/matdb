@@ -50,7 +50,8 @@ classdef Database < DynamicClass & handle & matlab.mixin.Copyable
             tables = db.tableEntryNameList;
             tcprintf('light blue', 'Tables: ');
             for i = 1:length(tables)
-                tcprintf('inline', '%s({yellow}%d{none})', tables{i}, db.tableMap(tables{i}).nEntries);
+                nEntries = db.tableMap(tables{i}).nEntries;
+                tcprintf('inline', '%s({yellow}%d{none})', tables{i}, nEntries);
                 if i < length(tables)
                     fprintf(', ');
                 end
@@ -700,6 +701,10 @@ classdef Database < DynamicClass & handle & matlab.mixin.Copyable
             src = p.Results.source;
             reload = p.Results.reload;
 
+            if isempty(src)
+                return;
+            end
+            
             if isa(src, 'DataSource')
                 srcCell = {src};
             elseif iscell(src)
@@ -711,7 +716,7 @@ classdef Database < DynamicClass & handle & matlab.mixin.Copyable
             assert(all(cellfun(@(src) isa(src, 'DataSource'), srcCell)), ...
                 'Must be a DataSource instance');
 
-            for iSrc = 1:length(srcCell)
+            for iSrc = 1:numel(srcCell)
                 src = srcCell{iSrc};
 
                 assert(isa(src, 'DataSource'), 'Must be a DataSource instance');
@@ -725,15 +730,37 @@ classdef Database < DynamicClass & handle & matlab.mixin.Copyable
                     end
                 end
 
+                % check for data sources with the same name
+                srcName = src.getName();
+                [tf, ~, srcIdx] = db.hasSourceWithName(srcName);
+                if tf
+                    if ~reload
+                        debug('DataSource conflicts with source with name %s, skipping\n', src.getName());
+                        continue;
+                    else
+                        debug('Unloading conflicting source with name %s\n', src.getName());
+                        db.removeLoadedSources(srcIdx);
+                    end
+                elseif db.hasTable(srcName)
+                    error('DataSource conflicts with table with same name %s', srcName);
+                end
+                    
                 if ~reload
                     debug('Loading DataSource : %s\n', src.describe());
                 end
+                
                 % load required sources
                 db.loadSource(src.getRequiredSources());
-
+                
                 % load this source
                 src.loadInDatabase(db);
                 db.markSourceLoaded(src); 
+            end
+        end
+        
+        function describeSourcesLoaded(db, src)
+            for i = 1:numel(db.sourcesLoaded)
+                debug('{#FFFF93}%s{none} : %s\n', class(db.sourcesLoaded{i}), db.sourcesLoaded{i}.describe());
             end
         end
 
@@ -759,6 +786,13 @@ classdef Database < DynamicClass & handle & matlab.mixin.Copyable
             end
         end
         
+        function removeLoadedSources(db, idx)
+            for i = 1:numel(idx)
+                debug('Removing loaded DataSource %s\n', db.sourcesLoaded{idx(i)}.describe());
+            end
+            db.sourcesLoaded(idx) = [];
+        end
+        
         function [tf, srcLoaded, ind] = hasSourceLoaded(db, src)
             matches = cellfun(@(s) src.isEquivalent(s), db.sourcesLoaded);
             tf = any(matches);
@@ -769,6 +803,13 @@ classdef Database < DynamicClass & handle & matlab.mixin.Copyable
                 srcLoaded = [];
                 ind = [];
             end
+        end
+        
+        function [tf, srcCell, ind] = hasSourceWithName(db, name)
+            mask = cellfun(@(src) strcmp(src.getName(), name), db.sourcesLoaded);
+            tf = any(mask);
+            ind = find(mask);
+            srcCell = db.sourcesLoaded(ind);
         end
         
         function srcCell = findSourcesByClassName(db, className)
