@@ -2,26 +2,26 @@ classdef MatdbSettingsStore < handle
 % Save an instance of this class as matdbSettings.mat
 % anywhere on the matlab path (although typically outside of the git repo).
 % after filling out the path fields below. It will be loaded automatically
-% by setPathMatdb.m when it is called (presumably by startup.m) 
-% 
-% The reason for setting paths here is to accomodate this code being run on 
+% by setPathMatdb.m when it is called (presumably by startup.m)
+%
+% The reason for setting paths here is to accomodate this code being run on
 % several different locations, each with its own cache.
 
     % SET THESE PROPERTIES AND SAVE SOMEWHERE ON PATH AS matdbSettings.mat
     properties
         % name of the default cache manager class to use
-        defaultCacheManagerName  
+        defaultCacheManagerName
 
-        % root location of the Matlab cache file 
+        % root location of the Matlab cache file
         pathListCache
 
-        % root location for saving figures, analysis html reports, etc. 
+        % root location for saving figures, analysis html reports, etc.
         pathListAnalysis
 
         % unix filesystem permissions to set for files created by analysis
         permissionsAnalysisFiles
 
-        % root location for saving csv files 
+        % root location for saving csv files
         pathListCSVData
     end
 
@@ -35,7 +35,7 @@ classdef MatdbSettingsStore < handle
             if isempty(pSettings)
                 pSettings = MatdbSettingsStore.loadSettings();
             end
-            settings = pSettings; 
+            settings = pSettings;
         end
 
         function instance = loadSettings()
@@ -87,10 +87,9 @@ classdef MatdbSettingsStore < handle
             filename = fullfile(path, 'matdbSettings.mat');
             save(filename, 'matdbSettings');
             debug('MatdbSettings saved to %s\n', filename);
-            
+
             % update the persisent cache inside .settings
             MatdbSettingsStore.settings(matdbSettings);
         end
     end
 end
-

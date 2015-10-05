@@ -68,7 +68,11 @@ function cellMat = loadCSVAsCell(varargin)
     maskIsQuoted = mod(singleQuoteCount, 2) == 1;
 
     % find non-quoted line breaks
-    NEWLINE = char(10);
+    if any(text == char(10))
+        NEWLINE = char(10);
+    else
+        NEWLINE = char(13);
+    end
     nonQuotedLineBreakMask = (text == NEWLINE) & ~maskIsQuoted;
     nonQuotedDelimMask = (text == delimiter) & ~maskIsQuoted;
 
