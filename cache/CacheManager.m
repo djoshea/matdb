@@ -177,7 +177,7 @@ classdef CacheManager < handle
                 end
             end
 
-            fileList = cm.getFileListDataForRead(cacheName, param, 'hash', p.Results.hash);
+            fileList = cm.getFileListDataForRead(cacheName, param, 'hash', p.Results.hash, 'verbose', p.Results.verbose);
             if isempty(fileList)
                 % no cache files found
                 data = [];
