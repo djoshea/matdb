@@ -629,6 +629,10 @@ classdef Database < DynamicClass & handle & matlab.mixin.Copyable
             end
             appliedNext = false;
         end
+        
+        function obj = dynamicPropertyAssign(obj, name, value, s) %#ok<INUSD>
+            obj = DynamicClass.NotSupported;
+        end
     end
 
     methods % Views

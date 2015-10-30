@@ -698,7 +698,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                     failureEntry = struct();
                     for iField = 1:numel(allFieldsAnalysis)
                         dfd = resultTable.getFieldDescriptor(allFieldsAnalysis{iField});
-                        failureEntry.(field{1}) = dfd.getEmptyValueElement();
+                        failureEntry.(allFieldsAnalysis{iField}) = dfd.getEmptyValueElement();
                     end
 
                     idxAnalyze = find(maskToAnalyze);
@@ -926,29 +926,9 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                     da.timeRun = max(timeRunList);
                 end
             elseif saveCache
-                debug('Generating analysis report: loading displayable fields for all entries\n');
-                % here we're writing the report
-                % before we do this, we need to load the values of all displayable fields
-                % and additional fields used in the report
-                fieldsToLoad = intersect(da.resultTable.fieldsLoadOnDemand, da.resultTable.fieldsDisplayable);
-                fieldsToLoad = union(fieldsToLoad, fieldsAdditional);
-                da.resultTable = da.resultTable.loadFields('fields', fieldsToLoad, 'loadCacheOnly', true, 'verbose', verbose);
-                da.resultTable.updateInDatabase('filterOneToRelationships', false);
-
-                % make sure analysis path exists
-                mkdirRecursive(da.pathAnalysis);
-                chmod(MatdbSettingsStore.settings.permissionsAnalysisFiles, da.pathAnalysisRoot);
-                chmod(MatdbSettingsStore.settings.permissionsAnalysisFiles, da.pathAnalysis);
-                if exist(da.pathFigures, 'dir')
-                    chmod(MatdbSettingsStore.settings.permissionsAnalysisFiles, da.pathFigures);
-                    for i = 1:length(da.figureExtensions)
-                        path = fullfile(da.pathFigures, da.figureExtensions{i});
-                        if exist(path, 'dir')
-                            chmod(MatdbSettingsStore.settings.permissionsAnalysisFiles, path);
-                        end
-                    end
-                end
-
+                da.loadDisplayableFields();
+                da.createAnalysisPathAndSetPermissions();
+            
                 % sym link figures from prior runs to the current analysis folder
                 da.linkOldFigures('saveCache', saveCache);
                 % save the html report (which will copy resources folder over too)
@@ -1168,10 +1148,42 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             end
             HTMLWriter.openFileInBrowser(fileName);
         end
+        
+        function loadDisplayableFields(da)
+            debug('Loading displayable fields for all entries\n');
+            % here we're writing the report
+            % before we do this, we need to load the values of all displayable fields
+            % and additional fields used in the report
+            fieldsToLoad = intersect(da.resultTable.fieldsLoadOnDemand, da.resultTable.fieldsDisplayable);
+            fieldsAdditional = da.getFieldsAdditional();
+            fieldsToLoad = union(fieldsToLoad, fieldsAdditional);
+            da.resultTable = da.resultTable.loadFields('fields', fieldsToLoad, 'loadCacheOnly', true, 'verbose', false);
+            da.resultTable.updateInDatabase('filterOneToRelationships', false);
+        end
+        
+        function createAnalysisPathAndSetPermissions(da)
+            % make sure analysis path exists
+            mkdirRecursive(da.pathAnalysis);
+            chmod(MatdbSettingsStore.settings.permissionsAnalysisFiles, da.pathAnalysisRoot);
+            chmod(MatdbSettingsStore.settings.permissionsAnalysisFiles, da.pathAnalysis);
+            if exist(da.pathFigures, 'dir')
+                chmod(MatdbSettingsStore.settings.permissionsAnalysisFiles, da.pathFigures);
+                for i = 1:length(da.figureExtensions)
+                    path = fullfile(da.pathFigures, da.figureExtensions{i});
+                    if exist(path, 'dir')
+                        chmod(MatdbSettingsStore.settings.permissionsAnalysisFiles, path);
+                    end
+                end
+            end 
+        end
 
         function html = saveAsHtml(da)
             da.checkHasRun();
             fileName = da.htmlFile;
+            
+            da.loadDisplayableFields();
+            da.createAnalysisPathAndSetPermissions();
+            
             debug('Saving HTML Report to %s\n', fileName);
             html = HTMLDatabaseAnalysisWriter(fileName);
             html.generate(da);
