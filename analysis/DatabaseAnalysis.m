@@ -33,7 +33,6 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
         % if cacheResultsIndividually is false, the results will be saved with
         % the table, ,,j
         %cacheResultsIndividually = false;
-
     end
 
     properties
@@ -65,11 +64,6 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
     end
 
     methods(Abstract) % METHODS EVERY ANALYSIS MUST IMPLEMENT
-        % return a single word descriptor for this analysis, ignoring parameter
-        % settings in param. The results will be stored as a DataTable with this
-        % as the entryName
-        name = getName(da);
-
         % return the entryName corresponding to the table in the database which this
         % analysis runs on. The DataTable with this entry name will run this analysis
         % once on each entry and map the results via a 1-1 relationship
@@ -87,6 +81,14 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
     end
 
     methods % not necessary to override if the defaults are okay
+        % return a single word descriptor for this analysis, ignoring parameter
+        % settings in param. The results will be stored as a DataTable with this
+        % as the entryName. Default is lower cased version of analysis
+        % class name
+        function name = getName(da)
+            name = strrep(lowerFirst(class(da)), '.', '_');
+        end
+        
         % return the parameters that describe this particular instance of the analysis
         % these will be used when caching. If these are changed, the old
         % analysis results will no longer be found
@@ -961,6 +963,9 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             % use this to save figures while running the analysis
             if nargin < 4
                 figCaption = '';
+            end
+            if nargin < 2
+                figh = gcf;
             end
             if nargin < 3 || isempty(figName)
                 figName = get(figh, 'Name');
