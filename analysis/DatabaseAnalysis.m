@@ -86,7 +86,14 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
         % as the entryName. Default is lower cased version of analysis
         % class name
         function name = getName(da)
-            name = strrep(lowerFirst(class(da)), '.', '_');
+            fullClass = class(da);
+            % strip package name
+            idxdot = strfind(fullClass, '.');
+            if ~isempty(idxdot)
+                fullClass = fullClass(idxdot(end)+1:end);
+            end
+                
+            name = lowerFirst(fullClass);
         end
         
         % return the parameters that describe this particular instance of the analysis
@@ -293,10 +300,12 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             % none of which will be loaded initially
             resultTable = DatabaseAnalysisResultsTable(da, 'maxRows', p.Results.maxRows);
 
-            if ~isempty(currentResultTable)
-                debug('Merging current results table into newly mapped results table, some entries may be dropped\n');
-                resultTable = resultTable.mergeEntriesWith(currentResultTable, 'keyFieldMatchesOnly', true);
-            end
+            % commenting this out as it does not deal properly with
+            % changing hash parameters!
+%             if ~isempty(currentResultTable)
+%                 debug('Merging current results table into newly mapped results table, some entries may be dropped\n');
+%                 resultTable = currentResultTable.mergeEntriesWith(resultTable, 'keyFieldMatchesOnly', true);
+%             end
 
             da.resultTable = resultTable.setDatabase(da.database).updateInDatabase('filterOneToRelationships', false);
             entryName = da.getMapsEntryName();

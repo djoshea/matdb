@@ -746,7 +746,7 @@ classdef Database < DynamicClass & handle & matlab.mixin.Copyable
                         db.removeLoadedSources(srcIdx);
                     end
                 elseif db.hasTable(srcName)
-                    error('DataSource conflicts with table with same name %s', srcName);
+                    warning('DataSource conflicts with table with same name %s', srcName);
                 end
                     
                 if ~reload
