@@ -749,6 +749,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                         progressStr = sprintf('[%5.1f %% - entry %d ]', (iAnalyze-1)/nAnalyze*100, iResult);
                         fprintf('\n');
                         [~, width] = getTerminalSize();
+                        width = width(1);
                         if isunix && ~ismac
                             cdash = char(hex2dec('2500'));
                         elseif ismac
@@ -1005,6 +1006,8 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             end
 
             % let saveFigure do all of the work!
+            AutoAxis.updateFigure();
+            drawnow;
             saveFigure(fileList, figh);
 
             chmod(MatdbSettingsStore.settings.permissionsAnalysisFiles, fileList);
@@ -1425,10 +1428,12 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
         end
 
         function pauseOutputLog(da)
+%             disp('off');
             DatabaseAnalysis.setOutputLogStatus('paused', true);
         end
 
         function resumeOutputLog(da)
+%             disp('on')
             DatabaseAnalysis.setOutputLogStatus('paused', false);
         end
     end

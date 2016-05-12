@@ -246,14 +246,14 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                             error('Could not locate any keyFieldsLeft in junction table. Provide keyFieldsLeftInRight to manually specify the mapping.');
                         end
                     else
-                        [rel.keyFieldsLeftInRight, foundReferenceLeftInRight] = DataRelationship.defaultFieldReference(...
+                        [rel.keyFieldsLeftInRight, foundReferenceLeftInRight, searchedFor] = DataRelationship.defaultFieldReference(...
                             tableRight, tableLeft, 'fields', rel.keyFieldsLeft);
                         if ~any(foundReferenceLeftInRight)
                             rel.keyFieldsLeftInRight = {};
                             % for 1:1 relationships this might be okay if
                             % foundReferenceLeftInRight is true, we'll check this later
                             if ~rel.isOneToOne
-                                error('Could not locate any keyFieldsLeft in right table. Provide keyFieldsLeftInRight to manually specify the mapping.');
+                                error('Could not locate any keyFieldsLeft (searched %s) in right table. Provide keyFieldsLeftInRight to manually specify the mapping.', strjoin(searchedFor));
                             end
                         end  
                     end
@@ -286,14 +286,14 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                             error('Could not locate any keyFieldsRight in junction table. Provide keyFieldsRightInLeft to manually specify the mapping.');
                         end
                     else
-                        [rel.keyFieldsRightInLeft, foundReferenceRightInLeft]= DataRelationship.defaultFieldReference(...
+                        [rel.keyFieldsRightInLeft, foundReferenceRightInLeft, searchedFor]= DataRelationship.defaultFieldReference(...
                             tableLeft, tableRight, 'fields', rel.keyFieldsRight);
                         if ~any(foundReferenceRightInLeft)
                             rel.keyFieldsRightInLeft = {};
                             % for 1:1 relationships this might be okay if
                             % foundReferenceLeftInRight is true, we'll check this later
                             if ~rel.isOneToOne
-                                error('Could not locate any keyFieldsRight in left table. Provide keyFieldsRightInLeft to manually specify the mapping.');
+                                error('Could not locate any keyFieldsRight (searched %s) in left table. Provide keyFieldsRightInLeft to manually specify the mapping.', strjoin(searchedFor));
                             end
                         end       
                     end
@@ -1011,7 +1011,7 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             name = strcat(entryName, upper(field(1)), field(2:end));
         end
 
-        function [namesReference, foundReference] = defaultFieldReference(tableWithFields, tableReferenced, varargin)
+        function [namesReference, foundReference, namesSearched] = defaultFieldReference(tableWithFields, tableReferenced, varargin)
             % return the names of fields within tableWithFields that would be used to 
             % reference the keyFields of tableReferenced from within tableWithFields
             p = inputParser;
@@ -1023,7 +1023,8 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             
             foundReference = false(length(fieldsInOther), 1);
             namesReference = cell(length(fieldsInOther), 1);
-           
+            namesSearched = cell(0, 1);
+            
             if isempty(tableWithFields) || isempty(tableReferenced)
                 return;
             end
@@ -1037,6 +1038,7 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             end
             
             foundCamelCased = tableWithFields.isField(names);
+            namesSearched = cat(1, namesSearched, names{:});
             foundReference = foundReference | foundCamelCased;
             namesReference(foundCamelCased) = names(foundCamelCased);
 
@@ -1047,6 +1049,7 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             
             % then try just using the fields exactly as is
             foundExact = tableWithFields.isField(fieldsInOther);
+            namesSearched = cat(1, namesSearched, fieldsInOther{:});
             replaceMask = foundExact & ~foundReference;
             namesReference(replaceMask) = fieldsInOther(replaceMask);
             foundReference = foundReference | foundExact;

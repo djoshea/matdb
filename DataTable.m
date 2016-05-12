@@ -563,6 +563,10 @@ classdef DataTable < DynamicClass & Cacheable
             mask = db.filterGetMask(keyword, field, varargin{:});
         end
 
+        function mask = filterOutByFieldGetMask(db, field, keyword, varargin)
+            mask = ~db.filterGetMask(keyword, field, varargin{:});
+        end
+        
         function mask = matchMask(db, varargin)
             mask = db.filterGetMask('match', varargin{:});
         end
