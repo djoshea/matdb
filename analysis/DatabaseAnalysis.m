@@ -46,9 +46,9 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
         % from within runOnEntry (e.g. saveFigure)
         figureInfoCurrentEntry
         currentEntry
-    end
-
-    properties(Transient, SetAccess=protected)
+        
+        tableMapped
+        
         % reference to the current database when running
         database
     end
@@ -116,7 +116,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             fields = {};
         end
 
-        function data = loadValuesCustomForEntry(da, entry, fields, extraInfo)
+        function data = loadValuesCustomForEntry(da, entry, fields, extraInfo) %#ok<STOUT>
             % here entry will be the mapped entry, not the
             error('Please override loadValuesCustomForEntry if you wish to use getFieldsCustomSaveLoad');
         end
@@ -293,7 +293,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
 
             da.readyDatabase();
 
-            currentResultTable = da.resultTable;
+%             currentResultTable = da.resultTable;
 
             % build the resultTable as a LoadOnDemandTable
             % this will be a skeleton containing all of the fields for the analysis
@@ -365,7 +365,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             da.run('rerunFailed', true, 'catchErrors', false, 'saveCache', false, varargin{:});
         end
 
-        function runDebugOnIdx(da, idx, varargin);
+        function runDebugOnIdx(da, idx, varargin)
             da.runDebug('idx', idx, varargin{:});
         end
 
@@ -407,7 +407,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             p.addParameter('maxRows', Inf, @isscalar);
 
             % for debug purposes mainly, run only on this many entries
-            p.addParamValue('maxToRun', Inf, @isscalar);
+            p.addParameter('maxToRun', Inf, @isscalar);
 
             % for new entries that run, they will be unloaded from the table immediately
             % if this is false so as to prevent memory overflows for large analyses
@@ -419,6 +419,8 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             p.addParameter('storeInTable', false, @islogical);
 
             p.addParameter('verbose', false, @islogical);
+            
+            p.addParameter('parallel', false, @islogical); % use parallel mode to execute
             p.parse(varargin{:});
 
             fieldsAnalysis = p.Results.fields;
@@ -435,7 +437,12 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             maxToRun = p.Results.maxToRun;
             db = p.Results.database;
             verbose = p.Results.verbose;
+            runParallel = p.Results.parallel;
 
+            if runParallel
+                pool = gcp;
+            end
+            
             if ~saveCache
                 storeInTable = true;
             end
@@ -468,13 +475,15 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                     table = table.updateInDatabase();
                 end
             end
+            
+            da.tableMapped = table;
 
             % load required source/views, re-map the result table, etc.
             if ~keepCurrentValues
                 da.resultTable = [];
             end
             da.initialize('maxRows', p.Results.maxRows);
-            resultTable = da.resultTable;
+            resultTable = da.resultTable; %#ok<*PROPLC>
 
             da.isRunning = true;
 
@@ -482,13 +491,13 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             % we'll keep this timestamp unless we don't end up doing any new
             % analysis, then we'll just pick the most recent prior timestamp
             da.timeRun = now;
-            fieldsAdditional = da.getFieldsAdditional();
-
-            [allFieldsAnalysis, allDFDAnalysis] = da.getFieldsAnalysisAsValueMap();
-            for iField = 1:length(fieldsAnalysis)
-                dfd = allDFDAnalysis(fieldsAnalysis{iField});
-                fieldsAnalysisIsDisplayable(iField) = dfd.isDisplayable();
-            end
+            
+            allFieldsAnalysis = da.getFieldsAnalysisAsValueMap();
+%             [allFieldsAnalysis, allDFDAnalysis] = da.getFieldsAnalysisAsValueMap();
+%             for iField = 1:length(fieldsAnalysis)
+%                 dfd = allDFDAnalysis(fieldsAnalysis{iField});
+%                 fieldsAnalysisIsDisplayable(iField) = dfd.isDisplayable();
+%             end
 
             % keep track of whether we need to re-cache the result table
             resultTableChanged = false;
@@ -703,7 +712,6 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
 
                 nAnalyze = nnz(maskToAnalyze);
                 if nAnalyze > 0
-
                     % create a failure entry we can simply drop in when a
                     % failure occurs
                     failureEntry = struct();
@@ -717,256 +725,383 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                     resultTableChanged = true;
 
                     debug('Running analysis %s on %d of %d %s entries\n', name, ...
-                        nAnalyze, table.nEntries, entryName);
+                        nAnalyze, da.tableMapped.nEntries, entryName);
 
                     % load sources required ONLY for new analysis
                     da.database.loadSource(da.getRequiredSourcesForAnalysis());
 
-                    % actually run the analysis
-                    for iAnalyze = 1:nAnalyze
-                        iResult = idxAnalyze(iAnalyze);
-
-                        % find the corresponding entry in the mapped table via the database
-                        if maskToAnalyze(iResult)
-                            % NOTE: ASSUMING THAT THE TABLES ARE ALIGNED AT
-                            % THIS POINT!!!
-                            %resultEntry = resultTable(iResult).apply();
-                            %entry = resultEntry.getRelated(entryName);
-                            entry = table.select(iResult);
-
-                            if entry.nEntries > 1
-                                debug('WARNING: Multiple matches for analysis row, check uniqueness of keyField tuples in table %s. Choosing first.\n', entryName);
-                                entry = entry.select(1);
-                            elseif entry.nEntries == 0
-                                % this likely indicates a bug in building / loading resultTable from cache
-                                debug('WARNING: Could not find match for resultTable row in order to do analysis');
-                                success = false;
+                    % actually run the analysis, non-parallel
+                    if ~runParallel
+                        for iAnalyze = 1:nAnalyze
+                            iResult = idxAnalyze(iAnalyze);
+                            [valid, entry] = fetchEntry(da.tableMapped, iResult);
+                            if ~valid
+                                continue;
                             end
+                            printSingleEntryHeader(entry, iAnalyze, iResult)
+
+                            % for saveFigure to look at
+                            da.currentEntry = entry;
+
+                            % clear debug's last caller info to get a fresh
+                            % debug header
+                            debug();
+
+                            % open a temporary file to use as a diary to capture all output
+                            diary off;
+                            diaryFile = tempname();
+                            diary(diaryFile);
+                            DatabaseAnalysis.setOutputLogStatus('file', diaryFile);
+
+                            [resultStruct, success, exc] = runSingleEntry(da, entry, fieldsAnalysis, catchErrors);
+
+                            extraFields = printPostRunWarnings(da, success, fieldsAnalysis, resultStruct);
+
+                            % load the output from the diary file
+                            DatabaseAnalysis.setOutputLogStatus('file', '');
+                            diary('off');
+                            output = fileread(diaryFile);
+                            
+                            resultTable = storeResultsInDatabase(resultTable, resultStruct, iResult, output, success, exc, extraFields, da.figureInfoCurrentEntry);
+                            
+                            % don't clutter with temp files
+                            if exist(diaryFile, 'file')
+                                delete(diaryFile);
+                            end
+
+                            close all;
                         end
+                        
+                    else
+                        % parallel mode
+                        
+                        opts.fieldsAnalysis = fieldsAnalysis;
 
-                        description = entry.getKeyFieldValueDescriptors();
-                        description = description{1};
-                        progressStr = sprintf('[%5.1f %% - entry %d ]', (iAnalyze-1)/nAnalyze*100, iResult);
-                        fprintf('\n');
-                        [~, width] = getTerminalSize();
-                        width = width(1);
-                        if isunix && ~ismac
-                            cdash = char(hex2dec('2500'));
-                        elseif ismac
-                            cdash = char(hex2dec({'e2', '94', '80'}))';
-                        else
-                            cdash = '-';
+                        % place da on the workers once
+                        data = struct('da', da, 'database', da.database, ...
+                            'tableMapped', da.tableMapped);
+                        constData = parallel.pool.Constant(data);
+                        
+                        prog = ProgressBar(nAnalyze, 'Creating futures to run analysis on entries');
+                        counter = 1;
+                        for iAnalyze = 1:nAnalyze
+                            prog.update(iAnalyze);
+                            
+                            iResult = idxAnalyze(iAnalyze);
+
+                            futures(counter) = parfeval(pool, @asyncRunSingle, 4, constData, iAnalyze, iResult, opts); %#ok<AGROW>
+                            counter = counter + 1;
                         end
-                        line = [repmat(cdash, 1, width-1) '\n'];
-
-                        color = 'bright blue';
-                        tcprintf(color, line);
-                        tcprintf(color, '%s Running analysis on %s\n', progressStr, description);
-                        tcprintf(color, line);
-                        fprintf('\n');
-
-                        % for saveFigure to look at
-                        da.currentEntry = entry;
-
-                        % clear debug's last caller info to get a fresh
-                        % debug header
-                        debug();
-
-                        % open a temporary file to use as a diary to capture all output
-                        diary off;
-                        diaryFile = tempname();
-                        diary(diaryFile);
-                        DatabaseAnalysis.setOutputLogStatus('file', diaryFile);
-
-                        % clear the figure info for saveFigure to use
-                        da.figureInfoCurrentEntry = [];
-
-                        % try calling the runOnEntry callback
-                        if catchErrors
-                            try
-                                resultStruct = da.runOnEntry(entry, fieldsAnalysis);
-                                exc = [];
-                                success = true;
-
-                                if isempty(resultStruct)
-                                    resultStruct = struct();
-                                end
-                                if ~isstruct(resultStruct)
-                                    error('runOnEntry did not return a struct');
-                                end
-                            catch exc
+                        prog.finish();    
+                        
+                        for i = 1:nAnalyze
+                            [iAnalyze, success, exc, resultStruct, figureInfo] = fetchNext(futures);
+                            iResult = idxAnalyze(iAnalyze);
+                            
+                            [valid, entry] = fetchEntry(da.tableMapped, iResult);
+                            if valid
+                                printSingleEntryHeader(entry, iAnalyze, iResult);
+                            end
+                            
+                            output = futures(iAnalyze).Diary;
+                            fprintf('%s\n', output);
+                            
+                            if ~success
                                 tcprintf('red', 'EXCEPTION: %s\n', exc.getReport);
                                 success = false;
                                 resultStruct = struct();
+                                extraFields= {};
+                                
+                                if ~catchErrors
+                                    error('Terminating after failing on entry %d\n', iResult);
+                                end
+                            else   
+                                extraFields = printPostRunWarnings(da, success, opts.fieldsAnalysis, resultStruct);
                             end
-                        else
-                            resultStruct = da.runOnEntry(entry, fieldsAnalysis);
-                            exc = [];
-                            success = true;
-
-                            if isempty(resultStruct)
-                                resultStruct = struct();
-                            end
-                            if ~isstruct(resultStruct)
-                                error('runOnEntry did not return a struct');
-                            end
+                            
+                            resultTable = storeResultsInDatabase(resultTable, resultStruct, iResult, output, success, exc, extraFields, figureInfo);
                         end
-
-                        % warn if not all fields requested were returned
-                        % use the requested list fieldsAnalysis, a subset of dt.fieldsAnalysis
-                        if success
-                            missingFields = setdiff(fieldsAnalysis, fieldnames(resultStruct));
-                            if ~isempty(missingFields)
-                                debug('WARNING: analysis on this entry did not return fields: %s\n', ...
-                                    strjoin(missingFields, ', '));
-                            end
-                            % warn if the analysis returned extraneous fields as a reminder to add them
-                            % to .getFieldsAnalysis. Fields in dt.fieldsAnalysis but not fieldsAnalysis are okay
-                            extraFields = setdiff(fieldnames(resultStruct), da.fieldsAnalysis);
-                            if ~isempty(extraFields)
-                                debug('WARNING: analysis on this entry returned extra fields not listed in .getFieldsAnalysis(): %s\n', ...
-                                    strjoin(extraFields, ', '));
-                            end
-                        end
-
-                        % load the output from the diary file
-                        DatabaseAnalysis.setOutputLogStatus('file', '');
-                        diary('off');
-                        output = fileread(diaryFile);
-
-                        % don't clutter with temp files
-                        if exist(diaryFile, 'file')
-                            delete(diaryFile);
-                        end
-
-
-                        if success
-                            tcprintf('bright green', 'Analysis ran successfully on this entry\n');
-
-                            % Copy only fieldsAnalysis that were returned.
-                            % Fields in dt.fieldsAnalysis but not fieldsAnalysis are okay
-                            [fieldsCopy, fieldsReturnedMask] = intersect(allFieldsAnalysis, fieldnames(resultStruct));
-                        else
-                            % Blank all fields (even if only some were
-                            % requested), and set them in the table
-                            % This is to avoid conclusion or contamination
-                            % with old results
-                            resultStruct = failureEntry;
-                            fieldsCopy = allFieldsAnalysis;
-                            fieldsReturnedMask = true(length(allFieldsAnalysis), 1);
-                            extraFields = {};
-                        end
-
-                        if cacheFieldsIndividually
-                            fieldsCopyIsDisplayable = fieldsAnalysisIsDisplayable(fieldsReturnedMask);
-                            for iField = 1:length(fieldsCopy)
-                                field = fieldsCopy{iField};
-                                % don't keep any values in the table, this way we don't run out of memory as the
-                                % analysis drags on
-                                % Displayable field values needed for report generation will be reloaded
-                                % later on in this function
-                                resultTable = resultTable.setFieldValue(iResult, field, resultStruct.(field), ...
-                                    'saveCache', saveCache, 'storeInTable', storeInTable, 'verbose', verbose);
-                            end
-                        else
-                            resultEntry = rmfield(resultStruct, extraFields);
-                        end
-
-                        % set all of the additional field values
-                        if cacheFieldsIndividually
-                            saveCacheIndividual = true;
-                        else
-                            saveCacheIndividual = false;
-                        end
-
-                        if saveCacheIndividual || storeInTable
-                            resultTable = resultTable.setFieldValue(iResult, 'success', success, 'saveCache', saveCacheIndividual, 'storeInTable', storeInTable, 'verbose', verbose);
-                            resultTable = resultTable.setFieldValue(iResult, 'output', output, 'saveCache', saveCacheIndividual, 'storeInTable', storeInTable, 'verbose', verbose);
-                            resultTable = resultTable.setFieldValue(iResult, 'runTimestamp', da.timeRun, 'saveCache', saveCacheIndividual, 'storeInTable', storeInTable, 'verbose', verbose);
-                            resultTable = resultTable.setFieldValue(iResult, 'exception', exc, 'saveCache', saveCacheIndividual, 'storeInTable', storeInTable, 'verbose', verbose);
-                            resultTable = resultTable.setFieldValue(iResult, 'figureInfo', da.figureInfoCurrentEntry, 'saveCache', saveCacheIndividual, 'storeInTable', storeInTable, 'verbose', verbose);
-                        end
-
-                        if ~cacheFieldsIndividually
-                            resultEntry.success = success;
-                            resultEntry.output = output;
-                            resultEntry.runTimestamp = da.timeRun;
-                            resultEntry.exception = exc;
-                            resultEntry.figureInfo = da.figureInfoCurrentEntry;
-                            resultTable = resultTable.updateEntry(iResult, resultEntry, 'saveCache', saveCache, 'storeInTable', false, 'verbose', verbose);
-                        end
-
-                        if ~storeInTable
-                            resultTable = resultTable.unloadFieldsForEntry(iResult);
-                        end
-
-                        close all;
                     end
+
                 end
 
                 resultTable = resultTable.apply();
                 resultTable = resultTable.setAutoApply(savedAutoApply);
 
+                resultTable.updateInDatabase('filterOneToRelationships', false);
+
+                % now fill in all of the info fields of this class with the full table data
+                % these are mainly used by the DatabaseAnalysisHTMLWriter class
+    %             da.successByEntry = resultTable.getValues('success') > 0;
+    %             da.exceptionByEntry = resultTable.getValues('exception');
+    %             da.figureInfoByEntry = resultTable.getValues('figureInfo');
+    %             da.logByEntry = resultTable.getValues('output');
+                da.resultTable = resultTable;
+
+                % mark loaded in database
+                da.database.markSourceLoaded(da);
+                da.hasRun = true;
+
+                if ~isempty(p.Results.desc)
+                    da.runDescription = p.Results.desc;
+                end
+
+                if ~resultTableChanged && ~forceReport
+                    % if we haven't run new analysis, no need to build a report
+                    % so just use the timestamp from the most recent prior run
+                    dfd = da.resultTable.fieldDescriptorMap('runTimestamp');
+                    timeRunList = dfd.getAsDateNum(da.resultTable.getValues('runTimestamp'));
+                    if ~isempty(timeRunList)
+                        da.timeRun = max(timeRunList);
+                    end
+                elseif saveCache
+                    da.loadDisplayableFields();
+                    da.createAnalysisPathAndSetPermissions();
+
+                    % sym link figures from prior runs to the current analysis folder
+                    da.linkOldFigures('saveCache', saveCache);
+                    % save the html report (which will copy resources folder over too)
+                    da.saveAsHtml();
+
+                    % link from analysisName.html to index.html for easy browsing
+                    da.linkHtmlAsIndex();
+
+                    % link this timestamped directory to current for easy browsing
+                    da.linkAsCurrent();
+                end
+
+                if saveCache && resultTableChanged
+                    % this isn't necessary right now as all values in the table are cached
+                    % separetely from the table. You must uncomment this if there are field values
+                    % saved with the table in the future (as well as the section above where
+                    % the resultTable is loaded from cache)
+                    %
+                    % Cached field values have been cached as they were generated already
+                    % da.resultTable.cache('cacheValues', false);
+                end
+
+                debug('Call da.resultTable.loadFields().updateInDatabase(); to load analysis results\n');
+                debug('Call da.viewAsHtml to view html report with figures and output\n');
+
+                da.isRunning = false;
+                
                 %fprintf('\n');
                 debug('Finishing analysis run\n');
             end
-
-            resultTable.updateInDatabase('filterOneToRelationships', false);
-
-            % now fill in all of the info fields of this class with the full table data
-            % these are mainly used by the DatabaseAnalysisHTMLWriter class
-%             da.successByEntry = resultTable.getValues('success') > 0;
-%             da.exceptionByEntry = resultTable.getValues('exception');
-%             da.figureInfoByEntry = resultTable.getValues('figureInfo');
-%             da.logByEntry = resultTable.getValues('output');
-            da.resultTable = resultTable;
-
-            % mark loaded in database
-            da.database.markSourceLoaded(da);
-            da.hasRun = true;
-
-            if ~isempty(p.Results.desc)
-                da.runDescription = p.Results.desc;
-            end
-
-            if ~resultTableChanged && ~forceReport
-                % if we haven't run new analysis, no need to build a report
-                % so just use the timestamp from the most recent prior run
-                dfd = da.resultTable.fieldDescriptorMap('runTimestamp');
-                timeRunList = dfd.getAsDateNum(da.resultTable.getValues('runTimestamp'));
-                if ~isempty(timeRunList)
-                    da.timeRun = max(timeRunList);
-                end
-            elseif saveCache
-                da.loadDisplayableFields();
-                da.createAnalysisPathAndSetPermissions();
             
-                % sym link figures from prior runs to the current analysis folder
-                da.linkOldFigures('saveCache', saveCache);
-                % save the html report (which will copy resources folder over too)
-                da.saveAsHtml();
+            function [valid, entry] = fetchEntry(table, iResult)
+                valid = false;
+                % find the corresponding entry in the mapped table via the database
+                if maskToAnalyze(iResult)
+                    % NOTE: ASSUMING THAT THE TABLES ARE ALIGNED AT
+                    % THIS POINT!!!
+                    %resultEntry = resultTable(iResult).apply();
+                    %entry = resultEntry.getRelated(entryName);
+                    entry = table.select(iResult);
 
-                % link from analysisName.html to index.html for easy browsing
-                da.linkHtmlAsIndex();
+                    if entry.nEntries > 1
+                        debug('WARNING: Multiple matches for analysis row, check uniqueness of keyField tuples in table %s. Choosing first.\n', entryName);
+                        entry = entry.select(1);
+                        valid = true;
+                    elseif entry.nEntries == 0
+                        % this likely indicates a bug in building / loading resultTable from cache
+                        debug('WARNING: Could not find match for resultTable row in order to do analysis');
 
-                % link this timestamped directory to current for easy browsing
-                da.linkAsCurrent();
+                    else
+                        valid = true;
+                    end
+                end
             end
 
-            if saveCache && resultTableChanged
-                % this isn't necessary right now as all values in the table are cached
-                % separetely from the table. You must uncomment this if there are field values
-                % saved with the table in the future (as well as the section above where
-                % the resultTable is loaded from cache)
-                %
-                % Cached field values have been cached as they were generated already
-                % da.resultTable.cache('cacheValues', false);
+            function printSingleEntryHeader(entry, iAnalyze, iResult)
+                description = entry.getKeyFieldValueDescriptors();
+                description = description{1};
+                progressStr = sprintf('[%5.1f %% - entry %d ]', (iAnalyze-1)/nAnalyze*100, iResult);
+                fprintf('\n');
+                [~, width] = getTerminalSize();
+                width = width(1);
+                if isunix && ~ismac
+                    cdash = char(hex2dec('2500'));
+                elseif ismac
+                    cdash = char(hex2dec({'e2', '94', '80'}))';
+                else
+                    cdash = '-';
+                end
+                line = [repmat(cdash, 1, width-1) '\n'];
+
+                color = 'bright blue';
+                tcprintf(color, line);
+                tcprintf(color, '%s Running analysis on %s\n', progressStr, description);
+                tcprintf(color, line);
+                fprintf('\n');
             end
 
-            debug('Call da.resultTable.loadFields().updateInDatabase(); to load analysis results\n');
-            debug('Call da.viewAsHtml to view html report with figures and output\n');
+            function [resultStruct, success, exc] = runSingleEntry(da, entry, fieldsAnalysis, catchErrors)
+                % clear the figure info for saveFigure to use
+                da.figureInfoCurrentEntry = [];
 
-            da.isRunning = false;
+                % try calling the runOnEntry callback
+                if catchErrors
+                    try
+                        resultStruct = da.runOnEntry(entry, fieldsAnalysis);
+                        exc = [];
+                        success = true;
+
+                        if isempty(resultStruct)
+                            resultStruct = struct();
+                        end
+                        if ~isstruct(resultStruct)
+                            error('runOnEntry did not return a struct');
+                        end
+                    catch exc
+                        tcprintf('red', 'EXCEPTION: %s\n', exc.getReport);
+                        success = false;
+                        resultStruct = struct();
+                    end
+                else
+                    resultStruct = da.runOnEntry(entry, fieldsAnalysis);
+                    exc = [];
+                    success = true;
+
+                    if isempty(resultStruct)
+                        resultStruct = struct();
+                    end
+                    if ~isstruct(resultStruct)
+                        error('runOnEntry did not return a struct');
+                    end
+                end
+            end
+
+            function extraFields = printPostRunWarnings(da, success, fieldsAnalysis, resultStruct)
+                % warn if not all fields requested were returned
+                % use the requested list fieldsAnalysis, a subset of dt.fieldsAnalysis
+                if success
+                    missingFields = setdiff(fieldsAnalysis, fieldnames(resultStruct));
+                    if ~isempty(missingFields)
+                        debug('WARNING: analysis on this entry did not return fields: %s\n', ...
+                            strjoin(missingFields, ', '));
+                    end
+                    % warn if the analysis returned extraneous fields as a reminder to add them
+                    % to .getFieldsAnalysis. Fields in dt.fieldsAnalysis but not fieldsAnalysis are okay
+                    extraFields = setdiff(fieldnames(resultStruct), da.fieldsAnalysis);
+                    if ~isempty(extraFields)
+                        debug('WARNING: analysis on this entry returned extra fields not listed in .getFieldsAnalysis(): %s\n', ...
+                            strjoin(extraFields, ', '));
+                    end
+                else
+                    extraFields = {};
+                end
+            end
+
+            function resultTable = storeResultsInDatabase(resultTable, resultStruct, iResult, output, success, exc, extraFields, figureInfo)
+                if success
+                    tcprintf('bright green', 'Analysis ran successfully on this entry\n');
+
+                    % Copy only fieldsAnalysis that were returned.
+                    % Fields in dt.fieldsAnalysis but not fieldsAnalysis are okay
+                    [fieldsCopy, ~] = intersect(allFieldsAnalysis, fieldnames(resultStruct));
+                else
+                    % Blank all fields (even if only some were
+                    % requested), and set them in the table
+                    % This is to avoid conclusion or contamination
+                    % with old results
+                    resultStruct = failureEntry;
+                    fieldsCopy = allFieldsAnalysis;
+%                     fieldsReturnedMask = true(length(allFieldsAnalysis), 1);
+                    extraFields = {};
+                end
+
+                if cacheFieldsIndividually
+%                     fieldsCopyIsDisplayable = fieldsAnalysisIsDisplayable(fieldsReturnedMask);
+                    for iF = 1:length(fieldsCopy)
+                        fld = fieldsCopy{iF};
+                        % don't keep any values in the table, this way we don't run out of memory as the
+                        % analysis drags on
+                        % Displayable field values needed for report generation will be reloaded
+                        % later on in this function
+                        resultTable = resultTable.setFieldValue(iResult, fld, resultStruct.(fld), ...
+                            'saveCache', saveCache, 'storeInTable', storeInTable, 'verbose', verbose);
+                    end
+                else
+                    resultEntry = rmfield(resultStruct, extraFields);
+                end
+
+                % set all of the additional field values
+                if cacheFieldsIndividually
+                    saveCacheIndividual = true;
+                else
+                    saveCacheIndividual = false;
+                end
+
+                if saveCacheIndividual || storeInTable
+                    resultTable = resultTable.setFieldValue(iResult, 'success', success, 'saveCache', saveCacheIndividual, 'storeInTable', storeInTable, 'verbose', verbose);
+                    resultTable = resultTable.setFieldValue(iResult, 'output', output, 'saveCache', saveCacheIndividual, 'storeInTable', storeInTable, 'verbose', verbose);
+                    resultTable = resultTable.setFieldValue(iResult, 'runTimestamp', da.timeRun, 'saveCache', saveCacheIndividual, 'storeInTable', storeInTable, 'verbose', verbose);
+                    resultTable = resultTable.setFieldValue(iResult, 'exception', exc, 'saveCache', saveCacheIndividual, 'storeInTable', storeInTable, 'verbose', verbose);
+                    resultTable = resultTable.setFieldValue(iResult, 'figureInfo', figureInfo, 'saveCache', saveCacheIndividual, 'storeInTable', storeInTable, 'verbose', verbose);
+                end
+
+                if ~cacheFieldsIndividually
+                    resultEntry.success = success;
+                    resultEntry.output = output;
+                    resultEntry.runTimestamp = da.timeRun;
+                    resultEntry.exception = exc;
+                    resultEntry.figureInfo = figureInfo;
+                    resultTable = resultTable.updateEntry(iResult, resultEntry, 'saveCache', saveCache, 'storeInTable', false, 'verbose', verbose);
+                end
+
+                if ~storeInTable
+                    resultTable = resultTable.unloadFieldsForEntry(iResult);
+                end
+            end
+
+            function [success, exc, resultStruct, figureInfo] = asyncRunSingle(constData, iAnalyze, iResult, opts)
+                close all;
+                
+                % DatabaseAnalysis has Transient properties that won't
+                % appear on the workers, so we reinstall them here
+                data_ = constData.Value;
+                da_ = data_.da;
+                da_.database = data_.database;
+                da_.tableMapped = data_.tableMapped.setDatabase(da_.database);
+ 
+                [valid_, entry_] = fetchEntry(da_.tableMapped, iResult);
+                if ~valid_
+                    error('Could not find entry');
+                end
+
+                % don't want this here, will end up in the diary
+%                 printSingleEntryHeader(entry_, iAnalyze, iResult)
+
+                % for saveFigure to look at
+                da_.currentEntry = entry_;
+                set(0, 'DefaultFigureWindowStyle', 'normal'); % need this in case figures are docked by default - has issues in parpool
+
+                % clear debug's last caller info to get a fresh
+                % debug header
+                debug();
+
+                try
+                    resultStruct = da_.runOnEntry(entry_, opts.fieldsAnalysis);
+                    success = true;
+                    exc = [];
+                catch exc
+                    resultStruct = struct();
+                    success = false;
+                end
+                    
+                if isempty(resultStruct)
+                    resultStruct = struct();
+                end
+                if ~isstruct(resultStruct)
+                    exc = MException('matdb:DatabaseAnalysis:ReturnNonStruct', 'runOnEntry did not return a struct');
+                    success = false;
+                end
+                
+                figureInfo = da_.figureInfoCurrentEntry;
+                
+                close all;
+            end
         end
 
         function saveFigure(da, figh, figName, figCaption)
@@ -1015,7 +1150,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             % log figure infomration
             figInfo.name = figName;
             figInfo.caption = figCaption;
-            [figInfo.width figInfo.height] = getFigSize(figh);
+            [figInfo.width, figInfo.height] = getFigSize(figh);
             figInfo.extensions = exts;
             figInfo.fileLinkList = fileList;
             figInfo.fileList = fileList;
@@ -1090,14 +1225,14 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             p = inputParser;
             p.addParameter('saveCache', true, @islogical);
             p.parse(varargin{:});
-            saveCache = p.Results.saveCache;
+%             saveCache = p.Results.saveCache;
             da.checkHasRun();
 
             if ~isunix && ~ismac
                 % TODO add support for windows nt junctions
                 return;
             end
-            figurePath = da.pathFigures;
+%             figurePath = da.pathFigures;
             nEntries = da.resultTable.nEntries;
 
             table = da.resultTable.table;
@@ -1140,6 +1275,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                                 end
                             catch exc
                                 debug('ERROR: linking old figure %s\n', figInfo.fileLinkList{iExt});
+                                disp(exc.getReport);
                             end
                         end
                     end
@@ -1161,7 +1297,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             % da.checkHasRun(); % defer to current when not run yet
             fileName = da.htmlFile;
             if ~exist(fileName, 'file')
-                html = da.saveAsHtml();
+                da.saveAsHtml();
             end
             HTMLWriter.openFileInBrowser(fileName);
         end
@@ -1172,8 +1308,8 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             % before we do this, we need to load the values of all displayable fields
             % and additional fields used in the report
             fieldsToLoad = intersect(da.resultTable.fieldsLoadOnDemand, da.resultTable.fieldsDisplayable);
-            fieldsAdditional = da.getFieldsAdditional();
-            fieldsToLoad = union(fieldsToLoad, fieldsAdditional);
+            fieldsAdditional_ = da.getFieldsAdditional();
+            fieldsToLoad = union(fieldsToLoad, fieldsAdditional_);
             da.resultTable = da.resultTable.loadFields('fields', fieldsToLoad, 'loadCacheOnly', true, 'verbose', false);
             da.resultTable.updateInDatabase('filterOneToRelationships', false);
         end

@@ -66,16 +66,16 @@ classdef CountStudentsByTeacher < DatabaseAnalysis
             box off
             da.saveFigure(gcf, 'Figure 1', 'Figure 1 Caption');
 
-            fprintf('Output pre fig 2\n');
+%             fprintf('Output pre fig 2\n');
             
-            figure(2); clf;
-            plot(rand(20,10), 'kx', 'MarkerSize', 20);
-            box off
-            xlabel('X axis');
-            ylabel('Y axis');
-            title('Figure 2');
-            da.saveFigure(gcf, 'Figure 2', 'Figure 2 Caption');
-            fprintf('Output post fig2\n');
+%             figure(2); clf;
+%             plot(rand(20,10), 'kx', 'MarkerSize', 20);
+%             box off
+%             xlabel('X axis');
+%             ylabel('Y axis');
+%             title('Figure 2');
+%             da.saveFigure(gcf, 'Figure 2', 'Figure 2 Caption');
+%             fprintf('Output post fig2\n');
         end
     end
 
