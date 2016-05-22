@@ -852,6 +852,10 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                     end
                 elseif saveCache
                     da.loadDisplayableFields();
+                    
+                    smask = da.resultTable.success;
+                    debug('Analysis has run successfully on %d / %d entries\n', nnz(smask), numel(smask));
+                    
                     da.createAnalysisPathAndSetPermissions();
 
                     % sym link figures from prior runs to the current analysis folder

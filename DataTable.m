@@ -982,7 +982,7 @@ classdef DataTable < DynamicClass & Cacheable
             for iField = 1:length(fields)
                 field = fields{iField};
                 dfd = db.fieldDescriptorMap(field);
-                if dfd.isDisplayable()
+%                 if dfd.isDisplayable()
                     displayableFields = [displayableFields; field];
                     if db.isKeyField(field)
                         stringMap(field) = dfd.getAsStrings(valueMap(field));
@@ -992,7 +992,7 @@ classdef DataTable < DynamicClass & Cacheable
                     %if ~iscellstr(stringMap(field))
                     %    error('getAsDisplayStrings failed to return a cellstr');
                     %end
-                end
+%                 end
             end
         end
         
@@ -1011,7 +1011,10 @@ classdef DataTable < DynamicClass & Cacheable
         end
         
         function strStruct = getFullEntriesAsDisplayStringsAsStruct(db, varargin)
-            fieldsDisplayable = db.getFieldsDisplayable();
+            p = inputParser();
+            p.addParameter('extraFields', {}, @iscell);
+            p.parse(varargin{:});
+            fieldsDisplayable = union(db.getFieldsDisplayable(), p.Results.extraFields);
             [stringMap displayableFields] = db.getValueMapAsDisplayStrings(fieldsDisplayable);
             strStruct = mapToStructArray(stringMap); 
         end   

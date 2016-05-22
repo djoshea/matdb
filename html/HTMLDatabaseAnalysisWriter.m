@@ -13,7 +13,9 @@ classdef HTMLDatabaseAnalysisWriter < HTMLDataTableWriter
         end
         
         function buildValueStruct(html)
-            buildValueStruct@HTMLDataTableWriter(html);
+            % need to additionally request output field since its not
+            % displayable
+            buildValueStruct@HTMLDataTableWriter(html, 'extraFields', {'output'});
 
             fieldNames = fieldnames(html.valueStruct);
             [~, origIdx] = setdiff(fieldNames, {'index', 'runTimestamp', 'success', 'figureInfo', 'output', 'exception'});

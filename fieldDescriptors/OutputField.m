@@ -17,6 +17,10 @@ classdef OutputField < StringField
             strCell = stripAnsi(values);
         end
         
+        function tf = isDisplayable(dfd)
+            tf = false;
+        end
+        
         function lineCounts = getLineCounts(dfd, values)
             % return the number of line breaks in each string in values
             lineCountFn = @(output) nnz(output == char(13) | output == char(10));

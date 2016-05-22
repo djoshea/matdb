@@ -60,8 +60,12 @@ classdef HTMLDataTableWriter < HTMLReportWriter
             html.closeDivRow();
         end
 
-        function buildValueStruct(html);
-            html.valueStruct = html.table.getFullEntriesAsDisplayStringsAsStruct();
+        function buildValueStruct(html, varargin)
+            p = inputParser();
+            p.addParameter('extraFields', {}, @iscell);
+            p.parse(varargin{:});
+            
+            html.valueStruct = html.table.getFullEntriesAsDisplayStringsAsStruct('extraFields', p.Results.extraFields);
             html.fields = [{'index'}; makecol(fieldnames(html.valueStruct))];
             html.valueStruct = assignIntoStructArray(html.valueStruct, 'index', arrayfun(@num2str, 1:length(html.valueStruct), ...
                 'UniformOutput', false));
