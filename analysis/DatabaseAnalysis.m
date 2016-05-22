@@ -780,6 +780,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                         % place da on the workers once
                         data = struct('da', da, 'database', da.database, ...
                             'tableMapped', da.tableMapped);
+                        debug('Copying database to parallel workers...\n');
                         constData = parallel.pool.Constant(data);
                         
                         prog = ProgressBar(nAnalyze, 'Creating futures to run analysis on entries');
@@ -789,11 +790,14 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                             
                             iResult = idxAnalyze(iAnalyze);
 
-                            futures(counter) = parfeval(pool, @asyncRunSingle, 4, constData, iAnalyze, iResult, opts); %#ok<AGROW>
+                            futures(counter) = parfeval(pool, @asyncRunSingle, 4, constData, iResult, opts); %#ok<AGROW>
                             counter = counter + 1;
                         end
                         prog.finish();    
-                        
+                       
+                        % done creating futures, now waiting for them to
+                        % return.
+                        debug('All futures created, waiting on completion...\n');
                         for i = 1:nAnalyze
                             [iAnalyze, success, exc, resultStruct, figureInfo] = fetchNext(futures);
                             iResult = idxAnalyze(iAnalyze);
@@ -892,24 +896,22 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             function [valid, entry] = fetchEntry(table, iResult)
                 valid = false;
                 % find the corresponding entry in the mapped table via the database
-                if maskToAnalyze(iResult)
-                    % NOTE: ASSUMING THAT THE TABLES ARE ALIGNED AT
-                    % THIS POINT!!!
-                    %resultEntry = resultTable(iResult).apply();
-                    %entry = resultEntry.getRelated(entryName);
-                    entry = table.select(iResult);
+                % NOTE: ASSUMING THAT THE TABLES ARE ALIGNED AT
+                % THIS POINT!!!
+                %resultEntry = resultTable(iResult).apply();
+                %entry = resultEntry.getRelated(entryName);
+                entry = table.select(iResult);
 
-                    if entry.nEntries > 1
-                        debug('WARNING: Multiple matches for analysis row, check uniqueness of keyField tuples in table %s. Choosing first.\n', entryName);
-                        entry = entry.select(1);
-                        valid = true;
-                    elseif entry.nEntries == 0
-                        % this likely indicates a bug in building / loading resultTable from cache
-                        debug('WARNING: Could not find match for resultTable row in order to do analysis');
+                if entry.nEntries > 1
+                    debug('WARNING: Multiple matches for analysis row, check uniqueness of keyField tuples in table %s. Choosing first.\n', entryName);
+                    entry = entry.select(1);
+                    valid = true;
+                elseif entry.nEntries == 0
+                    % this likely indicates a bug in building / loading resultTable from cache
+                    debug('WARNING: Could not find match for resultTable row in order to do analysis');
 
-                    else
-                        valid = true;
-                    end
+                else
+                    valid = true;
                 end
             end
 
@@ -1053,54 +1055,6 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                 if ~storeInTable
                     resultTable = resultTable.unloadFieldsForEntry(iResult);
                 end
-            end
-
-            function [success, exc, resultStruct, figureInfo] = asyncRunSingle(constData, iAnalyze, iResult, opts)
-                close all;
-                
-                % DatabaseAnalysis has Transient properties that won't
-                % appear on the workers, so we reinstall them here
-                data_ = constData.Value;
-                da_ = data_.da;
-                da_.database = data_.database;
-                da_.tableMapped = data_.tableMapped.setDatabase(da_.database);
- 
-                [valid_, entry_] = fetchEntry(da_.tableMapped, iResult);
-                if ~valid_
-                    error('Could not find entry');
-                end
-
-                % don't want this here, will end up in the diary
-%                 printSingleEntryHeader(entry_, iAnalyze, iResult)
-
-                % for saveFigure to look at
-                da_.currentEntry = entry_;
-                set(0, 'DefaultFigureWindowStyle', 'normal'); % need this in case figures are docked by default - has issues in parpool
-
-                % clear debug's last caller info to get a fresh
-                % debug header
-                debug();
-
-                try
-                    resultStruct = da_.runOnEntry(entry_, opts.fieldsAnalysis);
-                    success = true;
-                    exc = [];
-                catch exc
-                    resultStruct = struct();
-                    success = false;
-                end
-                    
-                if isempty(resultStruct)
-                    resultStruct = struct();
-                end
-                if ~isstruct(resultStruct)
-                    exc = MException('matdb:DatabaseAnalysis:ReturnNonStruct', 'runOnEntry did not return a struct');
-                    success = false;
-                end
-                
-                figureInfo = da_.figureInfoCurrentEntry;
-                
-                close all;
             end
         end
 
@@ -1537,6 +1491,20 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                 r = da.resultTable;
             end
             fileList = r.getCacheFileForWriteForEntry(iEntry, varargin{:});
+        end
+    end
+    
+    methods(Hidden)
+        function setTableMapped(da, dt)
+            %assert(~da.hasRun, 'Database cannot be changed after analysis has run');
+            assert(isempty(dt) || isa(dt, 'DataTable'), 'Must be a DataTable instance');
+            da.tableMapped = dt;
+        end
+        
+        function setCurrentEntry(da, e)
+            %assert(~da.hasRun, 'Database cannot be changed after analysis has run');
+            assert(isempty(e) || isa(e, 'DataTable'), 'Must be a DataTable instance');
+            da.currentEntry = e;
         end
     end
 
