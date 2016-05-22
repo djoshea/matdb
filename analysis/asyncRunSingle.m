@@ -86,14 +86,33 @@ function [success, exc] = asyncRunSingle(constData, iResult, opts)
     
     figureInfo = da.figureInfoCurrentEntry;
     close all;
-     
-    resultStruct.success = success;
-    resultStruct.runTimestamp = da.timeRun;
-    resultStruct.exception = exc;
-    resultStruct.figureInfo = figureInfo;
-    resultStruct.output = output;
-    [~] = da.resultTable.updateEntry(iResult, resultStruct, 'saveCache', true, 'storeInTable', false, 'verbose', opts.verbose);
-
+    
+    if opts.cacheFieldsIndividually
+        flds = fieldnames(resultStruct);
+        for iF = 1:length(flds)
+            fld = flds{iF};
+            % don't keep any values in the table, this way we don't run out of memory as the
+            % analysis drags on
+            % Displayable field values needed for report generation will be reloaded
+            % later on in this function
+            resultTable = resultTable.setFieldValue(iResult, fld, resultStruct.(fld), ...
+                'saveCache', tre, 'storeInTable', false, 'verbose', opts.verbose);
+        end
+        
+        resultTable = resultTable.setFieldValue(iResult, 'success', success, 'saveCache', true, 'storeInTable', false, 'verbose', opts.verbose);
+        resultTable = resultTable.setFieldValue(iResult, 'output', output, 'saveCache', true, 'storeInTable', false, 'verbose', opts.verbose);
+        resultTable = resultTable.setFieldValue(iResult, 'runTimestamp', da.timeRun, 'saveCache', true, 'storeInTable', false, 'verbose', opts.verbose);
+        resultTable = resultTable.setFieldValue(iResult, 'exception', exc, 'saveCache', true, 'storeInTable', false, 'verbose', opts.verbose);
+        resultTable = resultTable.setFieldValue(iResult, 'figureInfo', figureInfo, 'saveCache', true, 'storeInTable', false, 'verbose', opts.verbose); %#ok<NASGU>
+    else
+        resultStruct.success = success;
+        resultStruct.runTimestamp = da.timeRun;
+        resultStruct.exception = exc;
+        resultStruct.figureInfo = figureInfo;
+        resultStruct.output = output;
+        [~] = da.resultTable.updateEntry(iResult, resultStruct, 'saveCache', true, 'storeInTable', false, 'verbose', opts.verbose);
+    end
+   
 end
 
 function [valid, entry] = fetchEntry(table, iResult)

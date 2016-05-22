@@ -1084,7 +1084,9 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             nExts = length(exts);
             success = false(nExts, 1);
             fileList = cell(nExts, 1);
-            tcprintf('bright cyan', 'Saving figure %s as %s\n', figName, strjoin(exts, ', '));
+            if ~feature('isdmlworker')
+                tcprintf('bright cyan', 'Saving figure %s as %s\n', figName, strjoin(exts, ', '));
+            end
             for i = 1:nExts
                 ext = exts{i};
                 fileName = da.getFigureName(entryTable, figName, ext);
