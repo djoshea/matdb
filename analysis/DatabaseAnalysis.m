@@ -809,7 +809,8 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                             
                             [valid, entry] = fetchEntry(da.tableMapped, iResult);
                             if valid
-                                printSingleEntryHeader(entry, iAnalyze, iResult);
+                                percDone = i / nAnalyze * 100;
+                                printSingleEntryHeader(entry, iAnalyze, iResult, percDone);
                             end
                             
                             out = futures(iAnalyze).Diary;
@@ -913,10 +914,14 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                 end
             end
 
-            function printSingleEntryHeader(entry, iAnalyze, iResult)
+            function printSingleEntryHeader(entry, iAnalyze, iResult, percDone)
                 description = entry.getKeyFieldValueDescriptors();
                 description = description{1};
-                progressStr = sprintf('[%5.1f %% - entry %d ]', (iAnalyze-1)/nAnalyze*100, iResult);
+                
+                if nargin < 4
+                    percDone = (iAnalyze-1)/nAnalyze*100;
+                end
+                progressStr = sprintf('[%5.1f %% - entry %d ]', percDone, iResult);
                 fprintf('\n');
                 [~, width] = getTerminalSize();
                 width = width(1);

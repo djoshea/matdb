@@ -1,5 +1,9 @@
 classdef CountStudentsByTeacher < DatabaseAnalysis 
         
+    properties
+        randomErrors = false;
+    end
+    
     methods
         function da = CountStudentsByTeacher(varargin)
             da = da@DatabaseAnalysis(varargin{:});
@@ -52,7 +56,7 @@ classdef CountStudentsByTeacher < DatabaseAnalysis
             resultStruct.nonDisplayableField = 'this shouldn''t show up in the html report';
             resultStruct.nStudents = entry.classes.students.nEntries;
 
-            if rand() < 0.2
+            if da.randomErrors && rand() < 0.2
                 error('Something messed up!');
             end
 

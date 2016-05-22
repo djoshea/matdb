@@ -4,5 +4,5 @@ end
 
 da = CountStudentsByTeacher();
 da.setDatabase(db);
-da.run();
+da.run('parallel', true);
 

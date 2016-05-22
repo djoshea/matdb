@@ -22,8 +22,8 @@ randPermitIssuedFn = @() datestr(permitIssuedLims(1) + diff(permitIssuedLims)*ra
 expiryLims = [datenum(datevec('1/1/2012')) datenum(datevec('12/31/2016'))];
 randPermitExpiryFn = @() datestr(randi(expiryLims));
 
-nStudents = 15;
-nTeachers = 5;
+nStudents = 150;
+nTeachers = 25;
 nPermits = (nStudents + nTeachers) / 2;
 nClasses = nTeachers * 2;
 nEnrollment = nClasses * 5;
