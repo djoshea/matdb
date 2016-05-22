@@ -1,25 +1,6 @@
 function [success, exc] = asyncRunSingle(constData, iResult, opts)
     close all;
-    
-%     p = gcp
-%     
-%     q = p.FevalQueue
-%     q.RunningFutures(1).Diary
-    
-%     
-%     task = getCurrentTask()
-%     
-%     root = distcomp.getdistcompobjectroot
-%     class(root)
-%     get(root)
-%     getundoc(root)
-%     job = root.CurrentJob
-%     getundoc(job)
-%     
-%     w = getCurrentWorker
-%     getundoc(w)
 
-%     return;
     % DatabaseAnalysis has Transient properties that won't
     % appear on the workers, so we reinstall them here
     data_ = constData.Value;

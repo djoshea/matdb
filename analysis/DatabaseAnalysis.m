@@ -732,6 +732,8 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
 
                     % actually run the analysis, non-parallel
                     if ~runParallel
+                        set(0, 'DefaultFigureWindowStyle', 'normal'); % need this in case figures are docked by default - has issues in parpool
+
                         for iAnalyze = 1:nAnalyze
                             iResult = idxAnalyze(iAnalyze);
                             [valid, entry] = fetchEntry(da.tableMapped, iResult);
