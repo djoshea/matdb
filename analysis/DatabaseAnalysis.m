@@ -776,6 +776,9 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                         % parallel mode
                         
                         opts.fieldsAnalysis = fieldsAnalysis;
+                        opts.cacheFieldsIndividually = cacheFieldsIndividually;
+                        opts.verbose = verbose;
+                        opts.failureEntry = failureEntry;
 
                         % place da on the workers once
                         data = struct('da', da, 'database', da.database, ...
@@ -790,7 +793,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                             
                             iResult = idxAnalyze(iAnalyze);
 
-                            futures(counter) = parfeval(pool, @asyncRunSingle, 4, constData, iResult, opts); %#ok<AGROW>
+                            futures(counter) = parfeval(pool, @asyncRunSingle, 2, constData, iResult, opts); %#ok<AGROW>
                             counter = counter + 1;
                         end
                         prog.finish();    
@@ -799,7 +802,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                         % return.
                         debug('All futures created, waiting on completion...\n');
                         for i = 1:nAnalyze
-                            [iAnalyze, success, exc, resultStruct, figureInfo] = fetchNext(futures);
+                            [iAnalyze, success, exc] = fetchNext(futures);
                             iResult = idxAnalyze(iAnalyze);
                             
                             [valid, entry] = fetchEntry(da.tableMapped, iResult);
@@ -807,26 +810,15 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                                 printSingleEntryHeader(entry, iAnalyze, iResult);
                             end
                             
-                            output = futures(iAnalyze).Diary;
-                            fprintf('%s\n', output);
+                            out = futures(iAnalyze).Diary;
+                            fprintf('%s', out);
                             
-                            if ~success
-                                tcprintf('red', 'EXCEPTION: %s\n', exc.getReport);
-                                success = false;
-                                resultStruct = struct();
-                                extraFields= {};
-                                
-                                if ~catchErrors
-                                    error('Terminating after failing on entry %d\n', iResult);
-                                end
-                            else   
-                                extraFields = printPostRunWarnings(da, success, opts.fieldsAnalysis, resultStruct);
+                            if ~success && ~catchErrors
+                                disp(exc);
+                                error('Terminating after failing on entry %d\n', iResult);
                             end
-                            
-                            resultTable = storeResultsInDatabase(resultTable, resultStruct, iResult, output, success, exc, extraFields, figureInfo);
                         end
                     end
-
                 end
 
                 resultTable = resultTable.apply();

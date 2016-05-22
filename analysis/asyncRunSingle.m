@@ -1,31 +1,39 @@
-function [success, exc, resultStruct, figureInfo] = asyncRunSingle(constData, iResult, opts)
+function [success, exc] = asyncRunSingle(constData, iResult, opts)
     close all;
 
     % DatabaseAnalysis has Transient properties that won't
     % appear on the workers, so we reinstall them here
     data_ = constData.Value;
-    da_ = data_.da;
-    da_.setDatabase(data_.database);
-    da_.setTableMapped(data_.tableMapped.setDatabase(da_.database));
+    da = data_.da;
+    da.setDatabase(data_.database);
+    da.setTableMapped(data_.tableMapped.setDatabase(da.database));
 
-    [valid_, entry_] = fetchEntry(da_.tableMapped, iResult);
+    [valid_, entry] = fetchEntry(da.tableMapped, iResult);
     if ~valid_
         error('Could not find entry');
     end
 
     % don't want this here, will end up in the diary
-%                 printSingleEntryHeader(entry_, iAnalyze, iResult)
+%                 printSingleEntryHeader(entry, iAnalyze, iResult)
 
     % for saveFigure to look at
-    da_.setCurrentEntry(entry_);
+    entry = entry.setDatabase(data_.database);
+    da.setCurrentEntry(entry);
+    
     set(0, 'DefaultFigureWindowStyle', 'normal'); % need this in case figures are docked by default - has issues in parpool
 
     % clear debug's last caller info to get a fresh
     % debug header
     debug();
 
+    % open a temporary file to use as a diary to capture all output
+    diary off;
+    diaryFile = tempname();
+    diary(diaryFile);
+    DatabaseAnalysis.setOutputLogStatus('file', diaryFile);
+
     try
-        resultStruct = da_.runOnEntry(entry_, opts.fieldsAnalysis);
+        resultStruct = da.runOnEntry(entry, opts.fieldsAnalysis);
         success = true;
         exc = [];
     catch exc
@@ -36,14 +44,85 @@ function [success, exc, resultStruct, figureInfo] = asyncRunSingle(constData, iR
     if isempty(resultStruct)
         resultStruct = struct();
     end
+    
     if ~isstruct(resultStruct)
         exc = MException('matdb:DatabaseAnalysis:ReturnNonStruct', 'runOnEntry did not return a struct');
         success = false;
     end
+    
+    if success
+        missingFields = setdiff(opts.fieldsAnalysis, fieldnames(resultStruct));
+        if ~isempty(missingFields)
+            debug('WARNING: analysis on this entry did not return fields: %s\n', ...
+                strjoin(missingFields, ', '));
+            
+            for iM = 1:numel(missingFields)
+                fld = missingFields{iM};
+                resultStruct.(fld) = opts.failureEntry.(fld);
+            end
+        end
+        % warn if the analysis returned extraneous fields as a reminder to add them
+        % to .getFieldsAnalysis. Fields in dt.fieldsAnalysis but not fieldsAnalysis are okay
+        extraFields = setdiff(fieldnames(resultStruct), opts.fieldsAnalysis);
+        if ~isempty(extraFields)
+            debug('WARNING: analysis on this entry returned extra fields not listed in .getFieldsAnalysis(): %s\n', ...
+                strjoin(extraFields, ', '));
+        end
+        
+        tcprintf('bright green', 'Analysis ran successfully on this entry\n');
 
-    figureInfo = da_.figureInfoCurrentEntry;
+        resultStruct = rmfield(resultStruct, extraFields);        
+    else
+        tcprintf('red', 'EXCEPTION: %s\n', exc.getReport);
 
+        % Blank all fields (even if only some were
+        % requested), and set them in the table
+        % This is to avoid conclusion or contamination
+        % with old results
+        resultStruct = opts.failureEntry;
+    end
+    
+    figureInfo = da.figureInfoCurrentEntry;
+
+    % load the output from the diary file
+    DatabaseAnalysis.setOutputLogStatus('file', '');
+    diary('off');
+    output = fileread(diaryFile);
+    
+    % don't clutter with temp files
+    if exist(diaryFile, 'file')
+        delete(diaryFile);
+    end
+    
     close all;
+    
+    resultTable = da.resultTable;
+
+    if opts.cacheFieldsIndividually
+        flds = fieldnames(resultStruct);
+        for iF = 1:length(flds)
+            fld = flds{iF};
+            % don't keep any values in the table, this way we don't run out of memory as the
+            % analysis drags on
+            % Displayable field values needed for report generation will be reloaded
+            % later on in this function
+            resultTable = resultTable.setFieldValue(iResult, fld, resultStruct.(fld), ...
+                'saveCache', tre, 'storeInTable', false, 'verbose', opts.verbose);
+        end
+        
+        resultTable = resultTable.setFieldValue(iResult, 'success', success, 'saveCache', true, 'storeInTable', false, 'verbose', opts.verbose);
+        resultTable = resultTable.setFieldValue(iResult, 'output', output, 'saveCache', true, 'storeInTable', false, 'verbose', opts.verbose);
+        resultTable = resultTable.setFieldValue(iResult, 'runTimestamp', da.timeRun, 'saveCache', true, 'storeInTable', false, 'verbose', opts.verbose);
+        resultTable = resultTable.setFieldValue(iResult, 'exception', exc, 'saveCache', true, 'storeInTable', false, 'verbose', opts.verbose);
+        resultTable = resultTable.setFieldValue(iResult, 'figureInfo', figureInfo, 'saveCache', true, 'storeInTable', false, 'verbose', opts.verbose); %#ok<NASGU>
+    else
+        resultStruct.success = success;
+        resultStruct.output = output;
+        resultStruct.runTimestamp = da.timeRun;
+        resultStruct.exception = exc;
+        resultStruct.figureInfo = figureInfo;
+        resultTable.updateEntry(iResult, resultStruct, 'saveCache', true, 'storeInTable', false, 'verbose', opts.verbose); 
+    end
 end
 
 function [valid, entry] = fetchEntry(table, iResult)
