@@ -1439,7 +1439,11 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
         end
 
         % actually load this into the database, assume all dependencies have been loaded
-        function loadInDatabase(da, database)
+        function loadInDatabase(da, database, varargin)
+            p = inputParser();
+            p.addParameter('verbose', false, @islogical);
+            p.parse(varargin{:});
+            
             da.database = database;
             da.initialize();
 
@@ -1447,7 +1451,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             debug('%s: Loading specified analysis results fields\n', da.getName());
             fieldsToLoad = da.getFieldsToLoadOnDataSourceLoad();
 
-            da.resultTable.loadFields(fieldsToLoad).updateInDatabase();
+            da.resultTable.loadFields(fieldsToLoad, 'verbose', p.Results.verbose).updateInDatabase();
         end
 
         function useAsResultTable(da, resultTable)

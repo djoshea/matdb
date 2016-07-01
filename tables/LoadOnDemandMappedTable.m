@@ -114,6 +114,14 @@ classdef LoadOnDemandMappedTable < StructTable
         end
     end
 
+    methods(Static)
+        function dt = loadobj(dt)
+            % updated the CacheManager upon loading since the paths might
+            % be stale
+            dt.cachedCacheManager = MatdbSettingsStore.getDefaultCacheManager();
+        end
+    end
+    
     methods
         function dt = LoadOnDemandMappedTable(varargin)
             dt = dt@StructTable();
@@ -186,10 +194,10 @@ classdef LoadOnDemandMappedTable < StructTable
                 % no table specified, build it via mapping one-to-one off database table
                 entryNameMap = dt.getMapsEntryName(); 
                 if isempty(entryNameMap)
-                    debug('Building LoadOnDemand table with single entry\n');
+                    debug('Building LoadOnDemand table %s with single entry\n', entryName);
                     table = StructTable(struct(), 'entryName', entryName, 'entryNamePlural', entryNamePlural); 
                 else
-                    debug('Mapping LoadOnDemand table off table %s\n', entryNameMap);
+                    debug('Mapping LoadOnDemand table %s off table %s\n', entryName, entryNameMap);
                     table = db.getTable(entryNameMap).keyFieldsTable;
                 end
                 
@@ -494,7 +502,7 @@ classdef LoadOnDemandMappedTable < StructTable
             % just return the values
             p.addParameter('storeInTable', true, @islogical);
             
-            p.addParamValue('verbose', false, @isscalar);
+            p.addParameter('verbose', false, @isscalar);
             p.parse(varargin{:});
             
             fields = p.Results.fields;
@@ -778,7 +786,7 @@ classdef LoadOnDemandMappedTable < StructTable
 %                             progressStr, length(entryList));
             if ~isempty(prog)
                 prog.finish();
-                debug('Finished loading field values for %d entries\n', length(entryList));
+                %debug('Finished loading field values for %d entries\n', length(entryList));
             end
 
             %dt = dt.apply();
