@@ -33,6 +33,7 @@ classdef DatabaseAnalysisResultsTable < LoadOnDemandMappedTable
             p = inputParser;
             p.KeepUnmatched = true;
             p.addRequired('da', @(da) isa(da, 'DatabaseAnalysis'));
+            p.addParameter('table', [], @(x) isempty(x) || isa(x, 'DataTable')); % can specify the table we map directly, if empty will be pulled from the database
             p.addParameter('maxRows', Inf, @isscalar);
 
             p.parse(da, varargin{:});
@@ -54,7 +55,7 @@ classdef DatabaseAnalysisResultsTable < LoadOnDemandMappedTable
             dt.entryNamePlural = dt.entryName;
             dt.analysisCacheFieldsIndividually = da.getCacheFieldsIndividually();
             
-            dt = initialize@LoadOnDemandMappedTable(dt, 'database', da.database, 'maxRows', p.Results.maxRows);
+            dt = initialize@LoadOnDemandMappedTable(dt, 'table', p.Results.table, 'database', da.database, 'maxRows', p.Results.maxRows);
         end
     end
 

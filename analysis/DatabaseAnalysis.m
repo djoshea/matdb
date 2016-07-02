@@ -276,6 +276,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             end
 
             % load all data sources
+            da.database.removeSourceWithName(da.getName()); % important to get rid of conflicting sources
             da.database.loadSource(da.getRequiredSources());
 
             % load all data views
@@ -298,7 +299,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             % build the resultTable as a LoadOnDemandTable
             % this will be a skeleton containing all of the fields for the analysis
             % none of which will be loaded initially
-            resultTable = DatabaseAnalysisResultsTable(da, 'maxRows', p.Results.maxRows);
+            resultTable = DatabaseAnalysisResultsTable(da, 'table', da.tableMapped, 'maxRows', p.Results.maxRows);
 
             % commenting this out as it does not deal properly with
             % changing hash parameters!
@@ -307,6 +308,8 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
 %                 resultTable = currentResultTable.mergeEntriesWith(resultTable, 'keyFieldMatchesOnly', true);
 %             end
 
+            % don't want to filter OneToOne relatyionships in case we've
+            % subselected the entries to run on already
             da.resultTable = resultTable.setDatabase(da.database).updateInDatabase('filterOneToRelationships', false);
             entryName = da.getMapsEntryName();
 
@@ -331,7 +334,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             % do work if nothing goes wrong
             dbstop if error;
             da.run('keepCurrentValues', false, 'loadCache', true, ...
-                'saveCache', true, 'catchErrors', false, 'rerunFailed', true);
+                'saveCache', true, 'catchErrors', false, 'rerunFailed', true, varargin{:});
         end
 
         function rerun(da, varargin)
@@ -346,7 +349,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             % do work if nothing goes wrong
             dbstop if error;
             da.run('keepCurrentValues', false, 'loadCache', false, ...
-                'saveCache', true, 'catchErrors', false);
+                'saveCache', true, 'catchErrors', false, varargin{:});
         end
 
         function rerunFailed(da, varargin)
@@ -398,6 +401,8 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             p.addParameter('forceReport', false, @islogical);
             % limit the indices that are run from the table
             p.addParameter('idx', [], @(x) isempty(x) || isvector(x));
+            
+            p.addParameter('runOnEntries', [], @(x) isempty(x) || isa(x, 'DataTable')); % manually override which entries we run on
 
             % will drop the current results table before loading new values
             % if true, otherwise will merge it in
@@ -463,11 +468,16 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             entryName = da.getMapsEntryName();
             if isempty(entryName)
                 table = StructTable(struct(), 'entryName', 'database');
+            elseif ~isempty(p.Results.runOnEntries)
+                table = p.Results.runOnEntries;
+                assert(strcmp(table.entryName, entryName), 'runOnEntries must be DataTable with entryName %s', entryName);
             else
                 table = db.getTable(entryName);
                 % enforce singular for 1:1 relationship to work
                 entryName = table.entryName;
-
+            end
+            
+            if ~isempty(entryName)
                 % prefilter the table further if requested (database views also do this)
                 debug('Filtering mapped table %s via preFilterTable\n', entryName);
                 [table, changed] = da.preFilterTable(table);
@@ -1089,13 +1099,14 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             nExts = length(exts);
             success = false(nExts, 1);
             fileList = cell(nExts, 1);
-            if ~feature('isdmlworker')
+%             if ~feature('isdmlworker')
                 tcprintf('bright cyan', 'Saving figure %s as %s\n', figName, strjoin(exts, ', '));
-            end
+%             end
             for i = 1:nExts
                 ext = exts{i};
                 fileName = da.getFigureName(entryTable, figName, ext);
-                fileList{i} = resolveSymLink(GetFullPath(fileName));
+%                 fileList{i} = resolveSymLink(GetFullPath(fileName));
+                fileList{i} = GetFullPath(fileName);
                 mkdirRecursive(fileparts(fileList{i}));
             end
 
@@ -1214,26 +1225,26 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                         figInfo = info(iFigure);
                         for iExt = 1:length(figInfo.extensions)
                             try
-                                mostRecentLink = resolveSymLink(figInfo.fileLinkList{iExt});
-                                thisRunLocation = resolveSymLink(da.getFigureName(descriptors{iEntry}, figInfo.name, figInfo.extensions{iExt}));
+                                thisRunLocation = da.getFigureName(descriptors{iEntry}, figInfo.name, figInfo.extensions{iExt});
+                                if exist(thisRunLocation, 'file')
+                                    continue;
+                                end
 
-                                if ~strcmp(mostRecentLink, thisRunLocation)
-                                    % point the symlink at the original file, not at the most recent link
-                                    % to avoid cascading symlinks
-                                    actualFile = resolveSymLink(figInfo.fileList{iExt});
-                                    success = makeSymLink(actualFile, thisRunLocation);
-                                    if success
-                                        % change the figure info link location, not the actual file path
-                                        info(iFigure).fileLinkList{iExt} = thisRunLocation;
-                                        madeChanges = true;
+                                % point the symlink at the original file, not at the most recent link
+                                % to avoid cascading symlinks
+                                actualFile = figInfo.fileList{iExt};
+                                success = makeSymLink(actualFile, thisRunLocation);
+                                if success
+                                    % change the figure info link location, not the actual file path
+                                    info(iFigure).fileLinkList{iExt} = thisRunLocation;
+                                    madeChanges = true;
 
-                                        % expose permissions on the symlink and the
-                                        % original file, just in case
-                                        chmod(MatdbSettingsStore.settings.permissionsAnalysisFiles, {actualFile, thisRunLocation});
-                                    end
+                                    % expose permissions on the symlink and the
+                                    % original file, just in case
+                                    chmod(MatdbSettingsStore.settings.permissionsAnalysisFiles, {actualFile, thisRunLocation});
                                 end
                             catch exc
-                                debug('ERROR: linking old figure %s\n', figInfo.fileLinkList{iExt});
+                                debug('ERROR: linking old figure %s to %s\n', figInfo.fileLink{iExt}, thisRunLocation);
                                 disp(exc.getReport);
                             end
                         end
@@ -1510,6 +1521,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             %assert(~da.hasRun, 'Database cannot be changed after analysis has run');
             assert(isempty(e) || isa(e, 'DataTable'), 'Must be a DataTable instance');
             da.currentEntry = e;
+            da.figureInfoCurrentEntry = [];
         end
     end
 
