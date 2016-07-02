@@ -701,6 +701,7 @@ classdef Database < DynamicClass & handle & matlab.mixin.Copyable
             p = inputParser;
             p.addRequired('source', @(s) iscell(s) || isa(s, 'DataSource'));
             p.addParameter('reload', false, @islogical);
+            p.addParameter('verbose', false, @islogical);
             p.parse(src, varargin{:});
             src = p.Results.source;
             reload = p.Results.reload;
@@ -742,7 +743,7 @@ classdef Database < DynamicClass & handle & matlab.mixin.Copyable
                         debug('DataSource conflicts with source with name %s, skipping\n', src.getName());
                         continue;
                     else
-                        debug('Unloading conflicting source with name %s\n', src.getName());
+                        debug('Unloading conflicting DataSource with name %s\n', src.getName());
                         db.removeLoadedSources(srcIdx);
                     end
                 elseif db.hasTable(srcName)

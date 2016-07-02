@@ -450,7 +450,7 @@ classdef CacheManager < handle
 
         function fileList = getFileListDataForRead(cm, cacheName, param, varargin)
             p = inputParser;
-            p.addParamValue('verbose', false, @isscalar);
+            p.addParameter('verbose', false, @isscalar);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             fileList = cm.getFileListData(cacheName, param, '', varargin{:});

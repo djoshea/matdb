@@ -114,6 +114,14 @@ classdef LoadOnDemandMappedTable < StructTable
         end
     end
 
+    methods(Static)
+        function dt = loadobj(dt)
+            % updated the CacheManager upon loading since the paths might
+            % be stale
+            dt.cachedCacheManager = MatdbSettingsStore.getDefaultCacheManager();
+        end
+    end
+    
     methods
         function dt = LoadOnDemandMappedTable(varargin)
             dt = dt@StructTable();
@@ -182,17 +190,23 @@ classdef LoadOnDemandMappedTable < StructTable
             % keep a copy of the original table in case we need to merge entries with it later
             dtOriginal = dt;
 
-            % build the table we need
-            entryNameMap = dt.getMapsEntryName(); 
-            if isempty(entryNameMap)
-                debug('Building LoadOnDemand table with single entry\n');
-                table = StructTable(struct(), 'entryName', entryName, 'entryNamePlural', entryNamePlural); 
-            elseif isempty(table)
-                debug('Mapping LoadOnDemand table off table from database %s\n', entryNameMap);
-                table = db.getTable(entryNameMap).keyFieldsTable;
-            else
-                debug('Mapping LoadOnDemand table off specified table %s\n', entryNameMap);
-                table = table.keyFieldsTable;
+            if isempty(table)
+                % no table specified, build it via mapping one-to-one off database table
+                entryNameMap = dt.getMapsEntryName(); 
+                if isempty(entryNameMap)
+                    debug('Building LoadOnDemand table %s with single entry\n', entryName);
+                    table = StructTable(struct(), 'entryName', entryName, 'entryNamePlural', entryNamePlural); 
+                else
+                    debug('Mapping LoadOnDemand table %s off table %s\n', entryName, entryNameMap);
+                    table = db.getTable(entryNameMap).keyFieldsTable;
+                end
+                
+                % limit the row count when debugging!
+                if table.nEntries > maxRows
+                    table = table.select(1:maxRows);
+                end
+                
+                table = table.setEntryName(entryName, entryNamePlural);
             end
                 
             % limit the row count when debugging!
@@ -490,7 +504,7 @@ classdef LoadOnDemandMappedTable < StructTable
             % just return the values
             p.addParameter('storeInTable', true, @islogical);
             
-            p.addParamValue('verbose', false, @isscalar);
+            p.addParameter('verbose', false, @isscalar);
             p.parse(varargin{:});
             
             fields = p.Results.fields;
@@ -774,7 +788,7 @@ classdef LoadOnDemandMappedTable < StructTable
 %                             progressStr, length(entryList));
             if ~isempty(prog)
                 prog.finish();
-                debug('Finished loading field values for %d entries\n', length(entryList));
+                %debug('Finished loading field values for %d entries\n', length(entryList));
             end
 
             %dt = dt.apply();
