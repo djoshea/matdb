@@ -796,6 +796,21 @@ classdef DataTable < DynamicClass & Cacheable
             s = db.getEntriesAsStruct(true(db.nEntries, 1), db.fields);
         end
         
+        function t = getFullEntriesAsMatlabTable(db)
+            s = db.getFullEntriesAsStruct();
+            t = struct2table(s);
+        end
+        
+        function t = getFullEntriesAsDisplayStringsAsMatlabTable(db)
+            s = db.getFullEntriesAsDisplayStringsAsStruct();
+            t = struct2table(s);
+        end
+        
+        function printAsRestructuredText(db)
+            t = db.getFullEntriesAsDisplayStringsAsMatlabTable();
+            table2rst(t);
+        end
+        
         function s = getKeyFieldValuesAsStruct(db)
             s = db.getEntriesAsStruct(true(db.nEntries, 1), db.keyFields);
         end
@@ -1014,10 +1029,10 @@ classdef DataTable < DynamicClass & Cacheable
             p = inputParser();
             p.addParameter('extraFields', {}, @iscell);
             p.parse(varargin{:});
-            fieldsDisplayable = union(db.getFieldsDisplayable(), p.Results.extraFields);
+            fieldsDisplayable = union(db.getFieldsDisplayable(), p.Results.extraFields, 'stable');
             [stringMap displayableFields] = db.getValueMapAsDisplayStrings(fieldsDisplayable);
             strStruct = mapToStructArray(stringMap); 
-        end   
+        end
 
         function [stringMap] = getKeyFieldMapAsFilenameStrings(db, varargin)
             db.checkAppliedEntryData();
@@ -2335,6 +2350,29 @@ classdef DataTable < DynamicClass & Cacheable
             db.checkHasDatabase();
             relatedCell = db.getRelatedIdx(entryName, 'combine', false, 'fillMissingWithNaN', false);
             count = makecol(cellfun(@numel, relatedCell));
+        end
+        
+        function db = addFieldWithRelatedCount(db, entryName, varargin)
+            
+            p = inputParser();
+            p.addParameter('as', '', @(x) ischar(x) || iscellstr(x));
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+           
+            if ischar(entryName)
+                entryName = {entryName};
+            end
+            as = p.Results.as;
+            if isempty(as)
+                as = cellfun(@(fld) sprintf('num_%s', fld), entryName, 'UniformOutput', false);
+            elseif ischar(as)
+                as = {as};
+            end
+            
+            for i = 1:numel(entryName)
+                counts = db.getRelatedCount(entryName{i});
+                db = db.addField(as{i}, counts);
+            end
         end
         
         function [db, mask] = filterHasRelated(db, entryName)
