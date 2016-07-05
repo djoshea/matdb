@@ -149,7 +149,7 @@ classdef LoadOnDemandMappedTable < StructTable
             % maps to in order to build the one to one relationship)
             p.addParameter('database', '', @(db) isa(db, 'Database'));
             % or specify a table directly
-            p.addParameter('table', '', @(db) isa(db, 'DataTable'));
+            p.addParameter('table', [], @(t) isempty(t) || isa(t, 'DataTable'));
             % if specifying table directly, rely on user to specify which fields are loaded
             p.addParameter('fieldsLoaded', {}, @iscellstr);
             p.addParameter('entryName', '', @ischar);
@@ -207,31 +207,33 @@ classdef LoadOnDemandMappedTable < StructTable
                 end
                 
                 table = table.setEntryName(entryName, entryNamePlural);
-                
-                % add additional fields
-                [fields, dfdMap] = dt.getFieldsNotLoadOnDemand();
-                for iField = 1:length(fields)
-                    field = fields{iField};
-                    table = table.addField(field, [], 'fieldDescriptor', dfdMap(field));
-                    table = table.applyFields();
-                end
-
-                % add load on demand fields
-                [fields, dfdMap] = dt.getFieldsLoadOnDemand();
-                for iField = 1:length(fields)
-                    field = fields{iField};
-                    table = table.addField(field, [], 'fieldDescriptor', dfdMap(field));
-                    table = table.applyFields();
-                end
-                
-                fieldsLoaded = {};
-            else
-                error('When does this happen?');
-%                 db = table.database;
-%                 assert(~isempty(db), 'Table must be linked to a database');
-%                 assert(~isa(table, 'StructTable'), 'Table must be a StructTable');
             end
-            
+                
+            % limit the row count when debugging!
+            if table.nEntries > maxRows
+                table = table.select(1:maxRows);
+            end
+
+            table = table.setEntryName(entryName, entryNamePlural);
+
+            % add additional fields
+            [fields, dfdMap] = dt.getFieldsNotLoadOnDemand();
+            for iField = 1:length(fields)
+                field = fields{iField};
+                table = table.addField(field, [], 'fieldDescriptor', dfdMap(field));
+                table = table.applyFields();
+            end
+
+            % add load on demand fields
+            [fields, dfdMap] = dt.getFieldsLoadOnDemand();
+            for iField = 1:length(fields)
+                field = fields{iField};
+                table = table.addField(field, [], 'fieldDescriptor', dfdMap(field));
+                table = table.applyFields();
+            end
+
+            fieldsLoaded = {};
+          
             % SET VALUES OF .cached* FIELDS HERE, WE CAN'T DO THIS ON
             % DEMAND BECAUSE THIS IS NOT A HANDLE CLASS
             

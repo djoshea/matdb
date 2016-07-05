@@ -762,6 +762,13 @@ classdef Database < DynamicClass & handle & matlab.mixin.Copyable
                 db.markSourceLoaded(src); 
             end
         end
+
+        function removeSourceWithName(db, srcName) 
+            [tf, ~, srcIdx] = db.hasSourceWithName(srcName);
+            if tf
+                db.removeLoadedSources(srcIdx);
+            end
+        end
         
         function describeSourcesLoaded(db, src)
             for i = 1:numel(db.sourcesLoaded)
