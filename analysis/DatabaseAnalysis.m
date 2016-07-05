@@ -1139,7 +1139,12 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             end
 
             path = fullfile(da.pathFigures, ext);
-            fileName = fullfile(path, sprintf('%s.%s.%s', figName, descriptor, ext));
+            if isempty(descriptor)
+                % when the analysis is a singleton that doesn't map a table
+                fileName = fullfile(path, sprintf('%s.%s', figName, ext));
+            else
+                fileName = fullfile(path, sprintf('%s.%s.%s', figName, descriptor, ext));
+            end
             fileName = GetFullPath(fileName);
         end
 
