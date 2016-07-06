@@ -190,9 +190,10 @@ classdef LoadOnDemandMappedTable < StructTable
             % keep a copy of the original table in case we need to merge entries with it later
             dtOriginal = dt;
 
+            entryNameMap = dt.getMapsEntryName(); 
+                
             if isempty(table)
                 % no table specified, build it via mapping one-to-one off database table
-                entryNameMap = dt.getMapsEntryName(); 
                 if isempty(entryNameMap)
                     debug('Building LoadOnDemand table %s with single entry\n', entryName);
                     table = StructTable(struct(), 'entryName', entryName, 'entryNamePlural', entryNamePlural); 

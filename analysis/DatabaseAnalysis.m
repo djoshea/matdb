@@ -925,6 +925,11 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             end
 
             function printSingleEntryHeader(entry, iAnalyze, iResult, percDone)
+                if entry.nFields == 0
+                    isSingleton = true;
+                else
+                    isSingleton = false;
+                end
                 description = entry.getKeyFieldValueDescriptors();
                 description = description{1};
                 
@@ -946,7 +951,11 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
 
                 color = 'bright blue';
                 tcprintf(color, line);
-                tcprintf(color, '%s Running analysis on %s\n', progressStr, description);
+                if isSingleton
+                    tcprintf(color, 'Running singleton analysis on database\n');
+                else
+                    tcprintf(color, '%s Running analysis on %s\n', progressStr, description);
+                end
                 tcprintf(color, line);
                 fprintf('\n');
             end
