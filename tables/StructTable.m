@@ -114,8 +114,12 @@ classdef StructTable < DataTable
                 dfd = db.getFieldDescriptor(field);
                 if dfd.matrix
                     % replace empties with empty values
-                    emptyMask = cellfun(@isempty, cellValues);
                     emptyValue = dfd.getEmptyValue();
+                    emptyMask = cellfun(@(x) isempty(x) || isequaln(x, emptyValue), cellValues);
+                    if any(~emptyMask)
+                        cellclass = class(cellValues{find(~emptyMask, 1)});
+                        emptyValue = cast(emptyValue, cellclass);
+                    end
                     cellValues(emptyMask) = deal({emptyValue});
                     values = cell2mat(cellValues);
                 else

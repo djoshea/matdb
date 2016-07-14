@@ -200,6 +200,11 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             % default does nothing
             changed = false;
         end
+        
+        % runs after analysis is loaded in the database (as a DataSource)
+        function postLoadInDatabase(da, table)
+            
+        end
 
         % return a list of additional meta fields that resultTable will contain
         % in addition to the analysis field and keyFields
@@ -1329,7 +1334,11 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
         end
 
         function disp(da)
-            tcprintf('inline', '{bright blue}DatabaseAnalysis {none}: {bright white}%s{none} maps {bright white}%s\n', da.getName(), da.getMapsEntryName());
+            mapsStr = da.getMapsEntryName();
+            if isempty(mapsStr)
+                mapsStr = 'database (singleton)';
+            end
+            tcprintf('inline', '{bright blue}DatabaseAnalysis {none}: {bright white}%s{none} maps {bright white}%s\n', da.getName(), mapsStr);
             tcprintf('inline', ['Parameters: ' da.getDescriptionParam() '\n\n']);
             builtin('disp', da);
         end
@@ -1477,6 +1486,8 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             fieldsToLoad = da.getFieldsToLoadOnDataSourceLoad();
 
             da.resultTable.loadFields(fieldsToLoad, 'verbose', p.Results.verbose).updateInDatabase();
+            
+            da.postLoadInDatabase();
         end
 
         function useAsResultTable(da, resultTable)

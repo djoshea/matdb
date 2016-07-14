@@ -199,23 +199,28 @@ classdef LoadOnDemandMappedTable < StructTable
                     table = StructTable(struct(), 'entryName', entryName, 'entryNamePlural', entryNamePlural); 
                 else
                     debug('Mapping LoadOnDemand table %s off table %s\n', entryName, entryNameMap);
-                    table = db.getTable(entryNameMap).keyFieldsTable;
+                    table = db.getTable(entryNameMap);
                 end
-                
-                % limit the row count when debugging!
-                if table.nEntries > maxRows
-                    table = table.select(1:maxRows);
-                end
-                
-                table = table.setEntryName(entryName, entryNamePlural);
             end
+            
+            % take only key fields for the mapping
+            table = table.keyFieldsTable;
+                
+            % limit the row count when debugging!
+            if table.nEntries > maxRows
+                table = table.select(1:maxRows);
+            end
+                
+            table = table.setEntryName(entryName, entryNamePlural);
                 
             % limit the row count when debugging!
             if table.nEntries > maxRows
                 table = table.select(1:maxRows);
             end
 
-            table = table.setEntryName(entryName, entryNamePlural);
+            if ~isempty(entryName)
+                table = table.setEntryName(entryName, entryNamePlural);
+            end
 
             % add additional fields
             [fields, dfdMap] = dt.getFieldsNotLoadOnDemand();
