@@ -103,11 +103,18 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             param = struct();
         end
 
-
         % return a string used to describe the params used for t]his analysis
         % should encompass whatever is returned by getCacheParam()
         function str = getDescriptionParam(da)
             str = structToString(da.getCacheParam(), '; ');
+        end
+        
+        % if true, this will be a run-once type analysis where all entries
+        % are passed in and all results are returned simultaneously. All
+        % other aspects are the same, so the results will be saved into
+        % different files as usual
+        function tf = getRunOnceOnAllEntriesSimultaneously(da)
+            tf = false;
         end
 
         % return fields here that you wish to have custom control over the
@@ -449,6 +456,12 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             verbose = p.Results.verbose;
             runParallel = p.Results.parallel;
 
+            runOnAllSimultaneously = da.getRunOnceOnAllEntriesSimultaneously();
+            
+            if runOnAllSimultaneously && runParallel
+                error('Parallel mode not supported when getRunOnceOnAllEntriesSimultaneously() returns true');
+            end
+            
             if runParallel
                 pool = gcp;
             end
@@ -749,17 +762,54 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                     if ~runParallel
                         set(0, 'DefaultFigureWindowStyle', 'normal'); % need this in case figures are docked by default - has issues in parpool
 
-                        for iAnalyze = 1:nAnalyze
-                            iResult = idxAnalyze(iAnalyze);
-                            [valid, entry] = fetchEntry(da.tableMapped, iResult);
-                            if ~valid
-                                continue;
+                        if ~runOnAllSimultaneously
+                            for iAnalyze = 1:nAnalyze
+                                iResult = idxAnalyze(iAnalyze);
+                                [valid, entry] = fetchEntry(da.tableMapped, iResult);
+                                if ~valid
+                                    continue;
+                                end
+                                printSingleEntryHeader(entry, iAnalyze, iResult)
+
+                                % for saveFigure to look at
+                                da.currentEntry = entry;
+
+                                % clear debug's last caller info to get a fresh
+                                % debug header
+                                debug();
+
+                                % open a temporary file to use as a diary to capture all output
+                                diary off;
+                                diaryFile = tempname();
+                                diary(diaryFile);
+                                DatabaseAnalysis.setOutputLogStatus('file', diaryFile);
+
+                                [resultStruct, success, exc] = runSingleEntry(da, entry, fieldsAnalysis, catchErrors);
+
+                                extraFields = printPostRunWarnings(da, success, fieldsAnalysis, resultStruct);
+
+                                % load the output from the diary file
+                                DatabaseAnalysis.setOutputLogStatus('file', '');
+                                diary('off');
+                                output = fileread(diaryFile);
+
+                                resultTable = storeResultsInDatabase(resultTable, resultStruct, iResult, output, success, exc, extraFields, da.figureInfoCurrentEntry);
+
+                                % don't clutter with temp files
+                                if exist(diaryFile, 'file')
+                                    delete(diaryFile);
+                                end
+
+                                close all;
                             end
-                            printSingleEntryHeader(entry, iAnalyze, iResult)
-
-                            % for saveFigure to look at
-                            da.currentEntry = entry;
-
+                            
+                        else
+                            % call runOnEntry simultaneously on all entries 
+                            entriesToAnalyze = da.tableMapped.select(idxAnalyze);
+                            printHeader('Running analysis on %d %s simultaneously\n', nAnalyze, da.tableMapped.entryNamePlural);
+                            
+                            da.currentEntry = entriesToAnalyze.select(1);
+                            
                             % clear debug's last caller info to get a fresh
                             % debug header
                             debug();
@@ -770,25 +820,32 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                             diary(diaryFile);
                             DatabaseAnalysis.setOutputLogStatus('file', diaryFile);
 
-                            [resultStruct, success, exc] = runSingleEntry(da, entry, fieldsAnalysis, catchErrors);
+                            [resultStruct, success, exc] = runSingleEntry(da, entriesToAnalyze, fieldsAnalysis, catchErrors);
 
+                            assert(numel(resultStruct) == entriesToAnalyze.nEntries, 'runOnEntry must return a struct with the same size as the entry table provided');
+                            
                             extraFields = printPostRunWarnings(da, success, fieldsAnalysis, resultStruct);
 
                             % load the output from the diary file
                             DatabaseAnalysis.setOutputLogStatus('file', '');
                             diary('off');
                             output = fileread(diaryFile);
-                            
-                            resultTable = storeResultsInDatabase(resultTable, resultStruct, iResult, output, success, exc, extraFields, da.figureInfoCurrentEntry);
-                            
-                            % don't clutter with temp files
-                            if exist(diaryFile, 'file')
-                                delete(diaryFile);
-                            end
 
-                            close all;
+                            prog = ProgressBar(nAnalyze, 'Storing analysis results to cache');
+                            for iAnalyze = 1:nAnalyze
+                                prog.update(iAnalyze);
+                                iResult = idxAnalyze(iAnalyze);
+                                % only store output and figure with the
+                                % first entry
+                                if iAnalyze == 1
+                                    resultTable = storeResultsInDatabase(resultTable, resultStruct(iAnalyze), iResult, output, success, exc, extraFields, da.figureInfoCurrentEntry);
+                                else
+                                    resultTable = storeResultsInDatabase(resultTable, resultStruct(iAnalyze), iResult, '', success, exc, extraFields, []);
+                                end
+                            end
+                            prog.finish();
+                            
                         end
-                        
                     else
                         % parallel mode
                         
@@ -941,7 +998,14 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                 if nargin < 4
                     percDone = (iAnalyze-1)/nAnalyze*100;
                 end
-                progressStr = sprintf('[%5.1f %% - entry %d ]', percDone, iResult);
+                if isSingleton
+                    printHeader('Running singleton analysis on database\n');
+                else
+                    printHeader('[%5.1f %% - entry %d ] Running analysis on %s\n', percDone, iResult, description);
+                end
+            end
+            
+            function printHeader(varargin)
                 fprintf('\n');
                 [~, width] = getTerminalSize();
                 width = width(1);
@@ -956,11 +1020,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
 
                 color = 'bright blue';
                 tcprintf(color, line);
-                if isSingleton
-                    tcprintf(color, 'Running singleton analysis on database\n');
-                else
-                    tcprintf(color, '%s Running analysis on %s\n', progressStr, description);
-                end
+                tcprintf(color, varargin{:});
                 tcprintf(color, line);
                 fprintf('\n');
             end
@@ -993,7 +1053,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                     success = true;
 
                     if isempty(resultStruct)
-                        resultStruct = struct();
+                        resultStruct = repmat(struct(), entry.nEntries, 1); % to support run on all entries simultaneously mode
                     end
                     if ~isstruct(resultStruct)
                         error('runOnEntry did not return a struct');
@@ -1017,6 +1077,8 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                         debug('WARNING: analysis on this entry returned extra fields not listed in .getFieldsAnalysis(): %s\n', ...
                             strjoin(extraFields, ', '));
                     end
+
+                    tcprintf('bright green', 'Analysis ran successfully on this entry\n');
                 else
                     extraFields = {};
                 end
@@ -1024,8 +1086,6 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
 
             function resultTable = storeResultsInDatabase(resultTable, resultStruct, iResult, output, success, exc, extraFields, figureInfo)
                 if success
-                    tcprintf('bright green', 'Analysis ran successfully on this entry\n');
-
                     % Copy only fieldsAnalysis that were returned.
                     % Fields in dt.fieldsAnalysis but not fieldsAnalysis are okay
                     [fieldsCopy, ~] = intersect(allFieldsAnalysis, fieldnames(resultStruct));
@@ -1337,6 +1397,8 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             mapsStr = da.getMapsEntryName();
             if isempty(mapsStr)
                 mapsStr = 'database (singleton)';
+            elseif da.getRunOnceOnAllEntriesSimultaneously()
+                mapsStr = [mapsStr '{yellow} (runs on all simultaneously)'];
             end
             tcprintf('inline', '{bright blue}DatabaseAnalysis {none}: {bright white}%s{none} maps {bright white}%s\n', da.getName(), mapsStr);
             tcprintf('inline', ['Parameters: ' da.getDescriptionParam() '\n\n']);
