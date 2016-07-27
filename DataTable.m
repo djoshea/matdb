@@ -304,16 +304,16 @@ classdef DataTable < DynamicClass & Cacheable
             p.addRequired('other', @(x) isa(x, 'DataTable'));
             
             % make a key field in the other table
-            p.addParamValue('keyField', false, @islogical);
+            p.addParameter('keyField', false, @islogical);
 
             % rename the field to this in the other table
-            p.addParamValue('as', field, @ischar);
+            p.addParameter('as', field, @ischar);
 
             % pass this along as values to other.addField()
-            p.addParamValue('values', []);
+            p.addParameter('values', []);
             
             % copy the values 1:1 from db to other
-            p.addParamValue('copyValues', false, @islogical);
+            p.addParameter('copyValues', false, @islogical);
             
             p.parse(field, other, varargin{:});
 
@@ -537,7 +537,7 @@ classdef DataTable < DynamicClass & Cacheable
             if isa(filterOrKeyword, 'DataFilter')
                 % DataFilter passed directly
                 filt = filterOrKeyword;
-                if length(varargin) > 0
+                if ~isempty(varargin)
                     error('Extra arguments passed to .filterEntries with DataFilter specified');
                 end
             else
@@ -623,7 +623,7 @@ classdef DataTable < DynamicClass & Cacheable
             db = db.autoApplyEntryMask();
         end
 
-        function [fieldsRequired reverse] = getFieldsRequiredBySorting(db)
+        function [fieldsRequired, reverse] = getFieldsRequiredBySorting(db)
             % figure out all of the fields which are referenced by sortByList
             % reverse(i) == true 
             fieldsList = {};
@@ -637,7 +637,7 @@ classdef DataTable < DynamicClass & Cacheable
                     reverse(iField) = false;
                 end
 
-                fieldsList = [fieldsList field];
+                fieldsList = [fieldsList field]; %#ok<AGROW>
             end
 
             % figure out whether the last reference to each field is reversed
@@ -817,7 +817,7 @@ classdef DataTable < DynamicClass & Cacheable
         
         function [db, maskRemoved] = deduplicateBasedOnKeyFields(db, varargin)
             p = inputParser();
-            p.addParamValue('verbose', true, @islogical);
+            p.addParameter('verbose', true, @islogical);
             p.parse(varargin{:});
             
             warnIfNoArgOut(db, nargout);
@@ -1083,7 +1083,7 @@ classdef DataTable < DynamicClass & Cacheable
             %   set of field values describes that entry
             % entryCount counts the number of entries used by uniqueTuples(i)
             p = inputParser;
-            p.addParamValue('fields', db.fields, @iscellstr);
+            p.addParameter('fields', db.fields, @iscellstr);
             p.parse(varargin{:});
             fields = p.Results.fields;
 
@@ -1103,7 +1103,7 @@ classdef DataTable < DynamicClass & Cacheable
                 uniqueValsCell{iField} = uniqueVals;
             end
 
-            [tupleLookups, ia, uniqueTupleIdx] = unique(uniqueIdxMat, 'rows'); 
+            [tupleLookups, ~, uniqueTupleIdx] = unique(uniqueIdxMat, 'rows'); 
 
             % build a struct where uniqueTuples(i).field is the value of field in the ith unique tuple
             nTuples = size(tupleLookups, 1);
@@ -1112,7 +1112,7 @@ classdef DataTable < DynamicClass & Cacheable
                     field = fields{iField};
                     valueIdx = tupleLookups(iTuple, iField);
                     if valueIdx > 0 % 0 happens when the value was NaN
-                        uniqueTuples(iTuple).(field) = uniqueValsCell{iField}{valueIdx};
+                        uniqueTuples(iTuple).(field) = uniqueValsCell{iField}{valueIdx}; %#ok<AGROW>
                     end
                 end
             end
@@ -1169,13 +1169,13 @@ classdef DataTable < DynamicClass & Cacheable
     
             p = inputParser;
             % use a | between columns: simple means ascii, grid means unicode box characters
-            p.addParamValue('grid', true, @(x) isempty(x) || islogical(x));
-            p.addParamValue('color', true, @islogical);
+            p.addParameter('grid', true, @(x) isempty(x) || islogical(x));
+            p.addParameter('color', true, @islogical);
             % insert spaces between columns or between columns and |
-            p.addParamValue('padding', 0, @(x) isscalar(x) && x >= 0);
-            p.addParamValue('maxEntries', termRows-9, @(x) isscalar(x) && x >= 0);
-            p.addParamValue('maxWidth', termCols, @(x) isscalar(x) && x >= 0);
-            p.addParamValue('maxWidthPerField', 25, @isscalar);
+            p.addParameter('padding', 0, @(x) isscalar(x) && x >= 0);
+            p.addParameter('maxEntries', termRows-9, @(x) isscalar(x) && x >= 0);
+            p.addParameter('maxWidth', termCols, @(x) isscalar(x) && x >= 0);
+            p.addParameter('maxWidthPerField', 25, @isscalar);
             p.parse(varargin{:});
 
             grid = p.Results.grid;
@@ -1345,7 +1345,7 @@ classdef DataTable < DynamicClass & Cacheable
                 fprintf('\n');
             end
 
-            if nEntries == 0
+            if nEntries == 0 %#ok<*PROPLC>
                 printf(messageColor, '(empty table)\n');
             end
             if nEntriesDisplay < nEntries
@@ -1357,13 +1357,13 @@ classdef DataTable < DynamicClass & Cacheable
                     strjoin(omittedFields, ', '));
             end
             if ~isempty(truncatedFields)
-                if length(truncatedFields) < 5
+%                 if length(truncatedFields) < 5
                     printf(messageColor, '(omitting fields %s to fit display)\n', ...
                         strjoin(truncatedFields, ', '));
-                else
-                    printf(messageColor, '(omitting %d fields to fit display)\n', ...
-                        length(truncatedFields));
-                end
+%                 else
+%                     printf(messageColor, '(omitting %d fields to fit display)\n', ...
+%                         length(truncatedFields));
+%                 end
             end
 
             fprintf('\n');
@@ -1554,9 +1554,9 @@ classdef DataTable < DynamicClass & Cacheable
             p = inputParser;
             p.addRequired('field', @ischar);
             p.addOptional('values', [], @(x) true);
-            p.addParamValue('fieldDescriptor', [], @(x) isa(x, 'DataFieldDescriptor'));
-            p.addParamValue('position', [], @(x) isnumeric(x) && isscalar(x));
-            p.addParamValue('keyField', false, @islogical);
+            p.addParameter('fieldDescriptor', [], @(x) isa(x, 'DataFieldDescriptor'));
+            p.addParameter('position', [], @(x) isnumeric(x) && isscalar(x));
+            p.addParameter('keyField', false, @islogical);
             p.parse(field, values, varargin{:});
             field = p.Results.field;
             values = p.Results.values;
@@ -1769,13 +1769,13 @@ classdef DataTable < DynamicClass & Cacheable
 
             % if true, checks for exact keyfields matches and overwrites this entries data
             % with the other tables
-            p.addParamValue('overwriteKeyFieldsMatch', false, @islogical);
+            p.addParameter('overwriteKeyFieldsMatch', false, @islogical);
             % if true, keeps ONLY rows in other that keyField match with this one.
             % automatically sets overwriteKeyFieldsMatch to true
-            p.addParamValue('keyFieldMatchesOnly', false, @islogical);
+            p.addParameter('keyFieldMatchesOnly', false, @islogical);
             % run all values through field conversion in order to avoid errors. Set this to false
             % if you know the values are already converted
-            p.addParamValue('convertValues', true, @islogical);
+            p.addParameter('convertValues', true, @islogical);
             p.parse(entryTable, varargin{:});
             overwriteKeyFieldsMatch = p.Results.overwriteKeyFieldsMatch;
             convertValues = p.Results.convertValues;
@@ -1915,8 +1915,8 @@ classdef DataTable < DynamicClass & Cacheable
 
             p = inputParser;
             p.addRequired('other', @(table) isa(table, 'DataTable'));
-            p.addParamValue('convertMismatchedFields', true, @islogical); 
-            p.addParamValue('fallbackFieldDescriptors', {ScalarField(), NumericVectorField(), ...
+            p.addParameter('convertMismatchedFields', true, @islogical); 
+            p.addParameter('fallbackFieldDescriptors', {ScalarField(), NumericVectorField(), ...
                 StringField(), UnspecifiedField()}, @iscell);
             % if true, checks for exact keyfields matches and overwrites this entries data
             % with the other tables
@@ -2053,7 +2053,7 @@ classdef DataTable < DynamicClass & Cacheable
             db = db.invalidateCaches('cachedGroups');
         end
 
-        function groups = get.groups(db, varargin);
+        function groups = get.groups(db)
             error('Not Supported');
             if ~isempty(db.cachedGroups)
                 groups = db.cachedGroups;
@@ -2137,7 +2137,7 @@ classdef DataTable < DynamicClass & Cacheable
             %   [resultStruct status] = fn(dataTable, entryIndex)
             p = inputParser;
             p.KeepUnmatched = true;
-            p.addParamValue('catchErrors', true, @islogical); 
+            p.addParameter('catchErrors', true, @islogical); 
             p.parse(varargin{:});
             catchErrors = p.Results.catchErrors;
 
@@ -2183,9 +2183,9 @@ classdef DataTable < DynamicClass & Cacheable
 
             p = inputParser;
             p.addRequired('fn', @(fn) isa(fn, 'function_handle'));
-            p.addParamValue('addToDatabase', false, @(tf) islogical(tf) && isscalar(tf));
-            p.addParamValue('entryName', '', @ischar);
-            p.addParamValue('entryNamePlural', '', @ischar);
+            p.addParameter('addToDatabase', false, @(tf) islogical(tf) && isscalar(tf));
+            p.addParameter('entryName', '', @ischar);
+            p.addParameter('entryNamePlural', '', @ischar);
             p.parse(fn, varargin{:});
 
             addToDatabase = p.Results.addToDatabase;
