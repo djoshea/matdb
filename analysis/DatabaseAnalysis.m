@@ -10,6 +10,10 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
         % is the analysis currently running? used by internal functions
         % to allow error-free calling of runOnEntry outside of .run()
         isRunning = false;
+        
+        % is the analysis currently running in a mode where results will be
+        % saved
+        isSavingResults = true;
 
         % the result table will be an instance of DatabaseAnalysisResultsTable
         resultTable
@@ -514,6 +518,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             resultTable = da.resultTable; %#ok<*PROPLC>
 
             da.isRunning = true;
+            da.isSavingResults = saveCache;
 
             % mark run timestamp consistently for all entries
             % we'll keep this timestamp unless we don't end up doing any new
@@ -959,6 +964,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                 debug('Call da.viewAsHtml to view html report with figures and output\n');
 
                 da.isRunning = false;
+                da.isSavingResults = false;
                 
                 %fprintf('\n');
                 debug('Finishing analysis run\n');
@@ -1162,6 +1168,9 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             drawnow;
             if isempty(da.isRunning) || ~da.isRunning
                 debug('Figure %s would be saved when run via DatabaseAnalysis.run()\n', figName);
+                return;
+            end
+            if ~da.isSavingResults
                 return;
             end
 
