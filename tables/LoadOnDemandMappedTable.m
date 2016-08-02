@@ -19,7 +19,7 @@ classdef LoadOnDemandMappedTable < StructTable
         % constructor if a database argument is provided
         initialized = false;
         
-        cacheValidTimestampForField = struct();
+        cacheValidTimestampForField = struct ();
         cacheValidTimestampAllFields;
     end
 
@@ -473,9 +473,9 @@ classdef LoadOnDemandMappedTable < StructTable
             allLoadedByEntry = arrayfun(allLoadedFn, dt.table(entryInd));
         end
 
-        function dt = loadField(dt, field, varargin)
+        function [dt, valuesByEntry] = loadField(dt, field, varargin)
             dt.warnIfNoArgOut(nargout);
-            dt = dt.loadFields('fields', {field}, varargin{:});
+            [dt, valuesByEntry] = dt.loadFields('fields', {field}, varargin{:});
         end
 
         % load in the loadable values for fields listed in fields (1st optional
@@ -789,6 +789,8 @@ classdef LoadOnDemandMappedTable < StructTable
                 end
             end
             
+            valuesByEntry = makecol(valuesByEntry);
+            
 %             progressStr = sprintf('[%5.1f %%]', 100);
 %             fprintf('\r%s Finished loading field values for %d entries            \n', ...
 %                             progressStr, length(entryList));
@@ -811,7 +813,8 @@ classdef LoadOnDemandMappedTable < StructTable
         end
         
         function values = retrieveValues(dt, field, varargin)
-            [~, values] = dt.loadField('fields', {field}, 'storeInTable', false, varargin{:});
+            dt = dt.loadFields('fields', {field}, 'storeInTable', true, varargin{:});
+            values = dt.getValues(field);
         end
         
         function dt = unloadFieldsForEntry(dt, entryMask, varargin)
