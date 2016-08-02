@@ -131,7 +131,7 @@ classdef (HandleCompatible) DynamicClass
             end
         end
 
-        function [result, s, returnImmediately] = mapDeclaredMethodCall(obj, name, meta, s, nargout)
+        function [result, s, returnImmediately] = mapDeclaredMethodCall(obj, name, meta, s, nargoutReq)
             returnImmediately = false;
             methodInfo = meta.MethodList;
             idx = find(strcmp(name, {methodInfo.Name}));
@@ -154,9 +154,23 @@ classdef (HandleCompatible) DynamicClass
                     % no more after this, call the method and return
                     % this syntax calls the method and preserves
                     % the correct nargout
-                    [result{1:nargout}] = obj.(name)(args{:});
-                    returnImmediately = true;
-                    return;
+                    
+                    meta = metaclass(obj);
+                    [~, idx] = ismember(name, {meta.MethodList.Name});
+                    noArgOut = isempty(meta.MethodList(idx).OutputNames);
+%                     methodSig = sprintf('%s>%s.%s', className, className, name);
+%                     nargoutProvided = nargout(methodSig);
+                    
+                    if noArgOut
+                        obj.(name)(args{:});
+                        result = {};
+                        returnImmediately = true;
+                        return;
+                    else
+                        [result{1:nargoutReq}] = obj.(name)(args{:});
+                        returnImmediately = true;
+                        return;
+                    end
                 else
                     % more subsref indexing happens after this, e.g.
                     %   obj.method(args).field
@@ -335,7 +349,22 @@ classdef (HandleCompatible) DynamicClass
                 if expandResultAsCell
                     result = result{1};
                 end
-                [varargout{1:nargout}] = subsref(result, s);
+                try
+%                     if nargout == 0
+%                         subsref(result, s);
+%                     else
+                        [varargout{1:nargout}] = subsref(result, s);
+%                     end
+                catch exc
+                    if strcmp(exc.identifier, 'MATLAB:unassignedOutputs') && nargout == 1
+                        % ignore, likely a situation where no outputs are
+                        % needed but Matlab sets nargout to 1
+                        % not sure if there is a better way around this
+                        varargout = {[]};
+                    else
+                        exc.rethrow();
+                    end
+                end
             else
                 if expandResultAsCell
                     % when using cell indexing {}, result must be expanded to varargout
