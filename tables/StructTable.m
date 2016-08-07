@@ -118,7 +118,11 @@ classdef StructTable < DataTable
                     emptyMask = cellfun(@(x) isempty(x) || isequaln(x, emptyValue), cellValues);
                     if any(~emptyMask)
                         cellclass = class(cellValues{find(~emptyMask, 1)});
-                        emptyValue = cast(emptyValue, cellclass);
+                        if strcmp(cellclass, 'logical') && isnan(emptyValue) %#ok<ISLOG>
+                            emptyValue = false;
+                        else
+                            emptyValue = cast(emptyValue, cellclass);
+                        end
                     end
                     cellValues(emptyMask) = deal({emptyValue});
                     values = cell2mat(cellValues);

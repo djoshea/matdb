@@ -138,6 +138,8 @@ classdef DatabaseAnalysisResultsTable < LoadOnDemandMappedTable
             end
             
             % do the opening
+            analysisName = dt.analysis.getName(); %#ok<*PROPLC>
+            analysisRoot = getFirstExisting(MatdbSettingsStore.settings.pathListAnalysis);
             info = info(idx);
             pathCell = cellvec(numel(info));
             ext = p.Results.ext;
@@ -146,6 +148,9 @@ classdef DatabaseAnalysisResultsTable < LoadOnDemandMappedTable
                 assert(tf, 'Extension %s not found for figure name %s', p.Results.ext, info(iReq).name);
                 file = info(iReq).fileList{idxExt};
                 
+                % reconstruct path relative to the current root
+                k = strfind(file, analysisName); 
+                file = fullfile(analysisRoot, file(k:end));
                 pathCell{iReq} = file;
             end
         end

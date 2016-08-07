@@ -803,6 +803,10 @@ classdef DataTable < DynamicClass & Cacheable
         
         function t = getFullEntriesAsDisplayStringsAsMatlabTable(db)
             s = db.getFullEntriesAsDisplayStringsAsStruct();
+            % workaround for matlab bug with empty strings
+            if numel(s) == 1
+                s = structfun(@(f) [f blanks(isempty(f))], s, 'UniformOutput', false);
+            end
             t = struct2table(s);
         end
         
