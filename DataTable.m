@@ -1639,6 +1639,12 @@ classdef DataTable < DynamicClass & Cacheable
             db.warnIfNoArgOut(nargout);
             db = db.addField(varargin{:}, 'keyField', true);
         end
+        
+        function db = keepFields(db, fields, varargin)
+            db.warnIfNoArgOut(nargout);
+            remove = setdiff(db.fields, fields);
+            db = db.removeField(remove);
+        end
 
         function db = removeField(db, field, varargin)
             p = inputParser;
@@ -2123,13 +2129,8 @@ classdef DataTable < DynamicClass & Cacheable
 
     methods % Iterating, mapping
         function resultTable = keyFieldsTable(db, varargin)
-            keyTable = db.getEntriesAsStruct(1:db.nEntries, db.keyFields);
-            % remove extra fields if still present
-            keyTable = rmfield(keyTable, setdiff(fieldnames(keyTable), db.keyFields));
-            dfdMap = db.fieldDescriptorMap.keepOnly(db.keyFields);
-            resultTable = StructTable(keyTable, 'fieldDescriptorMap', dfdMap, ...
-                'entryName', db.entryName, 'entryNamePlural', db.entryNamePlural);
-            resultTable = resultTable.setKeyFields(db.keyFields);
+            db.warnIfNoArgOut(nargout);
+            resultTable = db.keepFields(db.keyFields);
         end
 
         function [resultTable status] = map(db, fn, varargin)
@@ -2354,6 +2355,10 @@ classdef DataTable < DynamicClass & Cacheable
             db.checkHasDatabase();
             relatedCell = db.getRelatedIdx(entryName, 'combine', false, 'fillMissingWithNaN', false);
             count = makecol(cellfun(@numel, relatedCell));
+        end
+        
+        function tab = getRelatedCountTable(db, entryName, varargin)
+            tab = db.keyFieldsTable.addFieldWithRelatedCount(entryName, varargin{:});
         end
         
         function db = addFieldWithRelatedCount(db, entryName, varargin)
