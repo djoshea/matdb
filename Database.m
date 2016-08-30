@@ -482,6 +482,7 @@ classdef Database < DynamicClass & handle & matlab.mixin.Copyable
             p.addRequired('entryLeft', @ischar);
             p.addRequired('entryRight', @ischar);
             p.addOptional('entryJunction', '', @ischar);
+            p.addParameter('relManyToMany', [], @(x) isempty(x) || isa(x, 'DataRelationship'));
             p.parse(entryLeft, entryRight, varargin{:});
             entryJunction = p.Results.entryJunction;
 
@@ -493,9 +494,13 @@ classdef Database < DynamicClass & handle & matlab.mixin.Copyable
                 tableJunction = [];
             end
 
-            rel = DataRelationship('tableLeft', tableLeft, 'tableRight', tableRight, ...
-                'tableJunction', tableJunction, ...
-                'isManyLeft', true, 'isManyRight', true, p.Unmatched); 
+            if ~isempty(p.Results.relManyToMany)
+                rel = p.Results.relManyToMany;
+            else
+                rel = DataRelationship('tableLeft', tableLeft, 'tableRight', tableRight, ...
+                    'tableJunction', tableJunction, ...
+                    'isManyLeft', true, 'isManyRight', true, p.Unmatched); 
+            end
             db.addRelationship(rel);
             
             if ~isempty(tableJunction)

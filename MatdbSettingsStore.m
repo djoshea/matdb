@@ -1,13 +1,6 @@
 classdef MatdbSettingsStore < handle
-% Save an instance of this class as matdbSettings.mat
-% anywhere on the matlab path (although typically outside of the git repo).
-% after filling out the path fields below. It will be loaded automatically
-% by setPathMatdb.m when it is called (presumably by startup.m)
-%
-% The reason for setting paths here is to accomodate this code being run on
-% several different locations, each with its own cache.
+% reads/writes through to environment variables
 
-    % SET THESE PROPERTIES AND SAVE SOMEWHERE ON PATH AS matdbSettings.mat
     properties
         % name of the default cache manager class to use
         defaultCacheManagerName
@@ -24,72 +17,97 @@ classdef MatdbSettingsStore < handle
         % root location for saving csv files
         pathListCSVData
     end
-
+    
     methods(Static)
-        % load on demand
         function settings = settings(varargin)
-            persistent pSettings;
-            if ~isempty(varargin) && isa(varargin{1}, 'MatdbSettingsStore')
-                pSettings = varargin{1};
-            end
-            if isempty(pSettings)
-                pSettings = MatdbSettingsStore.loadSettings();
-            end
-            settings = pSettings;
+            settings = MatdbSettingsStore();
         end
 
         function instance = loadSettings()
-            try
-                data = load('matdbSettings.mat');
-                msg = 'matdbSettings.mat should contain an instance of MatdbSettingsStore named matdbSettings';
-                assert(isfield(data, 'matdbSettings'), msg);
-                instance = data.matdbSettings;
-                assert(isa(instance, 'MatdbSettingsStore'), msg);
-            catch
-                error('ERROR: Could not locate matdbSettings.mat on path. See MatdbSettingsStore');
-            end
-
-            % update the persisent cache inside .settings
-            MatdbSettingsStore.settings(instance);
+            instance = MatdbSettingsStore();
         end
 
-        % STATIC ACCESSORS FOR SAVED VALUES
-        function cm = getDefaultCacheManager()
+         function cm = getDefaultCacheManager()
             name = MatdbSettingsStore.getDefaultCacheManagerName();
+            assert(~isempty(name), 'Set value of MatdbSettingsdefaultCacheManagerName');
             cm = eval(sprintf('%s()', name));
         end
 
         function name = getDefaultCacheManagerName()
-            name = MatdbSettingsStore.loadSettings.defaultCacheManagerName;
-            if isempty(name)
-                name = 'CacheManager';
-            end
+            name = MatdbSettingsStore.settings.defaultCacheManagerName;
         end
 
         function pathList = getPathListCache()
-            pathList = GetFullPath(MatdbSettingsStore.loadSettings.pathListCache);
+            pathList = MatdbSettingsStore.settings.pathListCache;
         end
 
         function pathList = getPathListAnalysis()
-            pathList = GetFullPath(MatdbSettingsStore.loadSettings.pathListAnalysis);
+            pathList = GetFullPath(MatdbSettingsStore.settings.pathListAnalysis);
         end
 
         function pathList = getPathListCSVData()
-            pathList = GetFullPath(MatdbSettingsStore.loadSettings.pathListCSVData);
+            pathList = GetFullPath(MatdbSettingsStore.settings.pathListCSVData);
+        end
+        
+        function pathCell = getenvPathList(key)
+            t = getenv(key);
+            if isempty(t)
+                pathCell = {};
+                return;
+            end
+            
+            tparts = strsplit(t, ':');
+            pathCell = cellfun(@GetFullPath, tparts, 'UniformOutput', false);   
+        end
+        
+        function setenvPathList(key, pathCell)
+            value = strjoin(pathCell, ':');
+            setenv(key, value);
         end
     end
-
+       
     methods
-        function saveSettings(matdbSettings, path)
-            if nargin < 2
-                error('Usage: .saveSettings(path)');
+        function t = get.defaultCacheManagerName(v)
+            t = getenv('MATDB_defaultCacheManagerName');
+            if isempty(t)
+                t = 'CacheManager';
             end
-            filename = fullfile(path, 'matdbSettings.mat');
-            save(filename, 'matdbSettings');
-            debug('MatdbSettings saved to %s\n', filename);
+        end
 
-            % update the persisent cache inside .settings
-            MatdbSettingsStore.settings(matdbSettings);
+        function set.defaultCacheManagerName(s, v)
+            setenv('MATDB_defaultCacheManagerName', v);
+        end
+        
+        function t = get.pathListCache(v)
+            t = MatdbSettingsStore.getenvPathList('MATDB_pathListCache');
+        end
+
+        function set.pathListCache(s, v)
+            MatdbSettingsStore.setenvPathList('MATDB_pathListCache', v);
+        end
+
+        function t = get.pathListAnalysis(v)
+            t = MatdbSettingsStore.getenvPathList('MATDB_pathListAnalysis');
+        end
+
+        function set.pathListAnalysis(s, v)
+            MatdbSettingsStore.setenvPathList('MATDB_pathListAnalysis', v);
+        end
+
+        function t = get.permissionsAnalysisFiles(v)
+            t = getenv('MATDB_permissionsAnalysisFiles');
+        end
+
+        function set.permissionsAnalysisFiles(s, v)
+            setenv('MATDB_permissionsAnalysisFiles', v);
+        end
+        
+        function t = get.pathListCSVData(v)
+            t = MatdbSettingsStore.getenvPathList('MATDB_pathListCSVData');
+        end
+
+        function set.pathListCSVData(s, v)
+            MatdbSettingsStore.setenvPathList('MATDB_pathListCSVData', v);
         end
     end
 end

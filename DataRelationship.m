@@ -1076,14 +1076,16 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             % is this relationship undirected? if so, both directions will
             % be checked when matching
             p.addParamValue('isBidirectional', false, @islogical);
+            
+            p.addParamValue('useCombinedTableFieldNames', true, @islogical);
 
             % by default, the entry names of the two tables will be used both as 
             % field name prefixes and as the fieldname in the relationship
             p.addParamValue('referenceJunctionForLeft', '', @ischar);
             p.addParamValue('referenceJunctionForRight', '', @ischar);
             
-            p.addParamValue('referenceLeftForRight', tbl2.entryName, @ischar);
-            p.addParamValue('referenceRightForLeft', tbl1.entryName, @ischar);
+            p.addParamValue('referenceLeftForRight', tbl2.entryNamePlural, @ischar);
+            p.addParamValue('referenceRightForLeft', tbl1.entryNamePlural, @ischar);
 
             p.addParamValue('entryName', [], @ischar);
             p.addParamValue('entryNamePlural', [], @ischar);
@@ -1133,13 +1135,21 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             jField1 = cell(length(keyFields1), 1);
             for i = 1:length(keyFields1)
                 field = keyFields1{i};
-                jField1{i} = DataRelationship.combinedTableFieldName(keyName1, field);
+                if p.Results.useCombinedTableFieldNames
+                    jField1{i} = DataRelationship.combinedTableFieldName(keyName1, field);
+                else
+                    jField1{i} = field;
+                end
                 jTbl = tbl1.copyFieldToDataTable(field, jTbl, 'as', jField1{i}, 'keyField', true);
             end
             jField2 = cell(length(keyFields2), 1);
             for i = 1:length(keyFields2)
                 field = keyFields2{i};
-                jField2{i} = DataRelationship.combinedTableFieldName(keyName2, field);
+                if p.Results.useCombinedTableFieldNames
+                    jField2{i} = DataRelationship.combinedTableFieldName(keyName2, field);
+                else
+                    jField2{i} = field;
+                end
                 jTbl = tbl2.copyFieldToDataTable(field, jTbl, 'as', jField2{i}, 'keyField', true);
             end
             
@@ -1197,8 +1207,8 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             % allow override of how junction table refers to left and right
             % matches
             p = inputParser;
-            p.addParamValue('referenceJunctionForLeft', rel.referenceRightForLeft, @ischar);
-            p.addParamValue('referenceJunctionForRight', rel.referenceLeftForRight, @ischar);
+            p.addParamValue('referenceJunctionForLeft', rel.entryNameLeft, @ischar);
+            p.addParamValue('referenceJunctionForRight', rel.entryNameRight, @ischar);
             p.parse(varargin{:});
             
             relLeftToJunction = DataRelationship('tableLeft', tableLeft, 'tableRight', tableJunction, ...
