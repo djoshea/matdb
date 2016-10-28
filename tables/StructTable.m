@@ -16,7 +16,7 @@ classdef StructTable < DataTable
 
         function db = initialize(db, varargin)
             p = inputParser;
-            p.addOptional('table', struct([]), @(t) isa(t, 'DataTable') || isempty(t) || (isstruct(t) && isvector(t)));
+            p.addOptional('table', struct([]), @(t) isa(t, 'DataTable') || isempty(t) || (isstruct(t) && isvector(t)) || isa(t, 'table'));
             p.addParamValue('entryName', '', @(t) ischar(t) && ~isempty(t));
             p.addParamValue('entryNamePlural', '', @(t) ischar(t) || isempty(t));
             p.addParamValue('fieldDescriptorMap', '', @(m) isempty(m) || isa(m, 'ValueMap'));
@@ -60,6 +60,9 @@ classdef StructTable < DataTable
                     db.table = table.getFullEntriesAsStruct();
                     db.keyFields = table.keyFields();
                     db.localDfdMap = table.fieldDescriptorMap;
+                elseif isa(table, 'table')
+                    db.table = table2struct(table);
+                    db.table = makecol(structReplaceEmptyValues(db.table));
                 else
                     db.table = makecol(structReplaceEmptyValues(table));
                 end
