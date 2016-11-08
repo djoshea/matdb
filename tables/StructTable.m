@@ -16,7 +16,7 @@ classdef StructTable < DataTable
 
         function db = initialize(db, varargin)
             p = inputParser;
-            p.addOptional('table', struct([]), @(t) isa(t, 'DataTable') || isempty(t) || (isstruct(t) && isvector(t)));
+            p.addOptional('table', struct([]), @(t) isa(t, 'DataTable') || isempty(t) || (isstruct(t) && isvector(t)) || isa(t, 'table'));
             p.addParamValue('entryName', '', @(t) ischar(t) && ~isempty(t));
             p.addParamValue('entryNamePlural', '', @(t) ischar(t) || isempty(t));
             p.addParamValue('fieldDescriptorMap', '', @(m) isempty(m) || isa(m, 'ValueMap'));
@@ -60,6 +60,9 @@ classdef StructTable < DataTable
                     db.table = table.getFullEntriesAsStruct();
                     db.keyFields = table.keyFields();
                     db.localDfdMap = table.fieldDescriptorMap;
+                elseif isa(table, 'table')
+                    db.table = table2struct(table);
+                    db.table = makecol(structReplaceEmptyValues(db.table));
                 else
                     db.table = makecol(structReplaceEmptyValues(table));
                 end
@@ -114,8 +117,16 @@ classdef StructTable < DataTable
                 dfd = db.getFieldDescriptor(field);
                 if dfd.matrix
                     % replace empties with empty values
-                    emptyMask = cellfun(@isempty, cellValues);
                     emptyValue = dfd.getEmptyValue();
+                    emptyMask = cellfun(@(x) isempty(x) || isequaln(x, emptyValue), cellValues);
+                    if any(~emptyMask)
+                        cellclass = class(cellValues{find(~emptyMask, 1)});
+                        if strcmp(cellclass, 'logical') && isnan(emptyValue) %#ok<ISLOG>
+                            emptyValue = false;
+                        else
+                            emptyValue = cast(emptyValue, cellclass);
+                        end
+                    end
                     cellValues(emptyMask) = deal({emptyValue});
                     values = cell2mat(cellValues);
                 else

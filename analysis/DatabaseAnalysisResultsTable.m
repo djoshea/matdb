@@ -111,6 +111,78 @@ classdef DatabaseAnalysisResultsTable < LoadOnDemandMappedTable
         function tf = getCacheFieldsIndividually(dt)
             tf = dt.analysisCacheFieldsIndividually;
         end
+        
+        function pathCell = getPathToFigures(dt, nameOrMask, varargin)
+            p = inputParser();
+            p.addParameter('ext', 'fig', @ischar);
+            p.parse(varargin{:});
+            
+            assert(dt.nEntries == 1, 'openFigure only valid for single entries');
+            [~, values] = dt.loadFields('fields', {'figureInfo'}, 'storeInTable', false);
+            info = values.figureInfo;
+            
+            if isempty(nameOrMask)
+                nameOrMask = truevec(numel(info));
+            elseif ischar(nameOrMask)
+                nameOrMask = {nameOrMask};
+            end
+            
+            if iscellstr(nameOrMask)
+                idx = nanvec(numel(nameOrMask));
+                for iReq = 1:numel(nameOrMask)
+                    [tf, idx(iReq)] = ismember(nameOrMask{iReq}, {info.name});
+                    assert(tf, 'Figure %s not found in figureInfo', nameOrMask{iReq});
+                end
+            else
+                idx = TensorUtils.vectorMaskToIndices(nameOrMask);
+            end
+            
+            % do the opening
+            analysisName = dt.analysis.getName(); %#ok<*PROPLC>
+            analysisRoot = getFirstExisting(MatdbSettingsStore.settings.pathListAnalysis);
+            info = info(idx);
+            pathCell = cellvec(numel(info));
+            ext = p.Results.ext;
+            for iReq = 1:numel(info)
+                [tf, idxExt] = ismember(ext, info(iReq).extensions);
+                assert(tf, 'Extension %s not found for figure name %s', p.Results.ext, info(iReq).name);
+                file = info(iReq).fileList{idxExt};
+                
+                % reconstruct path relative to the current root
+                k = strfind(file, analysisName); 
+                file = fullfile(analysisRoot, file(k:end));
+                pathCell{iReq} = file;
+            end
+        end
+        
+        % figure opening
+        function openAllFigures(dt, varargin)
+            dt.openFigure('', varargin{:});
+        end
+        
+        % figure opening
+        function openFigure(dt, nameOrMask, varargin)
+            p = inputParser();
+            p.addParameter('ext', 'fig', @ischar);
+            p.parse(varargin{:});
+            
+            if nargin < 2
+                nameOrMask = [];
+            end
+               
+            pathCell = dt.getPathToFigures(nameOrMask, 'ext', p.Results.ext);
+            
+            ext = p.Results.ext;
+            for iReq = 1:numel(pathCell)
+                file = pathCell{iReq};
+                debug('Opening %s\n', file);
+                if strcmp(ext, 'fig')
+                    open(file);
+                else
+                    system(sprintf('open %s', escapePathForShell(file)));
+                end
+            end
+        end
     end
 
     methods % Cacheable overrides
