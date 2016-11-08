@@ -156,19 +156,19 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
     methods % Constructor, Swap-Left-Right and description
         function rel = DataRelationship(varargin)
             p = inputParser;
-            p.addParamValue('tableLeft', [], @(t) isa(t, 'DataTable'));
-            p.addParamValue('tableRight', [], @(t) isa(t, 'DataTable'));
-            p.addParamValue('tableJunction', [], @(t) isempty(t) || isa(t, 'DataTable'));
-            p.addParamValue('referenceLeftForRight', [], @ischar); 
-            p.addParamValue('referenceRightForLeft', [], @ischar); 
-            p.addParamValue('keyFieldsLeft', [], @iscellstr); 
-            p.addParamValue('keyFieldsLeftInRight', [], @iscellstr); 
-            p.addParamValue('keyFieldsRight', [], @iscellstr); 
-            p.addParamValue('keyFieldsRightInLeft', [], @iscellstr); 
-            p.addParamValue('isManyLeft', false, @(t) islogical(t) && isscalar(t));
-            p.addParamValue('isManyRight', false, @(t) islogical(t) && isscalar(t));
-            p.addParamValue('isHalfOfJunction', false, @islogical);
-            p.addParamValue('isBidirectional', false, @islogical);
+            p.addParameter('tableLeft', [], @(t) isa(t, 'DataTable'));
+            p.addParameter('tableRight', [], @(t) isa(t, 'DataTable'));
+            p.addParameter('tableJunction', [], @(t) isempty(t) || isa(t, 'DataTable'));
+            p.addParameter('referenceLeftForRight', [], @ischar); 
+            p.addParameter('referenceRightForLeft', [], @ischar); 
+            p.addParameter('keyFieldsLeft', [], @iscellstr); 
+            p.addParameter('keyFieldsLeftInRight', [], @iscellstr); 
+            p.addParameter('keyFieldsRight', [], @iscellstr); 
+            p.addParameter('keyFieldsRightInLeft', [], @iscellstr); 
+            p.addParameter('isManyLeft', false, @(t) islogical(t) && isscalar(t));
+            p.addParameter('isManyRight', false, @(t) islogical(t) && isscalar(t));
+            p.addParameter('isHalfOfJunction', false, @islogical);
+            p.addParameter('isBidirectional', false, @islogical);
             p.parse(varargin{:});
 
             tableLeft = p.Results.tableLeft;
@@ -512,10 +512,10 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             p.addRequired('ind', @(x) validateattributes(x, {'numeric'}, ...
                 {'scalar', 'nonempty', '>=', 1, '<=', 2}));
             p.addOptional('table', [], @(t) isa(t, 'DataTable'));
-            p.addParamValue('isMany', false, @islogical);
-            p.addParamValue('keyFields', {}, @iscellstr);
-            p.addParamValue('entryName', '', @isvarname);
-            p.addParamValue('entryNamePlural', '', @isvarname);
+            p.addParameter('isMany', false, @islogical);
+            p.addParameter('keyFields', {}, @iscellstr);
+            p.addParameter('entryName', '', @isvarname);
+            p.addParameter('entryNamePlural', '', @isvarname);
             p.parse(ind, varargin{:});
 
             table = p.Results.table;
@@ -705,7 +705,7 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             tableCheck.assertIsField(rel.keyFieldsLeftInRight);
         end
         
-        function mat = getMatchMatrixForInstance(rel, varargin)
+        function matchMat = getMatchMatrixForInstance(rel, varargin)
             p = inputParser;
             p.addRequired('tableLeft', @(x) isa(x, 'DataTable'));
             p.addRequired('tableRight', @(x) isa(x, 'DataTable'));
@@ -713,31 +713,39 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             p.parse(varargin{:});
             tableLeft = p.Results.tableLeft;
             tableRight = p.Results.tableRight;
+            tableJunction = p.Results.tableJunction;
+            
+            db = tableLeft.database;
             
             if rel.isJunction
-                assert(exist('tableJunction', 'var') > 0, 'tableJunction argument required');
-                entriesJunctionForLeft = tableJunction.getAllEntriesAsStruct(keyFieldsLeftInRight);
-                entriesJunctionForRight = tableJunction.getAllEntriesAsStruct(keyFieldsRightInLeft);
-               
-%                 % preload the fieldNames for .match(args{:} for tableJunction and tableRight
-%                 matchFilterArgsJunction = DataRelationship.fillCellOddEntries(keyFieldsLeftInRight);
-%                 matchFilterArgsRight = DataRelationship.fillCellOddEntries(keyFieldsRight);
-
+                if isempty(tableJunction)
+                    tableJunction = db.getTable(rel.entryNameJunction);
+                end
+%                 assert(exist('tableJunction', 'var') > 0, 'tableJunction argument required');
+                
+                % use declared relationships if present in the database
+                relJunctionLeft = db.findRelationship(rel.entryNameLeft, rel.entryNameJunction);
+                relJunctionRight = db.findRelationship(rel.entryNameJunction, rel.entryNameRight);
+                
                 % (i,j) is true if entryLeft(i) matches entryJunction(j)
-                relJunctionLeft = 
-                    matchMatLeftJunction = p.Results.relJunctionLeft.getMatchMatrixForInstance(...
-                        entriesLeft, entriesJunctionForLeft, tableLeft.fieldDescriptorMap);
+                if ~isempty(relJunctionLeft)
+                    matchMatLeftJunction = relJunctionLeft.getMatchMatrixForInstance(...
+                        tableLeft, tableJunction);
                 else
+                    entriesLeft = tableLeft.getAllEntriesAsStruct();
+                    entriesJunctionForLeft = tableJunction.getAllEntriesAsStruct(rel.keyFieldsLeftInRight);
                     matchMatLeftJunction = DataRelationship.getMatchMatrix(entriesLeft, entriesJunctionForLeft, ...
-                        keyFieldsLeft, keyFieldsLeftInRight, tableLeft.fieldDescriptorMap);
+                        rel.keyFieldsLeft, rel.keyFieldsLeftInRight, tableLeft.fieldDescriptorMap);
                 end
                 
-                if ~isempty(p.Results.relJunctionRight)
-                    matchMatJunctionRight = p.Results.relJunctionRight.getMatchMatrixForInstance(...
-                        entriesJunctionForRight, entriesRight, tableJunction.fieldDescriptorMap);
+                if ~isempty(relJunctionRight)
+                    matchMatJunctionRight = relJunctionRight.getMatchMatrixForInstance(...
+                        tableJunction, tableRight);
                 else
+                    entriesJunctionForRight = tableJunction.getAllEntriesAsStruct(rel.keyFieldsRightInLeft);               
+                    entriesRight = tableRight.getAllEntriesAsStruct();
                     matchMatJunctionRight = DataRelationship.getMatchMatrix(entriesJunctionForRight, entriesRight, ...
-                        keyFieldsRightInLeft, keyFieldsRight, tableJunction.fieldDescriptorMap);
+                        rel.keyFieldsRightInLeft, rel.keyFieldsRight, tableJunction.fieldDescriptorMap);
                 end
                 
                 % simply multiply them together to find left-right matches via any
@@ -745,23 +753,27 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
                 matchMat = (single(matchMatLeftJunction) * single(matchMatJunctionRight)) ~= 0;
                 
             else
-            
-           if ~isempty(rel.keyFieldsLeftInRight)
-                % key fields for left lie within right, so we can loop through left table 
-                % and search directly for each's match(es) in right
-                % this is essentially a reverse lookup
-                %debug('Performing reverse key lookup\n');
-                matchMat = DataRelationship.getMatchMatrix(entriesLeft, entriesRight, ...
-                    rel.keyFieldsLeft, rel.keyFieldsLeftInRight, fieldDescriptorMap);
+                entriesLeft = tableLeft.getAllEntriesAsStruct();
+                entriesRight = tableRight.getAllEntriesAsStruct();
+                
+                if ~isempty(rel.keyFieldsLeftInRight)
+                    % key fields for left lie within right, so we can loop through left table 
+                    % and search directly for each's match(es) in right
+                    % this is essentially a reverse lookup
+                    %debug('Performing reverse key lookup\n');
+                    matchMat = DataRelationship.getMatchMatrix(entriesLeft, entriesRight, ...
+                        rel.keyFieldsLeft, rel.keyFieldsLeftInRight, tableLeft.fieldDescriptorMap);
 
-           else
-                % key fields for right table lie within left, so we loop through left table
-                % and lookup each right entry by key fields
-                %debug('Performing forward key lookup\n');
-                matchMat = DataRelationship.getMatchMatrix(entriesLeft, entriesRight, ...
-                    rel.keyFieldsRightInLeft, rel.keyFieldsRight, fieldDescriptorMap);
-           end
+               else
+                    % key fields for right table lie within left, so we loop through left table
+                    % and lookup each right entry by key fields
+                    %debug('Performing forward key lookup\n');
+                    matchMat = DataRelationship.getMatchMatrix(entriesLeft, entriesRight, ...
+                        rel.keyFieldsRightInLeft, rel.keyFieldsRight, tableLeft.fieldDescriptorMap);
+                end
+            end
         end
+        
         function matchIdx = matchLeftInRight(rel, tableLeft, tableRight, varargin)
             % given a data table corresponding to the left table and right table
             % in this relationship, return either:
@@ -801,58 +813,9 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             assert(strcmp(tableLeft.entryName, rel.entryNameLeft));
             assert(strcmp(tableRight.entryName, rel.entryNameRight));
 
-            keyFieldsLeftInRight = rel.keyFieldsLeftInRight; %#ok<*PROPLC>
-            keyFieldsRightInLeft = rel.keyFieldsRightInLeft;
-
             nEntriesLeft = tableLeft.nEntries;
-           % nEntriesRight = tableRight.nEntries;
-
-            keyFieldsLeft = rel.keyFieldsLeft;
-            keyFieldsRight = rel.keyFieldsRight;
-            %nKeyFieldsRight = length(keyFieldsRight);
-            %nKeyFieldsLeft = length(keyFieldsLeft);
-            
-%             entriesLeft = tableLeft.getAllEntriesAsStruct(rel.keyFieldsLeft);
-%             entriesRight = tableRight.getAllEntriesAsStruct(rel.keyFieldsRight);
-            
-            entriesLeft = tableLeft.getAllEntriesAsStruct();
-            entriesRight = tableRight.getAllEntriesAsStruct();
-            
-            if rel.isJunction
-                %debug('Performing junction table lookup\n');
-                assert(exist('tableJunction', 'var') > 0, 'tableJunction argument required');
-                entriesJunctionForLeft = tableJunction.getAllEntriesAsStruct(keyFieldsLeftInRight);
-                entriesJunctionForRight = tableJunction.getAllEntriesAsStruct(keyFieldsRightInLeft);
-               
-%                 % preload the fieldNames for .match(args{:} for tableJunction and tableRight
-%                 matchFilterArgsJunction = DataRelationship.fillCellOddEntries(keyFieldsLeftInRight);
-%                 matchFilterArgsRight = DataRelationship.fillCellOddEntries(keyFieldsRight);
-
-                % (i,j) is true if entryLeft(i) matches entryJunction(j)
-                if ~isempty(p.Results.relJunctionLeft)
-                    matchMatLeftJunction = p.Results.relJunctionLeft.getMatchMatrixForInstance(...
-                        entriesLeft, entriesJunctionForLeft, tableLeft.fieldDescriptorMap);
-                else
-                    matchMatLeftJunction = DataRelationship.getMatchMatrix(entriesLeft, entriesJunctionForLeft, ...
-                        keyFieldsLeft, keyFieldsLeftInRight, tableLeft.fieldDescriptorMap);
-                end
-                
-                if ~isempty(p.Results.relJunctionRight)
-                    matchMatJunctionRight = p.Results.relJunctionRight.getMatchMatrixForInstance(...
-                        entriesJunctionForRight, entriesRight, tableJunction.fieldDescriptorMap);
-                else
-                    matchMatJunctionRight = DataRelationship.getMatchMatrix(entriesJunctionForRight, entriesRight, ...
-                        keyFieldsRightInLeft, keyFieldsRight, tableJunction.fieldDescriptorMap);
-                end
-                
-                % simply multiply them together to find left-right matches via any
-                % junction entry
-                matchMat = (single(matchMatLeftJunction) * single(matchMatJunctionRight)) ~= 0;
-                
-            else
-                matchMat = rel.getMatchMatrixForInstance(entriesLeft, entriesRight, ...
-                    keyFieldsLeft, keyFieldsLeftInRight, tableLeft.fieldDescriptorMap);
-            end
+           
+            matchMat = rel.getMatchMatrixForInstance(tableLeft, tableRight, 'tableJunction', tableJunction);
 
             % convert match matrix to list of matches for each left entry
             matchIdx = arrayfun(@(i) find(matchMat(i, :)), 1:nEntriesLeft, 'UniformOutput', false);
@@ -955,7 +918,7 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             p = inputParser();
             p.addRequired('entryLeft', @(t) isstruct(t) || isa(t, 'DataTable'));
             p.addRequired('entryRight', @(t) isstruct(t) || isa(t, 'DataTable'));
-            p.addParamValue('allToAll', false, @islogical);
+            p.addParameter('allToAll', false, @islogical);
             p.parse(entryLeft, entryRight, varargin{:});
             allToAll = p.Results.allToAll;
              
@@ -1070,7 +1033,7 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             p = inputParser;
             p.addRequired('tableWithFields', @(x) isempty(x) || isa(x, 'DataTable'));
             p.addRequired('tableReferenced', @(x) isempty(x) || isa(x, 'DataTable'));
-            p.addParamValue('fields', tableReferenced.keyFields, @(x) ischar(x) || iscellstr(x));
+            p.addParameter('fields', tableReferenced.keyFields, @(x) ischar(x) || iscellstr(x));
             p.parse(tableWithFields, tableReferenced, varargin{:});
             fieldsInOther = p.Results.fields;
             
@@ -1128,20 +1091,20 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             
             % is this relationship undirected? if so, both directions will
             % be checked when matching
-            p.addParamValue('isBidirectional', false, @islogical);
+            p.addParameter('isBidirectional', false, @islogical);
             
-            p.addParamValue('useCombinedTableFieldNames', true, @islogical);
+            p.addParameter('useCombinedTableFieldNames', true, @islogical);
 
             % by default, the entry names of the two tables will be used both as 
             % field name prefixes and as the fieldname in the relationship
-            p.addParamValue('referenceJunctionForLeft', '', @ischar);
-            p.addParamValue('referenceJunctionForRight', '', @ischar);
+            p.addParameter('referenceJunctionForLeft', '', @ischar);
+            p.addParameter('referenceJunctionForRight', '', @ischar);
             
-            p.addParamValue('referenceLeftForRight', tbl2.entryNamePlural, @ischar);
-            p.addParamValue('referenceRightForLeft', tbl1.entryNamePlural, @ischar);
+            p.addParameter('referenceLeftForRight', tbl2.entryNamePlural, @ischar);
+            p.addParameter('referenceRightForLeft', tbl1.entryNamePlural, @ischar);
 
-            p.addParamValue('entryName', [], @ischar);
-            p.addParamValue('entryNamePlural', [], @ischar);
+            p.addParameter('entryName', [], @ischar);
+            p.addParameter('entryNamePlural', [], @ischar);
             
             p.parse(tbl1, tbl2, varargin{:});
             
@@ -1224,10 +1187,10 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             % entries in tbl to other entries in tbl (via that junction
             % table)
             p = inputParser();
-            p.addParamValue('entryName', ['junction' upperFirst(tbl.entryName) upperFirst(tbl.entryName)], @(x) isempty(x) || ischar(x));
-            p.addParamValue('referenceJunctionForLeft', [tbl.entryName '1'], @ischar);
-            p.addParamValue('referenceJunctionForRight', [tbl.entryName '2'], @ischar);
-            p.addParamValue('referenceLink', tbl.entryName, @ischar);
+            p.addParameter('entryName', ['junction' upperFirst(tbl.entryName) upperFirst(tbl.entryName)], @(x) isempty(x) || ischar(x));
+            p.addParameter('referenceJunctionForLeft', [tbl.entryName '1'], @ischar);
+            p.addParameter('referenceJunctionForRight', [tbl.entryName '2'], @ischar);
+            p.addParameter('referenceLink', tbl.entryName, @ischar);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
@@ -1260,8 +1223,8 @@ classdef DataRelationship < matlab.mixin.Copyable & handle
             % allow override of how junction table refers to left and right
             % matches
             p = inputParser;
-            p.addParamValue('referenceJunctionForLeft', rel.entryNameLeft, @ischar);
-            p.addParamValue('referenceJunctionForRight', rel.entryNameRight, @ischar);
+            p.addParameter('referenceJunctionForLeft', rel.entryNameLeft, @ischar);
+            p.addParameter('referenceJunctionForRight', rel.entryNameRight, @ischar);
             p.parse(varargin{:});
             
             relLeftToJunction = DataRelationship('tableLeft', tableLeft, 'tableRight', tableJunction, ...

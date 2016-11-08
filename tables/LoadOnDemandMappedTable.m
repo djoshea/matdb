@@ -534,7 +534,7 @@ classdef LoadOnDemandMappedTable < StructTable
                 storeInTable = false;
             end
 
-            % check fields okay
+            % check fields okay`
             validField = ismember(fields, dt.fieldsLoadOnDemand);
             assert(all(validField), 'Fields %s not found in fieldsLoadOnDemand', ...
                 strjoin(fields(~validField)));

@@ -78,8 +78,8 @@ classdef Database < DynamicClass & handle & matlab.mixin.Copyable
             end
             p = inputParser;
             p.addRequired('table', @(t) validateattributes(t, {'DataTable'}, {'nonempty'}));
-            %p.addParamValue('entryName', '', @ischar);
-            %p.addParamValue('entryNamePlural', '', @ischar);
+            %p.addParameter('entryName', '', @ischar);
+            %p.addParameter('entryNamePlural', '', @ischar);
             p.parse(table, varargin{:});
 
             % allowing these to be overriden complicates things and will probably never be used
@@ -307,7 +307,7 @@ classdef Database < DynamicClass & handle & matlab.mixin.Copyable
                 [tf, referenceName, referredToAs] = rel.involvesEntryNameAsOneTo(entryName);
                 if tf
                     referenceNames = [referenceNames referenceName]; %#ok<AGROW>
-                    referredToAsCell{end+1} = referredToAs;
+                    referredToAsCell{end+1} = referredToAs; %#ok<AGROW>
                     refIdx = [refIdx; iRel]; %#ok<AGROW>
                 end
             end
@@ -324,7 +324,7 @@ classdef Database < DynamicClass & handle & matlab.mixin.Copyable
                 [tf, referenceName] = rel.involvesEntryNameAsManyTo(entryName);
                 if tf
                     referenceNames = [referenceNames referenceName]; %#ok<AGROW>
-                    referredToAsCell{end+1} = referredToAs;
+                    referredToAsCell{end+1} = referredToAs; %#ok<AGROW>
                     refIdx = [refIdx; iRel]; %#ok<AGROW>
                 end
             end
@@ -342,7 +342,7 @@ classdef Database < DynamicClass & handle & matlab.mixin.Copyable
 
             for iRel = 1:db.nRelationships
                 rel = db.relationships{iRel};
-                [tf leftToRight] = rel.matchesEntryNameAndReference(entryName, referenceName);
+                [tf, leftToRight] = rel.matchesEntryNameAndReference(entryName, referenceName);
                 if tf
                     if leftToRight
                         matchRel = rel;
@@ -364,12 +364,12 @@ classdef Database < DynamicClass & handle & matlab.mixin.Copyable
             relCell = {};
             for iRel = 1:db.nRelationships
                 rel = db.relationships{iRel};
-                [tf leftToRight] = rel.matchesEntryNameAndReference(entryName, referenceName);
+                [tf, leftToRight] = rel.matchesEntryNameAndReference(entryName, referenceName);
                 if tf
                     if leftToRight
-                        relCell{end+1} = rel;
+                        relCell{end+1} = rel; %#ok<AGROW>
                     else
-                        relCell{end+1} = rel.swapCopy();
+                        relCell{end+1} = rel.swapCopy(); %#ok<AGROW>
                     end
                 end
             end
@@ -393,7 +393,7 @@ classdef Database < DynamicClass & handle & matlab.mixin.Copyable
             tf = ~isempty(rel);
         end
 
-        function addRelationship(db, rel, varargin);
+        function addRelationship(db, rel, varargin)
             p = inputParser;
             p.addRequired('rel', @(x) validateattributes(x, {'DataRelationship'}, {'nonempty'})); 
             p.parse(rel, varargin{:});
@@ -544,9 +544,9 @@ classdef Database < DynamicClass & handle & matlab.mixin.Copyable
             % table, which ensures 1:1 correspondence between rows in table
             % and matchIdx
             p = inputParser;
-            p.addParamValue('combine', true, @islogical);
-            p.addParamValue('fillMissingWithNaN', true, @islogical);
-            p.addParamValue('forceOneToOne', false, @islogical);
+            p.addParameter('combine', true, @islogical);
+            p.addParameter('fillMissingWithNaN', true, @islogical);
+            p.addParameter('forceOneToOne', false, @islogical);
             p.parse(varargin{:});
             
             forceOneToOne = p.Results.forceOneToOne;
@@ -564,13 +564,8 @@ classdef Database < DynamicClass & handle & matlab.mixin.Copyable
                 tableReference = db.getTable(rel.entryNameRight);
                 if rel.isJunction
                     tableJunction = db.getTable(rel.entryNameJunction);
-                    
-                    relJunctionLeft = db.findRelationship(rel.entryNameLeft, rel.entryNameJunction);
-                    relJunctionRight = db.findRelationship(rel.entryNameJunction, rel.entryNameRight);
                 else
                     tableJunction = [];
-                    relJunctionLeft = [];
-                    relJunctionRight = [];
                 end
 
                 newMatchIdx = rel.match(table, tableReference, ...
@@ -616,9 +611,9 @@ classdef Database < DynamicClass & handle & matlab.mixin.Copyable
             % found. This ensures that the matched table will correspond
             % 1:1 to the lookup table.
             p = inputParser();
-            p.addParamValue('combine', true, @islogical); % true - return single table, false - cell array of tables with matches for each entry in table
-            p.addParamValue('fillMissingWithEmpty', true, @islogical);
-            p.addParamValue('forceOneToOne', false, @islogical);
+            p.addParameter('combine', true, @islogical); % true - return single table, false - cell array of tables with matches for each entry in table
+            p.addParameter('fillMissingWithEmpty', true, @islogical);
+            p.addParameter('forceOneToOne', false, @islogical);
             p.parse(varargin{:});
             [matchIdx, tableReference] = db.getRelatedIdx(table, referenceName, ...
                 'combine', p.Results.combine, 'fillMissingWithNaN', p.Results.fillMissingWithEmpty, ...
@@ -640,7 +635,7 @@ classdef Database < DynamicClass & handle & matlab.mixin.Copyable
     end
 
     methods % Dynamic property access
-        function [value appliedNext] = mapDynamicPropertyAccess(db, name, typeNext, subsNext)
+        function [value, appliedNext] = mapDynamicPropertyAccess(db, name, typeNext, subsNext) %#ok<INUSD>
             if db.hasTable(name)
                 value = db.getTable(name);
             else
@@ -657,7 +652,7 @@ classdef Database < DynamicClass & handle & matlab.mixin.Copyable
     methods % Views
         function applyView(db, dv, varargin)
             p = inputParser;
-            p.addParamValue('reapply', false, @islogical);
+            p.addParameter('reapply', false, @islogical);
             p.parse(varargin{:});
             reapply = p.Results.reapply;
             
@@ -789,7 +784,7 @@ classdef Database < DynamicClass & handle & matlab.mixin.Copyable
             end
         end
         
-        function describeSourcesLoaded(db, src)
+        function describeSourcesLoaded(db, src) %#ok<INUSD>
             for i = 1:numel(db.sourcesLoaded)
                 debug('{#FFFF93}%s{none} : %s\n', class(db.sourcesLoaded{i}), db.sourcesLoaded{i}.describe());
             end
