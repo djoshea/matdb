@@ -388,8 +388,9 @@ classdef Database < DynamicClass & handle & matlab.mixin.Copyable
             db.relationships = db.relationships(~remove);
         end
 
-        function tf = hasRelationship(db, entryName, referenceName)
-            tf = ~isempty(db.findRelationship(entryName, referenceName));
+        function [tf, rel] = hasRelationship(db, entryName, referenceName)
+            rel = db.findRelationship(entryName, referenceName);
+            tf = ~isempty(rel);
         end
 
         function addRelationship(db, rel, varargin);
@@ -508,8 +509,15 @@ classdef Database < DynamicClass & handle & matlab.mixin.Copyable
                     DataRelationship.buildRelationshipsToJunction(...
                     rel, tableLeft, tableRight, tableJunction);
                 
-                db.addRelationship(relLeftToJunction);
-                db.addRelationship(relJunctionToRight);
+                % add the missing junction relationships IF THEY DO NOT
+                % ALREADY EXIST IN THE DATABASE. Allows existing
+                % relationships through the junction to be used as is
+                if ~db.hasRelationship(relLeftToJunction.entryNameLeft, relLeftToJunction.referenceLeftForRight)
+                    db.addRelationship(relLeftToJunction);
+                end
+                if ~db.hasRelationship(relJunctionToRight.entryNameLeft, relJunctionToRight.referenceLeftForRight)
+                    db.addRelationship(relJunctionToRight);
+                end
             end
         end
 
@@ -551,12 +559,18 @@ classdef Database < DynamicClass & handle & matlab.mixin.Copyable
                 tableReference = db.getTable(rel.entryNameRight);
                 if rel.isJunction
                     tableJunction = db.getTable(rel.entryNameJunction);
+                    
+                    relJunctionLeft = db.findRelationship(rel.entryNameLeft, rel.entryNameJunction);
+                    relJunctionRight = db.findRelationship(rel.entryNameJunction, rel.entryNameRight);
                 else
                     tableJunction = [];
+                    relJunctionLeft = [];
+                    relJunctionRight = [];
                 end
 
                 newMatchIdx = rel.match(table, tableReference, ...
-                    'tableJunction', tableJunction, 'combine', combine, ...
+                    'tableJunction', tableJunction, ...
+                    'combine', combine, ...
                     'fillMissingWithNaN', fillMissingWithNaN, ...
                     'forceOneToOne', forceOneToOne);
                 

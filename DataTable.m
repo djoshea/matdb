@@ -1083,7 +1083,7 @@ classdef DataTable < DynamicClass & Cacheable
             %   set of field values describes that entry
             % entryCount counts the number of entries used by uniqueTuples(i)
             p = inputParser;
-            p.addParamValue('fields', db.fields, @iscellstr);
+            p.addParameter('fields', db.fields, @iscellstr);
             p.parse(varargin{:});
             fields = p.Results.fields;
 
