@@ -606,7 +606,7 @@ classdef LoadOnDemandMappedTable < StructTable
                                 hasPrintedMessage = true;
                             end
                             
-                            [validCache, value, timestamp] = dt.retrieveCachedFieldValue(iEntry, field);
+                            [validCache, value, timestamp] = dt.retrieveCachedFieldValue(iEntry, field, 'verbose', p.Results.verbose);
                             if validCache
                                 % found cached value
                                 loadedValues.(field) = value;

@@ -379,7 +379,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             % wraps .run with common params for debugging but will actually
             % do work if nothing goes wrong
             dbstop if error;
-            da.run('rerunFailed', true, 'saveCache', true, 'catchErrors', false);
+            da.run('rerunFailed', true, 'saveCache', true, 'catchErrors', false, varargin{:});
         end
 
         function rerunFailedDebug(da, varargin)
@@ -410,6 +410,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             % rerun any failed entries from prior runs, true value supersedes
             % .getRerunFailed() method return value, which is the class default
             p.addParameter('rerunFailed', false, @islogical);
+            p.addParameter('recheckSuccess', true, @islogical); %set to false if you've just loaded all the success values
             % don't run any new analysis, just load whatever possible from the cache
             p.addParameter('loadCacheOnly', false, @islogical);
             % wrap the runOnEntry method in a try/catch block so that errors
@@ -630,8 +631,10 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
 
                 % check the cache timestamps to determine
                 % which entry x field cells are missing or out of date
-                debug('Checking cached field existence and success field\n');
-                resultTable = resultTable.loadFields('fields', {'success'}, 'loadCacheOnly', true, 'verbose', verbose);
+                if p.Results.recheckSuccess
+                    debug('Checking cached field existence and success field\n');
+                    resultTable = resultTable.loadFields('fields', {'success'}, 'loadCacheOnly', true, 'verbose', verbose);
+                end
                 fieldsToLoad = setdiff(resultTable.fieldsCacheable, 'success');
                 % load the cache timestamps (and thereby determine whether
                 % they exist) for all fields for successful entries
