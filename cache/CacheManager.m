@@ -46,9 +46,10 @@ classdef CacheManager < handle
             else
                 opts.Method = 'SHA-1';
                 opts.Format = 'hex'; 
+                opts.Input = 'ascii';
                 hashData.param = param;
                 hashData.cacheName = cacheName;
-                str = DataHash(hashData, opts);
+                str = Matdb.DataHash(hashData, opts);
                 
                 % cache for next time
                 pLastHash = str;
