@@ -227,13 +227,15 @@ classdef HTMLWriter < handle
         end
 
         function openTag(html, tag, varargin)
-            p = inputParser;
-            p.KeepUnmatched = true;
-            p.parse(varargin{:});
-            attr = p.Unmatched;
+            % replacing this as need to have valid field names
+%             p = inputParser;
+%             p.KeepUnmatched = true;
+%             p.parse(varargin{:});
+%             attr = p.Unmatched;
+            attrList = varargin(1:2:end);
+            attrVals = varargin(2:2:end);
 
             % build the attribute name="value" string
-            attrList = fieldnames(attr);
             if isempty(attrList)
                 attrStr = '';
             else
@@ -242,7 +244,7 @@ classdef HTMLWriter < handle
                 else
                     quote = '"';
                 end
-                attrCell = cellfun(@(name) sprintf(' %s=%s%s%s', name, quote, attr.(name), quote), attrList, ...
+                attrCell = cellfun(@(name, val) sprintf(' %s=%s%s%s', name, quote, val, quote), attrList, attrVals, ...
                     'UniformOutput', false);
                 attrStr = strjoin(attrCell, '');
             end

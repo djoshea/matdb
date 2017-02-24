@@ -100,7 +100,7 @@ classdef HTMLDataTableWriter < HTMLReportWriter
             end
         end
 
-        function writeFieldHeaderRow(html);
+        function writeFieldHeaderRow(html)
             % write fields in header
             html.openTableHead();
             html.openTableRow();
