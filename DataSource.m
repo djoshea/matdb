@@ -1,14 +1,16 @@
 classdef DataSource < handle 
 
     methods(Abstract)
-        % return a string describing this datasource
-        str = describe(src);
-
         % actually load this into the database, assume all dependencies have been loaded
         loadInDatabase(src, database);
     end
 
     methods
+        function str = describe(src)
+            % return a string describing this datasource
+            str = class(src);
+        end
+        
         function name = getName(src)
             name = class(src);
         end
