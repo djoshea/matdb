@@ -281,7 +281,7 @@ classdef Database < DynamicClass & handle & matlab.mixin.Copyable
     end
 
     methods % Relationships
-        function [referenceNames, refIdx] = listRelationshipsWith(db, entryName)
+        function [referenceNames, refIdx, relationships] = listRelationshipsWith(db, entryName)
             referenceNames = {};
             refIdx = [];
             for iRel = 1:db.nRelationships
@@ -293,6 +293,7 @@ classdef Database < DynamicClass & handle & matlab.mixin.Copyable
                 end
             end
             referenceNames = makecol(referenceNames);
+            relationships = makecol(db.relationships(refIdx));
         end
         
         function [referenceNames, referredToAsCell, refIdx] = listRelationshipsWithAsOneTo(db, entryName)
@@ -331,7 +332,6 @@ classdef Database < DynamicClass & handle & matlab.mixin.Copyable
             referenceNames = makecol(referenceNames);
             referredToAsCell = makecol(referredToAsCell);
         end
-
 
         function [matchRel, leftToRight] = findRelationship(db, entryName, referenceName)
             % determine whether a relationship from table with entryName referring

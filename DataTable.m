@@ -1374,6 +1374,13 @@ classdef DataTable < DynamicClass & Cacheable
             fprintf('%c\n', 15);
         end
 
+        function printRelationships(db)
+            [~, ~, relationships] = db.listRelationships();
+            for i = 1:length(relationships) %#ok<*PROP>
+                fprintf('%s\n', relationships{i}.describeLink());
+            end
+        end
+        
         function viewAsHtml(db)
             fileName = tempname();
             html = db.saveAsHtml(fileName);
@@ -2338,6 +2345,16 @@ classdef DataTable < DynamicClass & Cacheable
                 refs = {};
             else
                 refs = db.database.listRelationshipsWith(db.entryName);
+            end
+        end
+        
+        function [referenceNames, refIdx, relationships] = listRelationships(db)
+            if isempty(db.database)
+                referenceNames = {};
+                refIdx = [];
+                relationships = [];
+            else
+                [referenceNames, refIdx, relationships] = db.database.listRelationshipsWith(db.entryName);
             end
         end
 
