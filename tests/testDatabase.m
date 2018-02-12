@@ -1,3 +1,10 @@
+%%
+
+settings = MatdbSettingsStore;
+settings.pathListCache = {'~/data/testMatdb/cache'};
+settings.pathListAnalysis = {'~/data/testMatdb/analysis'};
+settings.permissionsAnalysisFiles = 'uga+rX';
+
 %clear
 %clear classes
 

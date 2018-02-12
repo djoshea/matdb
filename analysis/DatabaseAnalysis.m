@@ -119,6 +119,10 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
         function prefix = getCacheFilePrefix(da)
             prefix = 'cache_';
         end
+        
+        function lookup = getCustomCacheSuffixForFieldLookup(da)
+            lookup = struct();
+        end
 
         % return a string used to describe the params used for t]his analysis
         % should encompass whatever is returned by getCacheParam()

@@ -122,6 +122,12 @@ classdef LoadOnDemandMappedTable < StructTable
             % call to DatabaseAnalysis to give it a chance to modify the hash value or regenerate it
             prefix = 'cache_';
         end
+        
+        function lookup = getCustomCacheSuffixForFieldLookup(da)
+            % when CacheCustomSaveLoad is used for a specific results field, this struct specifies the 
+            % fieldName --> suffix used instead of the default .custom_fieldName
+            lookup = struct();
+        end
     end
 
     methods(Static)
@@ -1316,8 +1322,10 @@ classdef LoadOnDemandMappedTable < StructTable
             
             % save the values as separate fields in the .mat file, to facilitate
             % easy partial loading of specific fields
+            lookup = dt.getCustomCacheSuffixForFieldLookup();
             timestamp = cm.saveData(cacheName, param, row, 'separateFields', true, ...
-                'prefix', prefix, 'hash', hash, 'verbose', verbose);
+                'prefix', prefix, 'hash', hash, 'verbose', verbose, ...
+                'customSuffixForFieldLookup', lookup);
             
             % update cache timestamps
             for iField = 1:length(fieldsCacheable)

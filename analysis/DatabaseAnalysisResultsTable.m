@@ -80,7 +80,7 @@ classdef DatabaseAnalysisResultsTable < LoadOnDemandMappedTable
             fields = fieldDescriptorMap.keys;
         end
 
-        function [fields, fieldDescriptorMap] = getFieldsNotLoadOnDemand(dt)
+        function [fields, fieldDescriptorMap] = getFieldsNotLoadOnDemand(dt) %#ok<*MANU>
             fieldDescriptorMap = ValueMap(); 
             fields = {};
         end
@@ -106,6 +106,12 @@ classdef DatabaseAnalysisResultsTable < LoadOnDemandMappedTable
         function prefix = getCacheFilePrefix(dt)
             % call to DatabaseAnalysis to give it a chance to modify the hash value or regenerate it
             prefix = dt.analysis.getCacheFilePrefix();
+        end
+        
+        function lookup = getCustomCacheSuffixForFieldLookup(dt)
+            % when CacheCustomSaveLoad is used for a specific results field, this struct specifies the 
+            % fieldName --> suffix used instead of the default .custom_fieldName
+            lookup = dt.analysis.getCustomCacheSuffixForFieldLookup();
         end
 
         % here's where you specify where the values for the loaded fields come

@@ -280,6 +280,7 @@ classdef CacheManager < handle
             p.addParameter('verbose', CacheManager.getVerbose(), @islogical);
             p.addParameter('hash', '', @ischar);
             p.addParameter('prefix', 'cache_', @ischar);
+            p.addParameter('customSuffixForFieldLookup', struct(), @isstruct);
             p.addParameter('timestamp', now, @isscalar); % default timestamp is now, but can be overridden 
             
             % optional means of saving a struct array's fields as separate variables
@@ -333,7 +334,13 @@ classdef CacheManager < handle
                         if p.Results.verbose
                             debug('Deferring to CacheCustomSaveLoad for save on field %s\n', flds{iFld});
                         end
-                        customLocation = cm.getPathCustomFromHashFileName(fileMeta, flds{iFld});
+                        
+                        if isfield(p.Results.customSuffixForFieldLookup, flds{iFld})
+                            suffix = p.Results.customSuffixForFieldLookup.(flds{iFld});
+                        else
+                            suffix = sprintf('.custom_%s', flds{iFld});
+                        end
+                        customLocation = cm.getPathCustomFromHashFileName(fileMeta, suffix);
                         token = val.saveCustomToLocation(customLocation);
                         
                         % replace original with placeholder
@@ -476,14 +483,14 @@ classdef CacheManager < handle
             file = file{1};
         end
         
-        function pathCustom = getPathCustomFromHashFileName(cm, metaFile, field) %#ok<INUSL>
+        function pathCustom = getPathCustomFromHashFileName(cm, metaFile, suffix) %#ok<INUSL>
              % strip off the .data.mat and add _custom_FIELD
             [root, name] = fileparts(metaFile);
             [root, name] = fileparts(fullfile(root, name));
-            if nargin < 3 || isempty(field)
-                pathCustom = fullfile(root, sprintf([name '.custom']));
+            if nargin < 3 || isempty(suffix)
+                pathCustom = fullfile(root, [name '.custom']);
             else
-                pathCustom = fullfile(root, sprintf([name '.custom_%s'], field));
+                pathCustom = fullfile(root, [name suffix]);
             end
         end
         
