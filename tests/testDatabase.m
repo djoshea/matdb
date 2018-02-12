@@ -1,6 +1,9 @@
 %clear
 %clear classes
 
+str = RandStream('mt19937ar','Seed',1);
+RandStream.setGlobalStream(str);
+
 %% Build tables
 if ~exist('createTables', 'var')
     createTables = true;

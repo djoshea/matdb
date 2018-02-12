@@ -109,6 +109,16 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
         function param = getCacheParam(da)
             param = struct();
         end
+        
+        function hash = generateHashForEntry(da, entry, hash, cacheName, cacheParam)
+            % by default, keep hash as it is, but analysis can choose to redefine the hash however it wants
+            % taking on the risk of non-uniqueness. A common overwrite would be to use entry.getKeyFieldValueDescriptors() {1}
+            % and then factor in param 
+        end
+        
+        function prefix = getCacheFilePrefix(da)
+            prefix = 'cache_';
+        end
 
         % return a string used to describe the params used for t]his analysis
         % should encompass whatever is returned by getCacheParam()
@@ -247,8 +257,10 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
     end
 
     methods % Constructor
-        function da = DatabaseAnalysis(varargin)
-
+        function da = DatabaseAnalysis(db)
+            if nargin > 0
+                da.setDatabase(db);
+            end
         end
     end
 
@@ -517,8 +529,8 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             % load required source/views, re-map the result table, etc.
             if ~keepCurrentValues
                 da.resultTable = [];
+                da.initialize('maxRows', p.Results.maxRows);
             end
-            da.initialize('maxRows', p.Results.maxRows);
             resultTable = da.resultTable; %#ok<*PROPLC>
 
             da.isRunning = true;

@@ -30,6 +30,18 @@ classdef CountStudentsByTeacher < DatabaseAnalysis
             param = [];
         end
         
+        function hash = generateHashForEntry(da, entry, hash, cacheName, cacheParam)
+            % by default, keep hash as it is, but analysis can choose to redefine the hash however it wants
+            % taking on the risk of non-uniqueness. A common overwrite would be to use entry.getKeyFieldValueDescriptors() {1}
+            % and then factor in param 
+            desc = entry.getKeyFieldValueDescriptors();
+            hash = desc{1};
+        end
+        
+        function prefix = getCacheFilePrefix(da)
+            prefix = 'customPrefix_';
+        end
+        
         function tf = getCacheFieldsIndividually(da)
             tf = false;
         end
@@ -62,13 +74,13 @@ classdef CountStudentsByTeacher < DatabaseAnalysis
 
             fprintf('Output pre fig 1\n');
 
-            figure(1); clf;
-            plot(rand(20,10));
-            xlabel('X axis');
-            ylabel('Y axis');
-            title('Figure 1');
-            box off
-            da.saveFigure(gcf, 'Figure 1', 'Figure 1 Caption');
+%             figure(1); clf;
+%             plot(rand(20,10));
+%             xlabel('X axis');
+%             ylabel('Y axis');
+%             title('Figure 1');
+%             box off
+%             da.saveFigure(gcf, 'Figure 1', 'Figure 1 Caption');
 
 %             fprintf('Output pre fig 2\n');
             

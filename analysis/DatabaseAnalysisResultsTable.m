@@ -93,6 +93,20 @@ classdef DatabaseAnalysisResultsTable < LoadOnDemandMappedTable
         function fields = getFieldsCacheable(dt)
             fields = dt.getFieldsLoadOnDemand();
         end
+        
+        function hash = generateHashForEntry(dt, iEntry, cacheName, param)
+            % call to DatabaseAnalysis to give it a chance to modify the hash value or regenerate it
+            hash = generateHashForEntry@LoadOnDemandMappedTable(dt, iEntry, cacheName, param);
+            
+            entry = dt.select(iEntry);
+            assert(entry.nEntries == 1);
+            hash = dt.analysis.generateHashForEntry(entry, hash, cacheName, param);
+        end
+        
+        function prefix = getCacheFilePrefix(dt)
+            % call to DatabaseAnalysis to give it a chance to modify the hash value or regenerate it
+            prefix = dt.analysis.getCacheFilePrefix();
+        end
 
         % here's where you specify where the values for the loaded fields come
         % from. When passed a list of fields, guaranteed to be valid, you generate

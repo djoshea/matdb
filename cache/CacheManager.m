@@ -59,7 +59,7 @@ classdef CacheManager < handle
     end
 
     methods % methods that should remain public
-        function printDebugHashMessage(cm, message, cacheName, param)
+        function printDebugHashMessage(cm, message, cacheName, param) %#ok<INUSL>
             debug('%s name = %s:\n', message, cacheName);
             if isstruct(param)
                 structdisp(param);
@@ -84,7 +84,7 @@ classdef CacheManager < handle
         % retrieve all meta info from the newest meta file
         function [indexNewest, timestamp, separateFields] = retrieveMeta(cm, cacheName, param, varargin)
             p = inputParser();
-            p.addParamValue('verbose', false, @isscalar);
+            p.addParameter('verbose', CacheManager.getVerbose(), @isscalar);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
@@ -163,9 +163,10 @@ classdef CacheManager < handle
             p = inputParser;
             p.addRequired('cacheName', @ischar);
             p.addRequired('param', @(x) true);
-            p.addParamValue('fields', {}, @iscellstr);
-            p.addParamValue('verbose', false, @isscalar);
-            p.addParamValue('hash', '', @ischar);
+            p.addParameter('fields', {}, @iscellstr);
+            p.addParameter('verbose', CacheManager.getVerbose(), @islogical);
+            p.addParameter('prefix', 'cache_', @ischar);
+            p.addParameter('hash', '', @ischar);
             p.parse(cacheName, param, varargin{:});
             
             fields = p.Results.fields;
@@ -178,7 +179,8 @@ classdef CacheManager < handle
                 end
             end
 
-            fileList = cm.getFileListDataForRead(cacheName, param, 'hash', p.Results.hash, 'verbose', p.Results.verbose);
+            fileList = cm.getFileListDataForRead(cacheName, param, 'hash', p.Results.hash, ...
+                'prefix', p.Results.prefix, 'verbose', p.Results.verbose);
             if isempty(fileList)
                 % no cache files found
                 data = [];
@@ -191,7 +193,8 @@ classdef CacheManager < handle
             end
 
             % load the data file with the newest timestamp
-            [indexNewest, timestamp, separateFields] = cm.retrieveMeta(cacheName, param, 'verbose', p.Results.verbose, 'hash', p.Results.hash, p.Unmatched);
+            [indexNewest, timestamp, separateFields] = cm.retrieveMeta(cacheName, param, ...
+                'verbose', p.Results.verbose, 'hash', p.Results.hash, 'prefix', p.Results.prefix);
             if isempty(indexNewest)
                 % must have data but not meta
                 warning('Data file found without corresponding meta file: \n%s\n', strjoin(fileList, '\n'));
@@ -274,14 +277,15 @@ classdef CacheManager < handle
             p.addRequired('cacheName', @ischar); 
             p.addRequired('param', @(x) true);
             p.addRequired('data', @(x) true);
-            p.addParamValue('verbose', false, @isscalar);
-            p.addParamValue('hash', '', @ischar);
-            p.addParamValue('timestamp', now, @isscalar); % default timestamp is now, but can be overridden 
+            p.addParameter('verbose', CacheManager.getVerbose(), @islogical);
+            p.addParameter('hash', '', @ischar);
+            p.addParameter('prefix', 'cache_', @ischar);
+            p.addParameter('timestamp', now, @isscalar); % default timestamp is now, but can be overridden 
             
             % optional means of saving a struct array's fields as separate variables
             % within the same mat file, allowing for individual fields to be
             % selectively loaded easily
-            p.addParamValue('separateFields', false, @islogical);
+            p.addParameter('separateFields', false, @islogical);
             p.parse(cacheName, param, data, varargin{:});
             
             if p.Results.verbose
@@ -295,8 +299,8 @@ classdef CacheManager < handle
             timestamp = p.Results.timestamp;
             separateFields = p.Results.separateFields;
 
-            fileMeta = cm.getFileMetaForWrite(cacheName, param, 'hash', p.Results.hash);
-            fileData = cm.getFileDataForWrite(cacheName, param, 'hash', p.Results.hash);
+            fileMeta = cm.getFileMetaForWrite(cacheName, param, 'hash', p.Results.hash, 'prefix', p.Results.prefix);
+            fileData = cm.getFileDataForWrite(cacheName, param, 'hash', p.Results.hash, 'prefix', p.Results.prefix);
             mkdirRecursive(fileparts(fileMeta));
 
             if separateFields
@@ -419,8 +423,9 @@ classdef CacheManager < handle
             
             p = inputParser;
             p.addOptional('root', '', @(x) ischar(x) || iscell(x));
-            p.addParamValue('hash', '', @ischar);
-            p.addParamValue('verbose', false, @isscalar);
+            p.addParameter('prefix', 'cache_', @ischar);
+            p.addParameter('hash', '', @ischar);
+            p.addParameter('verbose', CacheManager.getVerbose(), @isscalar);
             p.parse(varargin{:});
             rootList = p.Results.root;
 
@@ -436,7 +441,7 @@ classdef CacheManager < handle
             else
                 hash = p.Results.hash;
             end
-            fileName = ['cache_' hash '.data.mat'];
+            fileName = [p.Results.prefix hash '.data.mat'];
             if length(rootList) == 1
                 %fileList = {fullfile(rootList{1}, cacheName, fileName)};
                 fileList = {[ rootList{1}, filesep(), cacheName, filesep, fileName ]};
@@ -471,7 +476,7 @@ classdef CacheManager < handle
             file = file{1};
         end
         
-        function pathCustom = getPathCustomFromHashFileName(cm, metaFile, field)
+        function pathCustom = getPathCustomFromHashFileName(cm, metaFile, field) %#ok<INUSL>
              % strip off the .data.mat and add _custom_FIELD
             [root, name] = fileparts(metaFile);
             [root, name] = fileparts(fullfile(root, name));
@@ -485,8 +490,9 @@ classdef CacheManager < handle
         function fileList = getFileListMeta(cm, cacheName, param, varargin) 
             p = inputParser;
             p.addOptional('root', '', @(x) ischar(x) || iscell(x));
-            p.addParamValue('hash', '', @ischar);
-            p.addParamValue('verbose', false, @isscalar);
+            p.addParameter('prefix', 'cache_', @ischar);
+            p.addParameter('hash', '', @ischar);
+            p.addParameter('verbose', CacheManager.getVerbose(), @isscalar);
             
             p.parse(varargin{:});
             rootList = p.Results.root;
@@ -506,7 +512,7 @@ classdef CacheManager < handle
             else
                 hash = p.Results.hash;
             end
-            fileName = ['cache_' hash '.meta.mat'];
+            fileName = [p.Results.prefix hash '.meta.mat'];
             
             if length(rootList) == 1
                 fileList = {[rootList{1}, filesep(), cacheName, filesep, fileName]};
@@ -535,41 +541,53 @@ classdef CacheManager < handle
             file = file{1};
         end
 
-        function list = filterExisting(cm, list)
+        function list = filterExisting(cm, list) %#ok<INUSL>
             existing = cellfun(@(file) exist(file, 'file') == 2, list);
             list = list(existing);
         end
     end
     
     methods % Cache operations operating on all entries: indexing, delete all, etc. 
-        function [names, info] = getListMetaFiles(cm, cacheName)
+        function [names, info] = getListMetaFiles(cm, cacheName, varargin)
+            p = inputParser;
+            p.addParameter('prefix', 'cache_', @ischar);
+            p.parse(varargin{:});
+            
             rootList = cm.cacheRootList;
-            filePattern = 'cache_*.meta.mat';
+            filePattern = [p.Results.prefix '*.meta.mat'];
             fileList = fullfileMulti(rootList, cacheName, filePattern);
             
             info = multiDir(fileList);
             names = {info.name};
         end
         
-        function [param, timestamp] = loadFromMetaFile(cm, fileName)
+        function [param, timestamp] = loadFromMetaFile(cm, fileName) %#ok<INUSL>
             meta = load(fileName, 'param', 'timestamp');
             param = meta.param;
             timestamp = meta.timestamp;
         end
         
-        function [names, info] = getListDataFiles(cm, cacheName)
+        function [names, info] = getListDataFiles(cm, cacheName, varargin)
+            p = inputParser;
+            p.addParameter('prefix', 'cache_', @ischar);
+            p.parse(varargin{:});
+            
             rootList = cm.cacheRootList;
-            filePattern = 'cache_*.data.mat';
+            filePattern = [p.Results.prefix '*.data.mat'];
             fileList = fullfileMulti(rootList, cacheName, filePattern);
             
             info = multiDir(fileList);
             names = {info.name};
         end
         
-        function [paramList, timestampList] = getListEntries(cm, cacheName)
+        function [paramList, timestampList] = getListEntries(cm, cacheName, varargin)
+            p = inputParser;
+            p.addParameter('prefix', 'cache_', @ischar);
+            p.parse(varargin{:});
+            
             % load the params stored in every entry in the cache by loading
             % every meta file
-            names = cm.getListMetaFiles(cacheName);
+            names = cm.getListMetaFiles(cacheName, 'prefix', p.Results.prefix);
             N = length(names);
             paramList = cell(N, 1);
             timestampList = nan(N, 1);
@@ -594,6 +612,26 @@ classdef CacheManager < handle
             % sort by most recent first
             [timestampList, sortInd] = sort(timestampList, 1, 'descend');
             paramList = paramList(sortInd);
+        end
+    end
+    
+    methods(Static, Hidden)
+        function tf = getVerbose()
+            val = getenv('CACHEMANAGER_VERBOSE');
+            if isempty(val)
+                tf = false;
+            else
+                tf = strcmp(val, '1');
+            end
+        end
+        
+        function setVerbose(tf)
+            if nargin < 1 || tf
+                val = '1';
+            else
+                val = '0';
+            end
+            setenv('CACHEMANAGER_VERBOSE', val);
         end
     end
 
