@@ -549,7 +549,10 @@ classdef LoadOnDemandMappedTable < StructTable
             % just return the values
             p.addParameter('storeInTable', true, @islogical);
             
+            % print cache diagnostic info
             p.addParameter('verbose', CacheManager.getVerbose, @islogical);
+            
+            p.addParameter('cacheCustomSaveLoadArgs', {}, @iscell); % extra args passed along to any CacheCustomSaveLoad saved fields
             p.parse(varargin{:});
             
             fields = p.Results.fields;
@@ -670,7 +673,8 @@ classdef LoadOnDemandMappedTable < StructTable
                             if ~isempty(prog)
                                 prog.update(iEntryInList, 'Retrieving cached entry %d', iEntryInList);
                             end
-                            [validCache, values, timestamp] = dt.retrieveCachedValuesForEntry(iEntry, fieldsCacheable, 'verbose', p.Results.verbose);
+                            [validCache, values, timestamp] = dt.retrieveCachedValuesForEntry(iEntry, fieldsCacheable, ...
+                                'verbose', p.Results.verbose, 'cacheCustomSaveLoadArgs', p.Results.cacheCustomSaveLoadArgs);
                             if validCache
                                 % found cached values, store each field and mark as loaded
                                 for iField = 1:length(fieldsCacheable)
@@ -1206,6 +1210,7 @@ classdef LoadOnDemandMappedTable < StructTable
         function [validCache, values, timestamp] = retrieveCachedValuesForEntry(dt, iEntry, fields, varargin)
             p = inputParser();
             p.addParameter('verbose', CacheManager.getVerbose, @islogical);
+            p.addParameter('cacheCustomSaveLoadArgs', {}, @iscell);
             p.parse(varargin{:});
             
             assert(~dt.cacheFieldsIndividually,  'This should only be called when not caching fields individually');
@@ -1225,7 +1230,7 @@ classdef LoadOnDemandMappedTable < StructTable
 
             cm = dt.getFieldValueCacheManager();
             [values, timestamp] = cm.loadData(cacheName, param, 'fields', fields, 'prefix', prefix, ...
-                'hash', hash, 'verbose', p.Results.verbose);
+                'hash', hash, 'verbose', p.Results.verbose, 'cacheCustomSaveLoadArgs', p.Results.cacheCustomSaveLoadArgs);
             if ~isnan(timestamp) && timestamp >= cacheTimestamp
                 validCache = true;
                 %debug('Loading cached value for entry %d field %s\n', iEntry, field);

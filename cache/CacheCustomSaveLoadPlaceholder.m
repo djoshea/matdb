@@ -11,9 +11,9 @@ classdef CacheCustomSaveLoadPlaceholder < handle
             p.token = token;
         end
             
-        function val = doCustomLoadFromLocation(p, location)
+        function val = doCustomLoadFromLocation(p, location, varargin)
             loadFn = str2func([p.className '.loadCustomFromLocation']);
-            val = loadFn(location, p.token);
+            val = loadFn(location, p.token, varargin{:});
         end
     end
 end

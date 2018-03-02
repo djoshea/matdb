@@ -167,6 +167,7 @@ classdef CacheManager < handle
             p.addParameter('verbose', CacheManager.getVerbose(), @islogical);
             p.addParameter('prefix', 'cache_', @ischar);
             p.addParameter('hash', '', @ischar);
+            p.addParameter('cacheCustomSaveLoadArgs', {}, @iscell);
             p.parse(cacheName, param, varargin{:});
             
             fields = p.Results.fields;
@@ -257,7 +258,7 @@ classdef CacheManager < handle
                             debug('Loading using CacheCustomSaveLoad on field %s\n', flds{iFld});
                         end
                         location = cm.getPathCustomFromHashFileName(file, flds{iFld});
-                        data.(flds{iFld}) = val.doCustomLoadFromLocation(location);
+                        data.(flds{iFld}) = val.doCustomLoadFromLocation(location, p.Results.cacheCustomSaveLoadArgs{:});
                     end
                 end
             elseif isa(data, 'CacheCustomSaveLoadPlaceholder')
