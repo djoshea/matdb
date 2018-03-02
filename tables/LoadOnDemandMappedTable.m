@@ -1045,9 +1045,9 @@ classdef LoadOnDemandMappedTable < StructTable
                 hash = dt.table(iEntry).keyFieldHash.(field);
                 param = dt.table(iEntry).keyFieldHashParam;
                 cacheTimestamp = dt.cacheValidTimestampForField.(field);
-                
+                lookup = dt.getCustomCacheSuffixForFieldLookup();
                 [value, timestamp] = cm.loadData(cacheName, param, 'prefix', prefix, ...
-                    'hash', hash, 'verbose', p.Results.verbose);
+                    'hash', hash, 'verbose', p.Results.verbose, 'customSuffixForFieldLookup', lookup);
                 
                 if ~isnan(timestamp) && timestamp >= cacheTimestamp
                     %debug('Loading cached value for entry %d field %s\n', iEntry, field);
@@ -1229,8 +1229,12 @@ classdef LoadOnDemandMappedTable < StructTable
             cacheTimestamp = dt.cacheValidTimestampAllFields;
 
             cm = dt.getFieldValueCacheManager();
+            lookup = dt.getCustomCacheSuffixForFieldLookup();
             [values, timestamp] = cm.loadData(cacheName, param, 'fields', fields, 'prefix', prefix, ...
-                'hash', hash, 'verbose', p.Results.verbose, 'cacheCustomSaveLoadArgs', p.Results.cacheCustomSaveLoadArgs);
+                'hash', hash, 'verbose', p.Results.verbose, ...
+		'cacheCustomSaveLoadArgs', p.Results.cacheCustomSaveLoadArgs, ...
+                'customSuffixForFieldLookup', lookup);
+
             if ~isnan(timestamp) && timestamp >= cacheTimestamp
                 validCache = true;
                 %debug('Loading cached value for entry %d field %s\n', iEntry, field);

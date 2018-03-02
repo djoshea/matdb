@@ -167,7 +167,12 @@ classdef CacheManager < handle
             p.addParameter('verbose', CacheManager.getVerbose(), @islogical);
             p.addParameter('prefix', 'cache_', @ischar);
             p.addParameter('hash', '', @ischar);
+<<<<<<< HEAD
             p.addParameter('cacheCustomSaveLoadArgs', {}, @iscell);
+=======
+            p.addParameter('customSuffixForFieldLookup', struct(), @isstruct);
+            
+>>>>>>> customSuffixForFieldLookup support
             p.parse(cacheName, param, varargin{:});
             
             fields = p.Results.fields;
@@ -259,6 +264,15 @@ classdef CacheManager < handle
                         end
                         location = cm.getPathCustomFromHashFileName(file, flds{iFld});
                         data.(flds{iFld}) = val.doCustomLoadFromLocation(location, p.Results.cacheCustomSaveLoadArgs{:});
+	            else
+                        if isfield(p.Results.customSuffixForFieldLookup, flds{iFld})
+                            suffix = p.Results.customSuffixForFieldLookup.(flds{iFld});
+                        else
+                            suffix = sprintf('.custom_%s', flds{iFld});
+                        end
+                        customLocation = cm.getPathCustomFromHashFileName(file, suffix);
+                        data.(flds{iFld}) = val.doCustomLoadFromLocation(customLocation);
+
                     end
                 end
             elseif isa(data, 'CacheCustomSaveLoadPlaceholder')
