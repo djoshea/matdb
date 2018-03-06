@@ -525,7 +525,7 @@ classdef LoadOnDemandMappedTable < StructTable
             p = inputParser;
 
             % specify a subset of fieldsLoadOnDemand to load
-            p.addOptional('fields', dt.fieldsLoadOnDemand, @iscellstr);
+            p.addOptional('fields', dt.fieldsLoadOnDemand, @(x) (ischar(x) && ~strcmp(x, 'fields')) || iscellstr(x));
 
             % if true, force reload of ALL fields
             p.addParameter('reload', false, @islogical);
