@@ -68,7 +68,7 @@ classdef NumericVectorField < DataFieldDescriptor
                     error('Values must be either a cell array or numeric vector');
                 end
             else
-                [tf convValues] = isVectorCell(values);
+                [tf, convValues] = isVectorCell(values, 'logicalOkay', true);
                 assert(tf, 'Unable to convert values to NumericVectorField');
             end
                     

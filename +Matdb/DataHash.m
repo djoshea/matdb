@@ -104,7 +104,7 @@ end
 % TYPECAST - for a [1000x1000] DOUBLE array this is 100 times faster!
 persistent usetypecastx
 if isempty(usetypecastx)
-   usetypecastx = ~isempty(which('typecastx'));  % Run the slow WHICH once only
+   usetypecastx = ~isempty(which('matdb_typecastx'));  % Run the slow WHICH once only
 end
 
 % Default options: -------------------------------------------------------------
@@ -180,22 +180,22 @@ if isFile
    
    Engine.update(Data);
    if usetypecastx
-      Hash = typecastx(Engine.digest, 'uint8');
+      Hash = matdb_typecastx(Engine.digest, 'uint8');
    else
       Hash = typecast(Engine.digest, 'uint8');
    end
 
 elseif isBin             % Contents of an elementary array:
    if isempty(Data)      % Nothing to do, Engine.update fails for empty input!
-      Hash = typecastx(Engine.digest, 'uint8');
+      Hash = matdb_typecastx(Engine.digest, 'uint8');
    elseif usetypecastx   % Faster typecastx:
       if isreal(Data)
-         Engine.update(typecastx(Data(:), 'uint8'));
+         Engine.update(matdb_typecastx(Data(:), 'uint8'));
       else
-         Engine.update(typecastx(real(Data(:)), 'uint8'));
-         Engine.update(typecastx(imag(Data(:)), 'uint8'));
+         Engine.update(matdb_typecastx(real(Data(:)), 'uint8'));
+         Engine.update(matdb_typecastx(imag(Data(:)), 'uint8'));
       end
-      Hash = typecastx(Engine.digest, 'uint8');
+      Hash = matdb_typecastx(Engine.digest, 'uint8');
       
    else                  % Matlab's TYPECAST is less elegant:
       if isnumeric(Data)
@@ -216,7 +216,7 @@ elseif isBin             % Contents of an elementary array:
    
 elseif usetypecastx  % Faster typecastx:
    Engine = CoreHash_(Data, Engine);
-   Hash   = typecastx(Engine.digest, 'uint8');
+   Hash   = matdb_typecastx(Engine.digest, 'uint8');
    
 else                 % Slower built-in TYPECAST:
    Engine = CoreHash(Data, Engine);
@@ -250,7 +250,7 @@ function Engine = CoreHash_(Data, Engine)
 % Consider the type and dimensions of the array to distinguish arrays with the
 % same data, but different shape: [0 x 0] and [0 x 1], [1,2] and [1;2],
 % DOUBLE(0) and SINGLE([0,0]):
-Engine.update([uint8(class(Data)), typecastx(size(Data), 'uint8')]);
+Engine.update([uint8(class(Data)), matdb_typecastx(size(Data), 'uint8')]);
 
 if isstruct(Data)                    % Hash for all array elements and fields:
    F      = sort(fieldnames(Data));  % Ignore order of fields
@@ -270,10 +270,10 @@ elseif iscell(Data)                  % Get hash for all cell elements:
 elseif isnumeric(Data) || islogical(Data) || ischar(Data)
    if isempty(Data) == 0
       if isreal(Data)                % TRUE for LOGICAL and CHAR also:
-         Engine.update(typecastx(Data(:), 'uint8'));
+         Engine.update(matdb_typecastx(Data(:), 'uint8'));
       else                           % typecastx accepts complex input:
-         Engine.update(typecastx(real(Data(:)), 'uint8'));
-         Engine.update(typecastx(imag(Data(:)), 'uint8'));
+         Engine.update(matdb_typecastx(real(Data(:)), 'uint8'));
+         Engine.update(matdb_typecastx(imag(Data(:)), 'uint8'));
       end
    end
    
