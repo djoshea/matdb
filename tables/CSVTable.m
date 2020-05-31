@@ -11,7 +11,7 @@ classdef CSVTable < StructTable
             p = inputParser;
             p.KeepUnmatched = true;
             p.addOptional('csvName', '', @(x) isempty(x) || ischar(x));
-            p.addParamValue('entryName', '', @ischar);
+            p.addParameter('entryName', '', @ischar);
             p.parse(varargin{:});
 
             dt.entryName = p.Results.entryName;
@@ -68,7 +68,8 @@ classdef CSVTable < StructTable
         
         % return the param to be used when caching
         function param = getCacheParam(obj) 
-            param.csvName = obj.csvName; 
+            [~, param] = fileparts(obj.csvName);
+            param = strrep(param, ' ', ''); % remove spaces
         end
     end
 end
