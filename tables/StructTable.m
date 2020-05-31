@@ -27,7 +27,7 @@ classdef StructTable < DataTable
             entryNamePlural = p.Results.entryNamePlural;
             dfdMap = p.Results.fieldDescriptorMap;
 
-            if isempty(entryName) && isempty(db.entryName);
+            if isempty(entryName) && isempty(db.entryName)
                 if isa(table, 'DataTable')
                     entryName = table.entryName;
                 else

@@ -57,7 +57,12 @@ classdef DateTimeField < DataFieldDescriptor
                 return;
             end
             if isnumeric(values) && ~ischar(values)
-                num = values;
+                if ~isempty(dfd.dateFormat)
+                    % might be an all numeric format
+                    num = datenum(arrayfun(@num2str, values, 'UniformOutput', false), dfd.dateFormat);
+                else
+                    num = values;
+                end
                 return;
             end
             

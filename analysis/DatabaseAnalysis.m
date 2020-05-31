@@ -1057,7 +1057,8 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                 fprintf('\n');
                 [~, width] = getTerminalSize();
                 width = width(1);
-                if isunix && ~ismac
+                mode = getMatlabOutputMode();
+                if mode == "desktop" || (isunix && ~ismac)
                     cdash = char(hex2dec('2500'));
                 elseif ismac
                     cdash = char(hex2dec({'e2', '94', '80'}))';

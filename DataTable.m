@@ -1198,8 +1198,18 @@ classdef DataTable < DynamicClass & Cacheable
             if ismac % temporary hack because newer iTerm is messing up double width characters
                 %useUTF8 = false;
             end
+<<<<<<< HEAD
             useUTF32 = false;
             useUTF8 = false;
+||||||| parent of 2994692... iMatlab related DataTable printing tweaks
+=======
+            
+            if getMatlabOutputMode() == "desktop"
+                color = false;
+                useUTF32 = false;
+                useUTF8 = false;
+            end
+>>>>>>> 2994692... iMatlab related DataTable printing tweaks
 
             % determine utf bytecodes for + - | characters
             if grid
@@ -1283,7 +1293,7 @@ classdef DataTable < DynamicClass & Cacheable
             cumWidth = idxColWidth + cumsum(colWidths) + dividerWidth*[1:length(colWidths)]';
             nFieldsPrint = find(cumWidth < maxWidth, 1, 'last'); 
             if isempty(nFieldsPrint)
-                nFieldsPrint == 1;
+                nFieldsPrint = 1;
             end
 
             if nFieldsPrint < nFields

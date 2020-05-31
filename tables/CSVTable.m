@@ -12,9 +12,12 @@ classdef CSVTable < StructTable
             p.KeepUnmatched = true;
             p.addOptional('csvName', '', @(x) isempty(x) || ischar(x));
             p.addParameter('entryName', '', @ischar);
+            p.addParameter('entryNamePlural', '', @(t) ischar(t) || isempty(t));
+            
             p.parse(varargin{:});
 
             dt.entryName = p.Results.entryName;
+            dt.entryNamePlural = p.Results.entryNamePlural;
             dt.csvName = p.Results.csvName;
             if isempty(dt.csvName)
                 % load an empty database, pass remaining args to StructTable
@@ -23,8 +26,8 @@ classdef CSVTable < StructTable
                 % assert file existence
                 assert(exist(dt.csvName, 'file') == 2, 'Could not find file %s', dt.csvName);
 
-                % now check whether we can loadFromCache 
-               
+                % now check whether we can loadFromCache
+
                 if dt.hasCache()
                     dt = dt.loadFromCache();
                     debug('Loaded from cache!\n');
@@ -43,15 +46,15 @@ classdef CSVTable < StructTable
             dt = dt.initialize(data, argList{:});
             dt.cache();
         end
-    
+
         % handle cacheable timestamp here based on the modification time of the file
-        
+
 
     end
 
     methods(Access=protected)
         function timestamp = getLastUpdated(obj)
-            info = dir(obj.csvName); 
+            info = dir(obj.csvName);
             if isempty(info)
                 timestamp = now;
             else
@@ -65,9 +68,9 @@ classdef CSVTable < StructTable
             % invalidate cache when csv is modified
             timestamp = obj.getLastUpdated();
         end
-        
+
         % return the param to be used when caching
-        function param = getCacheParam(obj) 
+        function param = getCacheParam(obj)
             [~, param] = fileparts(obj.csvName);
             param = strrep(param, ' ', ''); % remove spaces
         end

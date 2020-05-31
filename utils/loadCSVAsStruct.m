@@ -11,7 +11,7 @@ nCols = size(C, 2);
 headerList = C(1, :);
 emptyMask = cellfun(@isempty, headerList);
 if any(emptyMask)
-    error('Empty column name in row 1, columns %s', strjoin(find(emptyMask)));
+    error('Empty column name in row 1, columns %s', num2str(find(emptyMask)));
 end
 
 % convert to safe field names for struct
