@@ -1,5 +1,8 @@
 classdef CacheManager < handle
     properties
+        % when a string is passed in, keep it a string
+        preferCleanHash = true;
+        
         cachedCacheRootList
     end
     
@@ -44,16 +47,36 @@ classdef CacheManager < handle
             if ~isempty(pLastHash) && cm.checkParamMatch(pLastParam, param)
                 str = pLastHash;
             else
-                opts.Method = 'SHA-1';
-                opts.Format = 'hex'; 
-                opts.Input = 'ascii';
-                hashData.param = param;
-                hashData.cacheName = cacheName;
-                str = Matdb.DataHash(hashData, opts);
+                if ischar(param)
+                    cleanHash = param;
+                    cleanHashable = true;
+                elseif isstring(param) && numel(param) == 1
+                    cleanHash = char(param);
+                    cleanHashable = true;
+%                 elseif isstruct(param) && numel(param) == 1
+%                     flds = fieldnames(param);
+%                     if numel(flds) == 1
+%                         cleanHash = sprintf('%s_%s', flds{1}, param.(flds{1}));
+%                         cleanHashable = true;
+%                     end=
+                else
+                    cleanHashable = false;
+                end
+                 
+                if cm.preferCleanHash && cleanHashable
+                    str = cleanHash;
+                else
+                    opts.Method = 'SHA-1';
+                    opts.Format = 'hex'; 
+                    opts.Input = 'ascii';
+                    hashData.param = param;
+                    hashData.cacheName = cacheName;
+                    str = Matdb.DataHash(hashData, opts);
                 
-                % cache for next time
-                pLastHash = str;
-                pLastParam = param;
+                    % cache for next time
+                    pLastHash = str;
+                    pLastParam = param;
+                end
             end
         end
     end

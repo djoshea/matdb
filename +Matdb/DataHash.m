@@ -300,6 +300,11 @@ function x = typecast_local(x, as)
         if strcmp(as, 'uint8')
             return;
         end
+    elseif islogical(x)
+        x = uint8(x);
+        if strcmp(as, 'uint8')
+            return;
+        end
     end
     x = typecast(x, as);
 end
