@@ -96,7 +96,12 @@ classdef DatabaseAnalysisResultsTable < LoadOnDemandMappedTable
         
         function hash = generateHashForEntry(dt, iEntry, cacheName, param)
             % call to DatabaseAnalysis to give it a chance to modify the hash value or regenerate it
-            hash = generateHashForEntry@LoadOnDemandMappedTable(dt, iEntry, cacheName, param);
+            if isa(dt.analysis, 'CleanHashAnalysis')
+                % skip computing hash for this since it won't use it, saves time
+                hash = '';
+            else
+                hash = generateHashForEntry@LoadOnDemandMappedTable(dt, iEntry, cacheName, param);
+            end
             
             entry = dt.select(iEntry);
             assert(entry.nEntries == 1);

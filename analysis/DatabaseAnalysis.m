@@ -363,6 +363,12 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             da.run('keepCurrentValues', false, 'loadCache', false, ...
                 'saveCache', false, 'catchErrors', false, 'rerunFailed', true, varargin{:});
         end
+        
+        function runDebugKeepCurrent(da, varargin)
+            dbstop if error;
+            da.run('keepCurrentValues', true, 'loadCache', false, ...
+                'saveCache', false, 'catchErrors', false, 'rerunFailed', true, varargin{:});
+        end
 
         function runDebugErrors(da, varargin)
             % wraps .run with common params for debugging but will actually
@@ -435,6 +441,8 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             % generate a new report and figures folder even if no new analysis
             % was run, useful if issues encountered with report generation
             p.addParameter('forceReport', false, @islogical);
+            p.addParameter('writeReport', true, @islogical);
+            
             % limit the indices that are run from the table
             p.addParameter('idx', [], @(x) isempty(x) || isvector(x));
             
@@ -462,6 +470,8 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             p.addParameter('verbose', false, @islogical);
             
             p.addParameter('parallel', false, @islogical); % use parallel mode to execute
+            p.addParameter('runArgs', {}, @iscell);
+            p.KeepUnmatched = true;
             p.parse(varargin{:});
 
             fieldsAnalysis = p.Results.fields;
@@ -473,12 +483,14 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             loadCacheOnly = p.Results.loadCacheOnly;
             catchErrors = p.Results.catchErrors;
             forceReport = p.Results.forceReport;
+            writeReport = p.Results.writeReport;
             storeInTable = p.Results.storeInTable;
             keepCurrentValues = p.Results.keepCurrentValues;
             maxToRun = p.Results.maxToRun;
             db = p.Results.database;
             verbose = p.Results.verbose;
             runParallel = p.Results.parallel;
+            runArgs = p.Results.runArgs;
 
             runOnAllSimultaneously = da.getRunOnceOnAllEntriesSimultaneously();
             
@@ -531,7 +543,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             da.tableMapped = table;
 
             % load required source/views, re-map the result table, etc.
-            if ~keepCurrentValues
+            if ~keepCurrentValues || isempty(da.resultTable)
                 da.resultTable = [];
                 da.initialize('maxRows', p.Results.maxRows);
             end
@@ -647,16 +659,19 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
 
                 % check the cache timestamps to determine
                 % which entry x field cells are missing or out of date
-                if p.Results.recheckSuccess
-                    debug('Checking cached field existence and success field\n');
-                    resultTable = resultTable.loadFields('fields', {'success'}, 'loadCacheOnly', true, 'verbose', verbose);
+                if ~keepCurrentValues
+                    if p.Results.recheckSuccess
+                        debug('Checking cached field existence and success field\n');
+                        resultTable = resultTable.loadFields('fields', {'success'}, 'loadCacheOnly', true, 'verbose', verbose);
+                    end
+                
+                    fieldsToLoad = setdiff(resultTable.fieldsCacheable, 'success');
+                    % load the cache timestamps (and thereby determine whether
+                    % they exist) for all fields for successful entries
+                    resultTable = resultTable.loadFields('fields', fieldsToLoad, 'loadCacheTimestampsOnly', true, ...
+                        'entryMask', resultTable.success, 'verbose', verbose);
+                    resultTable.updateInDatabase('filterOneToRelationships', false);
                 end
-                fieldsToLoad = setdiff(resultTable.fieldsCacheable, 'success');
-                % load the cache timestamps (and thereby determine whether
-                % they exist) for all fields for successful entries
-                resultTable = resultTable.loadFields('fields', fieldsToLoad, 'loadCacheTimestampsOnly', true, ...
-                    'entryMask', resultTable.success, 'verbose', verbose);
-                resultTable.updateInDatabase('filterOneToRelationships', false);
 
                 timestampsByEntry = cell2mat(resultTable.getValues('cacheTimestampsByEntry'));
 
@@ -887,6 +902,9 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                         debug('Copying database to parallel workers...\n');
                         constData = parallel.pool.Constant(data);
                         
+                        analyzeOrder = randsample(numel(idxAnalyze), numel(idxAnalyze));
+                        idxAnalyze = idxAnalyze(analyzeOrder);
+                        
                         prog = ProgressBar(nAnalyze, 'Creating futures to run analysis on entries');
                         counter = 1;
                         for iAnalyze = 1:nAnalyze
@@ -958,18 +976,20 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                     smask = da.resultTable.success;
                     debug('Analysis has run successfully on %d / %d entries\n', nnz(smask), numel(smask));
                     
-                    da.createAnalysisPathAndSetPermissions();
+                    if writeReport || forceReport
+                        da.createAnalysisPathAndSetPermissions();
 
-                    % sym link figures from prior runs to the current analysis folder
-                    da.linkOldFigures('saveCache', saveCache);
-                    % save the html report (which will copy resources folder over too)
-                    da.saveAsHtml();
+                        % sym link figures from prior runs to the current analysis folder
+                        da.linkOldFigures('saveCache', saveCache);
+                        % save the html report (which will copy resources folder over too)
+                        da.saveAsHtml();
 
-                    % link from analysisName.html to index.html for easy browsing
-                    da.linkHtmlAsIndex();
+                        % link from analysisName.html to index.html for easy browsing
+                        da.linkHtmlAsIndex();
 
-                    % link this timestamped directory to current for easy browsing
-                    da.linkAsCurrent();
+                        % link this timestamped directory to current for easy browsing
+                        da.linkAsCurrent();
+                    end
                 end
 
                 if saveCache && resultTableChanged
@@ -1060,7 +1080,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                 % try calling the runOnEntry callback
                 if catchErrors
                     try
-                        resultStruct = da.runOnEntry(entry, fieldsAnalysis);
+                        resultStruct = da.runOnEntry(entry, fieldsAnalysis, runArgs{:});
                         exc = [];
                         success = true;
 
@@ -1076,7 +1096,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
                         resultStruct = struct();
                     end
                 else
-                    resultStruct = da.runOnEntry(entry, fieldsAnalysis);
+                    resultStruct = da.runOnEntry(entry, fieldsAnalysis, runArgs{:});
                     exc = [];
                     success = true;
 
