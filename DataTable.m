@@ -827,7 +827,7 @@ classdef DataTable < DynamicClass & Cacheable
             warnIfNoArgOut(db, nargout);
             
             kf = db.getKeyFieldValuesAsStruct();
-            [~, idxUnique] = uniqueStruct(kf);
+            [~, idxUnique] = Matdb.uniqueStruct(kf);
             
             db = db.select(idxUnique);
             maskRemoved = truevec(db.nEntries);
@@ -1198,6 +1198,8 @@ classdef DataTable < DynamicClass & Cacheable
             if ismac % temporary hack because newer iTerm is messing up double width characters
                 %useUTF8 = false;
             end
+            useUTF32 = false;
+            useUTF8 = false;
 
             % determine utf bytecodes for + - | characters
             if grid
@@ -1218,6 +1220,7 @@ classdef DataTable < DynamicClass & Cacheable
             
             if color && ~inDataTip
                 printf = @tcprintf;
+                %printf = @(color, fmatStr, varargin) hcprintf(['{' color, '}' ;
             else
                 printf = @(c, varargin) fprintf(varargin{:});
             end
