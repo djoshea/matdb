@@ -31,6 +31,7 @@ classdef MatdbSettingsStore < handle
             name = MatdbSettingsStore.getDefaultCacheManagerName();
             assert(~isempty(name), 'Set value of MatdbSettingsdefaultCacheManagerName');
             cm = eval(sprintf('%s()', name));
+            cm.preferCleanHash = true;
         end
 
         function name = getDefaultCacheManagerName()
