@@ -1198,18 +1198,15 @@ classdef DataTable < DynamicClass & Cacheable
             if ismac % temporary hack because newer iTerm is messing up double width characters
                 %useUTF8 = false;
             end
-<<<<<<< HEAD
-            useUTF32 = false;
-            useUTF8 = false;
-||||||| parent of 2994692... iMatlab related DataTable printing tweaks
-=======
+
+            %useUTF32 = false;
+            %useUTF8 = false;
             
             if getMatlabOutputMode() == "desktop"
                 color = false;
                 useUTF32 = false;
                 useUTF8 = false;
             end
->>>>>>> 2994692... iMatlab related DataTable printing tweaks
 
             % determine utf bytecodes for + - | characters
             if grid
