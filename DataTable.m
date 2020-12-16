@@ -1193,8 +1193,8 @@ classdef DataTable < DynamicClass & Cacheable
             maxWidth = p.Results.maxWidth;
 
             % use utf depending on OS, but never in data tip
-            useUTF32 = isunix && ~ismac && ~inDataTip;
-            useUTF8 = ~useUTF32 && isunix && ~inDataTip;
+            useUTF32 = isunix && ~ismac && ~inDataTip && false;
+            useUTF8 = ~useUTF32 && isunix && ~inDataTip && false;
             if ismac % temporary hack because newer iTerm is messing up double width characters
                 %useUTF8 = false;
             end
@@ -1202,15 +1202,20 @@ classdef DataTable < DynamicClass & Cacheable
             %useUTF32 = false;
             %useUTF8 = false;
             
-            if getMatlabOutputMode() == "desktop"
-                color = false;
-                useUTF32 = false;
-                useUTF8 = false;
-            end
+%             if getMatlabOutputMode() == "desktop"
+%                 color = false;
+%                 useUTF32 = false;
+%                 useUTF8 = false;
+%             end
 
             % determine utf bytecodes for + - | characters
+            matlabOutputMode = getMatlabOutputMode();
             if grid
-                if useUTF32
+                if matlabOutputMode == "desktop"
+                    vline = '│';
+                    hlineHeader = '─';
+                    crossHeader = '┼';
+                elseif useUTF32
                     crossHeader = char(hex2dec('253F'));
                     vline = char(hex2dec('2502'));
                     hlineHeader = char(hex2dec('2501'));

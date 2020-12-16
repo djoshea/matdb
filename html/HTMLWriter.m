@@ -27,7 +27,7 @@ classdef HTMLWriter < handle
                 cmd = sprintf('open "%s"', fileName);
                 system(cmd);
             elseif isunix
-                cmd = sprintf('export LD_LIBRARY_PATH=/usr/lib/firefox && export DISPLAY=:0.0 && firefox "%s"', fileName);
+                cmd = sprintf('export LD_LIBRARY_PATH=/usr/lib/firefox && export DISPLAY=:0.0 && firefox "%s" &', fileName);
                 unix(cmd);
             else
                 winopen(fileName);
