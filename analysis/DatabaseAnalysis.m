@@ -470,7 +470,7 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             p.addParameter('verbose', false, @islogical);
             
             p.addParameter('parallel', false, @islogical); % use parallel mode to execute
-            p.addParameter('runArgs', {}, @iscell);
+            p.addParameter('runArgs', {}, @(x) iscell(x) || isstruct(x));
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
@@ -491,6 +491,9 @@ classdef DatabaseAnalysis < handle & DataSource & Cacheable
             verbose = p.Results.verbose;
             runParallel = p.Results.parallel;
             runArgs = p.Results.runArgs;
+            if isstruct(runArgs)
+                runArgs = namedargs2cell(runArgs);
+            end
 
             runOnAllSimultaneously = da.getRunOnceOnAllEntriesSimultaneously();
             
