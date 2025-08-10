@@ -98,7 +98,7 @@ function cellMat = loadCSVAsCell(varargin)
     % populate the rows of the cell matrix
     cellMat = cell(nRows, nCols);
     for r = 1:nRows
-        cellMat(r, 1:nColsPerLine) = cellOfCells{r};
+        cellMat(r, 1:nColsPerLine(r)) = cellOfCells{r};
     end
     
     % strip quoted field values
